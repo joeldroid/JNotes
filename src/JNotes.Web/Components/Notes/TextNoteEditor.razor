@@ -1,0 +1,18 @@
+<div class="row g-3">
+    <div class="col-12 col-lg-6">
+        <textarea class="form-control note-editor-textarea" aria-label="Note body"
+                  value="@Body" @oninput="OnInput"></textarea>
+    </div>
+    <div class="col-12 col-lg-6">
+        <div class="border rounded p-3 overflow-auto note-editor-preview">
+            <MarkdownPreview Markdown="@Body" />
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Body { get; set; } = "";
+    [Parameter] public EventCallback<string> BodyChanged { get; set; }
+
+    private Task OnInput(ChangeEventArgs e) => BodyChanged.InvokeAsync(e.Value?.ToString() ?? "");
+}

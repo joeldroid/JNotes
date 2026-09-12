@@ -1,0 +1,14 @@
+services:
+  jnotes:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      # Bind mount (not a named volume): the whole point of markdown-file storage is
+      # host-visible, copyable, backupable notes. Swap for a named volume (e.g.
+      # `jnotes-data:/data`) if you don't need host-side access to the files.
+      - ./data:/data
+    environment:
+      - JNotes__NotesFolderPath=/data/notes
+      - JNotes__DbPath=/data/jnotes.db
+    restart: unless-stopped

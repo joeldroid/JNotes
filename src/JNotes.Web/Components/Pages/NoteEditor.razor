@@ -1,0 +1,104 @@
+@page "/notes/{Id:guid}"
+@inject INoteService NoteService
+@inject NavigationManager NavigationManager
+
+<PageTitle>@(_note?.Title is { Length: > 0 } title ? title : "Note")</PageTitle>
+
+@if (_notFound)
+{
+    <div class="alert alert-warning">This note couldn't be found — it may have been deleted.</div>
+    <a class="btn btn-secondary" href="/">Back to notes</a>
+}
+else if (_note is null)
+{
+    <p class="text-body-secondary">Loading…</p>
+}
+else
+{
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+        <div class="flex-grow-1" style="min-width: 240px;">
+            <input class="form-control form-control-lg fw-semibold" placeholder="Untitled note"
+                   @bind="_note.Title" @bind:event="oninput" />
+            <input class="form-control mt-2" placeholder="tags, comma, separated" @bind="_tagsText" @bind:event="oninput" />
+        </div>
+        <div class="d-flex gap-2 flex-shrink-0">
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_isSaving">
+                @(_isSaving ? "Saving…" : "Save")
+            </button>
+            <button class="btn btn-outline-danger" @onclick="DeleteAsync">Delete</button>
+        </div>
+    </div>
+
+    <p class="text-body-secondary small">Last updated @_note.UpdatedAt.LocalDateTime.ToString("g")</p>
+
+    @if (_note.Type == NoteType.Checklist)
+    {
+        <ChecklistNoteEditor @bind-Body="_note.Body" ItemToggled="ToggleItemAsync" />
+    }
+    else
+    {
+        <TextNoteEditor @bind-Body="_note.Body" />
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private Note? _note;
+    private bool _notFound;
+    private bool _isSaving;
+    private string _tagsText = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _notFound = false;
+        try
+        {
+            _note = await NoteService.GetAsync(Id);
+            _tagsText = string.Join(", ", _note.Tags);
+        }
+        catch (NoteNotFoundException)
+        {
+            _notFound = true;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_note is null)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        _note.Tags = _tagsText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        _note = await NoteService.UpdateAsync(_note);
+        _isSaving = false;
+    }
+
+    private async Task ToggleItemAsync(int lineIndex)
+    {
+        if (_note is null)
+        {
+            return;
+        }
+
+        // Persists immediately (unlike Title/Tags/raw-body edits, which wait for Save). Only
+        // Body/UpdatedAt come from the result — Title/Tags stay whatever's currently in the
+        // inputs, so an unsaved edit there isn't clobbered by a toggle's disk-truth response.
+        var result = await NoteService.ToggleChecklistItemAsync(_note.Id, lineIndex);
+        _note.Body = result.Body;
+        _note.UpdatedAt = result.UpdatedAt;
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_note is null)
+        {
+            return;
+        }
+
+        await NoteService.DeleteAsync(_note.Id);
+        NavigationManager.NavigateTo("/");
+    }
+}

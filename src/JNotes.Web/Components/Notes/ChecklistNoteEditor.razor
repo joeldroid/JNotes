@@ -1,0 +1,38 @@
+<ul class="list-group mb-3">
+    @foreach (var item in Items)
+    {
+        <li class="list-group-item">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="@($"item-{item.LineIndex}")"
+                       checked="@item.IsChecked" @onchange="() => ItemToggled.InvokeAsync(item.LineIndex)" />
+                <label class="form-check-label @(item.IsChecked ? "text-decoration-line-through text-body-secondary" : "")"
+                       for="@($"item-{item.LineIndex}")">
+                    @item.Text
+                </label>
+            </div>
+        </li>
+    }
+    @if (Items.Count == 0)
+    {
+        <li class="list-group-item text-body-secondary">No checklist items yet — add some in the raw markdown below.</li>
+    }
+</ul>
+
+<button class="btn btn-sm btn-outline-secondary mb-2" type="button" data-bs-toggle="collapse" data-bs-target="#rawMarkdownCollapse">
+    Edit raw markdown
+</button>
+<div class="collapse" id="rawMarkdownCollapse">
+    <textarea class="form-control note-editor-textarea" aria-label="Raw checklist markdown"
+              value="@Body" @oninput="OnInput"></textarea>
+    <div class="form-text">Add, remove, or reorder items here — new task-list lines (<code>- [ ] …</code>) become checkboxes above once saved.</div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Body { get; set; } = "";
+    [Parameter] public EventCallback<string> BodyChanged { get; set; }
+    [Parameter] public EventCallback<int> ItemToggled { get; set; }
+
+    private IReadOnlyList<ChecklistItem> Items => ChecklistMarkdownParser.Parse(Body);
+
+    private Task OnInput(ChangeEventArgs e) => BodyChanged.InvokeAsync(e.Value?.ToString() ?? "");
+}

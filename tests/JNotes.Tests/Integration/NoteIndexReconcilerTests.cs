@@ -1,0 +1,115 @@
+using JNotes.Core.Models;
+using JNotes.Core.Notes;
+
+namespace JNotes.Tests.Integration;
+
+public class NoteIndexReconcilerTests : IAsyncLifetime
+{
+    private CoreServicesFixture _fixture = null!;
+
+    public async Task InitializeAsync() => _fixture = await CoreServicesFixture.CreateAsync();
+
+    public async Task DisposeAsync() => await _fixture.DisposeAsync();
+
+    [Fact]
+    public async Task RescanAsync_indexes_a_note_file_added_outside_the_app()
+    {
+        // Written directly through the file store (bypassing NoteService, so no index row is
+        // created) to simulate a file dropped into the notes folder outside the app.
+        var note = new Note
+        {
+            Id = Guid.NewGuid(),
+            Title = "Added externally",
+            Type = NoteType.Text,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+            Body = "hello",
+        };
+        await _fixture.FileStore.WriteAsync(note);
+
+        var result = await _fixture.Reconciler.RescanAsync();
+
+        Assert.Equal(1, result.Added);
+        Assert.Equal(0, result.Updated);
+        Assert.Equal(0, result.Removed);
+        Assert.Empty(result.Errors);
+
+        var listed = await _fixture.NoteService.ListAsync(new NoteSearchQuery());
+        Assert.Contains(listed, n => n.Id == note.Id && n.Title == "Added externally");
+    }
+
+    [Fact]
+    public async Task RescanAsync_removes_the_index_row_for_a_file_deleted_outside_the_app()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "To be deleted", [], "body");
+
+        // Deleted directly through the file store (bypassing NoteService, so the index row is left behind).
+        await _fixture.FileStore.DeleteAsync(note.Id);
+
+        var result = await _fixture.Reconciler.RescanAsync();
+
+        Assert.Equal(0, result.Added);
+        Assert.Equal(0, result.Updated);
+        Assert.Equal(1, result.Removed);
+
+        var listed = await _fixture.NoteService.ListAsync(new NoteSearchQuery());
+        Assert.DoesNotContain(listed, n => n.Id == note.Id);
+    }
+
+    [Fact]
+    public async Task RescanAsync_reindexes_a_file_edited_outside_the_app_once_its_mtime_advances()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Original title", [], "body");
+
+        // Ensure the filesystem mtime actually advances before the external edit.
+        await Task.Delay(TimeSpan.FromMilliseconds(1100));
+
+        var current = await _fixture.FileStore.ReadAsync(note.Id);
+        current.Title = "Edited externally";
+        await _fixture.FileStore.WriteAsync(current); // bypasses NoteService's index update
+
+        var result = await _fixture.Reconciler.RescanAsync();
+
+        Assert.Equal(0, result.Added);
+        Assert.Equal(1, result.Updated);
+        Assert.Equal(0, result.Removed);
+
+        var listed = await _fixture.NoteService.ListAsync(new NoteSearchQuery());
+        Assert.Contains(listed, n => n.Id == note.Id && n.Title == "Edited externally");
+    }
+
+    [Fact]
+    public async Task RescanAsync_is_a_noop_when_nothing_changed_since_the_last_index()
+    {
+        await _fixture.NoteService.CreateAsync(NoteType.Text, "Untouched", [], "body");
+
+        var result = await _fixture.Reconciler.RescanAsync();
+
+        Assert.Equal(0, result.Added);
+        Assert.Equal(0, result.Updated);
+        Assert.Equal(0, result.Removed);
+        Assert.Empty(result.Errors);
+    }
+
+    [Fact]
+    public async Task RescanAsync_records_an_error_and_preserves_the_existing_row_for_corrupted_front_matter()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Still good in the index", [], "body");
+
+        // Corrupt the file directly on disk (not through any Core API) to simulate hand-editing gone wrong.
+        var filePath = Path.Combine(_fixture.NotesFolder, $"{note.Id}.md");
+        await File.WriteAllTextAsync(filePath, "this is not valid front matter at all");
+
+        var result = await _fixture.Reconciler.RescanAsync();
+
+        Assert.Equal(0, result.Added);
+        Assert.Equal(0, result.Updated);
+        Assert.Equal(0, result.Removed);
+        Assert.Single(result.Errors);
+        Assert.Contains(note.Id.ToString(), result.Errors[0]);
+
+        // The note stays visible with its last-known-good title rather than vanishing from listings.
+        var listed = await _fixture.NoteService.ListAsync(new NoteSearchQuery());
+        Assert.Contains(listed, n => n.Id == note.Id && n.Title == "Still good in the index");
+    }
+}

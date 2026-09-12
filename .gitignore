@@ -7,6 +7,11 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/Dotnet.gitignore
 
+# JNotes local dev data (notes files + SQLite db; see src/JNotes.Web/appsettings.json) and the
+# Docker bind-mount target used by docker-compose.yml
+src/JNotes.Web/App_Data/
+/data/
+
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/

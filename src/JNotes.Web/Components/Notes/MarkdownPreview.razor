@@ -1,0 +1,16 @@
+@inject IMarkdownRenderer MarkdownRenderer
+
+<div class="markdown-preview">
+    @((MarkupString)_html)
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Markdown { get; set; } = "";
+
+    private string _html = "";
+
+    protected override void OnParametersSet()
+    {
+        _html = MarkdownRenderer.RenderToHtml(Markdown);
+    }
+}

@@ -1,0 +1,37 @@
+@inherits LayoutComponentBase
+
+<div class="d-flex flex-column vh-100">
+    <nav class="navbar navbar-expand-md navbar-dark bg-dark px-3 flex-shrink-0">
+        <button class="navbar-toggler d-md-none" type="button" data-bs-toggle="offcanvas"
+                data-bs-target="#sidebarOffcanvas" aria-controls="sidebarOffcanvas" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+        <a class="navbar-brand ms-2 ms-md-0" href="/">JNotes</a>
+    </nav>
+
+    <div class="d-flex flex-grow-1 overflow-hidden">
+        <aside class="d-none d-md-flex flex-column border-end bg-body-tertiary p-3 flex-shrink-0" style="width: 220px;">
+            <NavMenu />
+        </aside>
+
+        <div class="offcanvas offcanvas-start" tabindex="-1" id="sidebarOffcanvas" aria-labelledby="sidebarOffcanvasLabel">
+            <div class="offcanvas-header">
+                <h5 class="offcanvas-title" id="sidebarOffcanvasLabel">JNotes</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+            </div>
+            <div class="offcanvas-body">
+                <NavMenu />
+            </div>
+        </div>
+
+        <main class="flex-grow-1 overflow-auto p-3 p-md-4">
+            @Body
+        </main>
+    </div>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>

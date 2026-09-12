@@ -1,0 +1,69 @@
+@page "/settings"
+@inject ISettingsService SettingsService
+@inject INoteIndexReconciler Reconciler
+@inject INoteService NoteService
+
+<PageTitle>Settings</PageTitle>
+
+<h1 class="h3 mb-3">Settings</h1>
+
+<section class="mb-4">
+    <h2 class="h5">Storage</h2>
+    <p class="mb-1"><strong>Notes folder:</strong> <code>@_notesFolderPath</code></p>
+    <p class="text-body-secondary small">Changing the notes folder requires an app restart to take effect.</p>
+    <p class="mb-0"><strong>Notes indexed:</strong> @_noteCount</p>
+</section>
+
+<section>
+    <h2 class="h5">Index</h2>
+    <p class="text-body-secondary small">
+        The index is rebuilt automatically at startup. Use this if you've added, edited, or removed
+        note files directly on disk while the app is running.
+    </p>
+    <button class="btn btn-outline-primary" @onclick="RescanAsync" disabled="@_isRescanning">
+        @(_isRescanning ? "Rescanning…" : "Rescan Now")
+    </button>
+
+    @if (_lastResult is { } result)
+    {
+        <div class="alert @(result.Errors.Count > 0 ? "alert-warning" : "alert-success") mt-3 mb-0">
+            <div>Added @result.Added, updated @result.Updated, removed @result.Removed.</div>
+            @if (result.Errors.Count > 0)
+            {
+                <ul class="mb-0 mt-2">
+                    @foreach (var error in result.Errors)
+                    {
+                        <li>@error</li>
+                    }
+                </ul>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private string _notesFolderPath = "";
+    private int _noteCount;
+    private bool _isRescanning;
+    private ReconciliationResult? _lastResult;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _notesFolderPath = await SettingsService.GetNotesFolderPathAsync();
+        await RefreshCountAsync();
+    }
+
+    private async Task RefreshCountAsync()
+    {
+        var notes = await NoteService.ListAsync(new NoteSearchQuery());
+        _noteCount = notes.Count;
+    }
+
+    private async Task RescanAsync()
+    {
+        _isRescanning = true;
+        _lastResult = await Reconciler.RescanAsync();
+        await RefreshCountAsync();
+        _isRescanning = false;
+    }
+}
