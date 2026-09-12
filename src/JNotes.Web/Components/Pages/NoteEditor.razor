@@ -1,6 +1,7 @@
 @page "/notes/{Id:guid}"
 @inject INoteService NoteService
 @inject NavigationManager NavigationManager
+@inject IAppTimeZoneProvider TimeZoneProvider
 
 <PageTitle>@(_note?.Title is { Length: > 0 } title ? title : "Note")</PageTitle>
 
@@ -29,7 +30,7 @@ else
         </div>
     </div>
 
-    <p class="text-body-secondary small">Last updated @_note.UpdatedAt.LocalDateTime.ToString("g")</p>
+    <p class="text-body-secondary small">Last updated @TimeZoneProvider.ToAppTimeZone(_note.UpdatedAt).DateTime.ToString("g")</p>
 
     @if (_note.Type == NoteType.Checklist)
     {

@@ -1,3 +1,5 @@
+@inject IAppTimeZoneProvider TimeZoneProvider
+
 <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-start gap-3" href="@($"/notes/{Note.Id}")">
     <div>
         <div class="d-flex align-items-center gap-2">
@@ -14,7 +16,7 @@
             </div>
         }
     </div>
-    <small class="text-body-secondary text-nowrap">@Note.UpdatedAt.LocalDateTime.ToString("g")</small>
+    <small class="text-body-secondary text-nowrap">@TimeZoneProvider.ToAppTimeZone(Note.UpdatedAt).DateTime.ToString("g")</small>
 </a>
 
 @code {

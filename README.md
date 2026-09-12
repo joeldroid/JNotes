@@ -47,6 +47,16 @@ By default this stores notes and the SQLite database under `src/JNotes.Web/App_D
 Override either with an environment variable of the same name (`NOTES_PATH`, `DB_PATH`) — this is
 how `docker-compose.yml` points them at `/data`.
 
+### Configuration
+
+| Env var / config key | Default | Purpose |
+| --- | --- | --- |
+| `NOTES_PATH` | `App_Data/notes` (local) / `/data/notes` (Docker) | Folder note markdown files are read from/written to. |
+| `DB_PATH` | `App_Data/jnotes.db` (local) / `/data/jnotes.db` (Docker) | SQLite index/settings database file. |
+| `TZ` | `UTC` | IANA time zone id (e.g. `America/New_York`, `Europe/London`) note timestamps are *displayed* in. Storage is always UTC regardless — this only affects what you see in the UI. |
+
+All three take effect at startup only — changing one requires an app/container restart.
+
 ### Tests
 
 ```bash

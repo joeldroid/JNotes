@@ -10,4 +10,7 @@ public sealed class JNotesOptions
     public string NotesFolderPath { get; set; } = "notes";
 
     public string DbPath { get; set; } = "jnotes.db";
+
+    /// <summary>An IANA time zone id (e.g. "America/New_York") used to display UTC-stored timestamps. See <see cref="Time.IAppTimeZoneProvider"/>.</summary>
+    public string TimeZoneId { get; set; } = "UTC";
 }

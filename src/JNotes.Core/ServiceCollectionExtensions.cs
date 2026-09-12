@@ -4,6 +4,7 @@ using JNotes.Core.Notes;
 using JNotes.Core.Serialization;
 using JNotes.Core.Settings;
 using JNotes.Core.Storage;
+using JNotes.Core.Time;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,7 +22,7 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddJNotesCore(this IServiceCollection services, IConfiguration configuration)
     {
-        // Flat "NOTES_PATH"/"DB_PATH" keys rather than a nested section — these are the exact
+        // Flat "NOTES_PATH"/"DB_PATH"/"TZ" keys rather than a nested section — these are the exact
         // names the app expects as environment variables (see Dockerfile/docker-compose.yml), and
         // IConfiguration's indexer already reads plain env vars by that name with no "__" nesting
         // needed, so appsettings.json declares them the same way for local dev.
@@ -29,6 +30,7 @@ public static class ServiceCollectionExtensions
         {
             options.NotesFolderPath = configuration["NOTES_PATH"] ?? options.NotesFolderPath;
             options.DbPath = configuration["DB_PATH"] ?? options.DbPath;
+            options.TimeZoneId = configuration["TZ"] ?? options.TimeZoneId;
         });
 
         services.AddDbContextFactory<JNotesDbContext>((sp, options) =>
@@ -48,6 +50,7 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton<INoteMarkdownSerializer, NoteMarkdownSerializer>();
         services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
+        services.AddSingleton<IAppTimeZoneProvider, AppTimeZoneProvider>();
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<INoteFileStore, FileSystemNoteFileStore>();
         services.AddScoped<INoteIndexRepository, EfNoteIndexRepository>();

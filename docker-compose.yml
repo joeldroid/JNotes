@@ -11,4 +11,6 @@ services:
     environment:
       - NOTES_PATH=/data/notes
       - DB_PATH=/data/jnotes.db
+      # Override by exporting TZ before running compose, or adding TZ=... to a .env file.
+      - TZ=${TZ:-UTC}
     restart: unless-stopped
