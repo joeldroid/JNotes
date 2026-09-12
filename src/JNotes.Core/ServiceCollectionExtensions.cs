@@ -21,7 +21,15 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddJNotesCore(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<JNotesOptions>(configuration.GetSection(JNotesOptions.SectionName));
+        // Flat "NOTES_PATH"/"DB_PATH" keys rather than a nested section — these are the exact
+        // names the app expects as environment variables (see Dockerfile/docker-compose.yml), and
+        // IConfiguration's indexer already reads plain env vars by that name with no "__" nesting
+        // needed, so appsettings.json declares them the same way for local dev.
+        services.Configure<JNotesOptions>(options =>
+        {
+            options.NotesFolderPath = configuration["NOTES_PATH"] ?? options.NotesFolderPath;
+            options.DbPath = configuration["DB_PATH"] ?? options.DbPath;
+        });
 
         services.AddDbContextFactory<JNotesDbContext>((sp, options) =>
         {

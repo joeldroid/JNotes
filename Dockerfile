@@ -16,8 +16,8 @@ WORKDIR /app
 COPY --from=build /app/publish .
 
 ENV ASPNETCORE_URLS=http://+:8080
-ENV JNotes__NotesFolderPath=/data/notes
-ENV JNotes__DbPath=/data/jnotes.db
+ENV NOTES_PATH=/data/notes
+ENV DB_PATH=/data/jnotes.db
 
 # The base image's default non-root user needs to own the mounted volume's mount point;
 # actual ownership of bind-mounted host content still depends on the host directory's

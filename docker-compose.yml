@@ -9,6 +9,6 @@ services:
       # `jnotes-data:/data`) if you don't need host-side access to the files.
       - ./data:/data
     environment:
-      - JNotes__NotesFolderPath=/data/notes
-      - JNotes__DbPath=/data/jnotes.db
+      - NOTES_PATH=/data/notes
+      - DB_PATH=/data/jnotes.db
     restart: unless-stopped

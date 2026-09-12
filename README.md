@@ -42,8 +42,10 @@ dotnet run --project src/JNotes.Web
 dotnet watch --project src/JNotes.Web run
 ```
 
-By default this stores notes and the SQLite database under `src/JNotes.Web/App_Data/` (see
-`appsettings.json`'s `JNotes` section) — gitignored, safe to delete to start fresh.
+By default this stores notes and the SQLite database under `src/JNotes.Web/App_Data/` (see the
+`NOTES_PATH`/`DB_PATH` keys in `appsettings.json`) — gitignored, safe to delete to start fresh.
+Override either with an environment variable of the same name (`NOTES_PATH`, `DB_PATH`) — this is
+how `docker-compose.yml` points them at `/data`.
 
 ### Tests
 
