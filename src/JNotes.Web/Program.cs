@@ -8,6 +8,13 @@ builder.Services.AddJNotesCore(builder.Configuration);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+#if DEBUG
+// Live-recompiles Styles/*.scss to wwwroot/css/app.css while running under `dotnet watch`.
+// Production builds don't need this — the Sass compiler's MSBuild task already compiles the
+// current .scss into .css as part of `dotnet build`/`dotnet publish`.
+builder.Services.AddSassCompiler();
+#endif
+
 var app = builder.Build();
 
 // Apply pending EF Core migrations and reconcile the SQLite index against the notes folder

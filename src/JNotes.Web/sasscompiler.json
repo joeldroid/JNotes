@@ -1,0 +1,8 @@
+{
+  "Arguments": "--style=compressed",
+  "Configurations": {
+    "Debug": {
+      "Arguments": "--style=expanded"
+    }
+  }
+}

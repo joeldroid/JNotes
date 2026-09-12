@@ -1,0 +1,4 @@
+// Entry point compiled to wwwroot/css/app.css by AspNetCore.SassCompiler (see sasscompiler.json).
+// Add new modules here as the app grows — one @use per concern, each importable on its own.
+@use "blazor-template";
+@use "note-editor";

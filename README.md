@@ -32,6 +32,23 @@ tests/
 enforced at build time via `Microsoft.CodeAnalysis.BannedApiAnalyzers`
 (`src/JNotes.Web/BannedSymbols.txt`).
 
+### Styling
+
+JNotes's own CSS is written as Sass modules under `src/JNotes.Web/Styles/` — `_variables.scss`,
+`_blazor-template.scss` (framework boilerplate), `_note-editor.scss` (the editor/preview styles,
+the module that'll grow with the app), all pulled together by the `app.scss` entry point. Add a
+new concern as its own `_*.scss` partial and `@use` it from `app.scss`.
+
+[`AspNetCore.SassCompiler`](https://github.com/koenvzeijl/AspNetCore.SassCompiler) compiles this
+to `wwwroot/css/app.css` automatically as part of `dotnet build`/`dotnet publish` (no Node.js
+needed — it bundles a dart-sass binary) — the compiled output is gitignored, and
+`dotnet watch --project src/JNotes.Web run` live-recompiles on save. Config is in
+`src/JNotes.Web/sasscompiler.json` (expanded output in Debug, compressed in Release/Docker).
+
+Bootstrap itself stays as the vendored precompiled CSS/JS in `wwwroot/lib/bootstrap` — it isn't
+part of the Sass build. Compiling Bootstrap from its own Sass source (to override its variables
+for a custom theme) is possible later but is a separate, larger change.
+
 ## Running locally
 
 Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download).

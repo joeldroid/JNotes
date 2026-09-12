@@ -1,0 +1,16 @@
+// JNotes's own note-editor/preview styles — the module that will grow as the editor UI grows.
+@use "variables" as *;
+
+.note-editor-textarea {
+    min-height: $note-editor-min-height;
+    font-family: var(--bs-font-monospace, monospace);
+    resize: vertical;
+}
+
+.note-editor-preview {
+    min-height: $note-editor-min-height;
+}
+
+.markdown-preview img {
+    max-width: 100%;
+}
