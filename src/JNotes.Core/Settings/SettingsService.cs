@@ -9,7 +9,6 @@ public sealed class SettingsService : ISettingsService
 {
     private const string NotesFolderPathKey = "NotesFolderPath";
     private const string ThemeKey = "Theme";
-    private const string DefaultTheme = "light";
 
     private readonly IDbContextFactory<JNotesDbContext> _dbContextFactory;
     private readonly JNotesOptions _options;
@@ -27,7 +26,7 @@ public sealed class SettingsService : ISettingsService
         SetAsync(NotesFolderPathKey, path, cancellationToken);
 
     public Task<string> GetThemeAsync(CancellationToken cancellationToken = default) =>
-        GetAsync(ThemeKey, DefaultTheme, cancellationToken);
+        GetAsync(ThemeKey, AppTheme.Light, cancellationToken);
 
     public Task SetThemeAsync(string theme, CancellationToken cancellationToken = default) =>
         SetAsync(ThemeKey, theme, cancellationToken);

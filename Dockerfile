@@ -1,15 +1,22 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-# Copy project files first so `dotnet restore` is cached independently of source changes.
-COPY JNotes.slnx .
+# Copy project files first so `dotnet restore` (and its NuGet package downloads, the slow part)
+# is cached independently of source changes.
+COPY JNotes.slnx Directory.Build.props global.json .
 COPY src/JNotes.Web/JNotes.Web.csproj src/JNotes.Web/
 COPY src/JNotes.Core/JNotes.Core.csproj src/JNotes.Core/
 COPY tests/JNotes.Tests/JNotes.Tests.csproj tests/JNotes.Tests/
 RUN dotnet restore src/JNotes.Web/JNotes.Web.csproj
 
+# NOT --no-restore: publish needs to re-resolve the static web assets manifest (Blazor's
+# _framework/*.js, wwwroot files, scoped CSS) against the actual source now that it's present —
+# the csproj-only restore above ran before wwwroot/Styles/etc. existed, so its cached manifest is
+# incomplete and --no-restore here would publish from that stale manifest, silently 404ing on
+# _framework/blazor.web.js and other static assets at runtime. The NuGet packages restored above
+# are still cache-warm, so this re-restore is cheap — no packages are re-downloaded.
 COPY src/ src/
-RUN dotnet publish src/JNotes.Web/JNotes.Web.csproj -c Release -o /app/publish --no-restore
+RUN dotnet publish src/JNotes.Web/JNotes.Web.csproj -c Release -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app

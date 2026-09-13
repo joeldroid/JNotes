@@ -1,5 +1,7 @@
-﻿<!DOCTYPE html>
-<html lang="en">
+﻿@inject ISettingsService SettingsService
+
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="@_theme">
 
 <head>
     <meta charset="utf-8" />
@@ -21,3 +23,14 @@
 </body>
 
 </html>
+
+@code {
+    private string _theme = AppTheme.Light;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Read during prerender so the initial HTML already has the right data-bs-theme —
+        // avoids a flash of the wrong theme before the circuit connects.
+        _theme = await SettingsService.GetThemeAsync();
+    }
+}

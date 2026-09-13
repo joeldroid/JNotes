@@ -2,10 +2,20 @@
 @inject ISettingsService SettingsService
 @inject INoteIndexReconciler Reconciler
 @inject INoteService NoteService
+@inject IJSRuntime JSRuntime
 
 <PageTitle>Settings</PageTitle>
 
 <h1 class="h3 mb-3">Settings</h1>
+
+<section class="mb-4">
+    <h2 class="h5">Appearance</h2>
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" role="switch" id="darkModeSwitch"
+               checked="@(_theme == AppTheme.Dark)" @onchange="ToggleThemeAsync" />
+        <label class="form-check-label" for="darkModeSwitch">Dark mode</label>
+    </div>
+</section>
 
 <section class="mb-4">
     <h2 class="h5">Storage</h2>
@@ -42,6 +52,7 @@
 </section>
 
 @code {
+    private string _theme = AppTheme.Light;
     private string _notesFolderPath = "";
     private int _noteCount;
     private bool _isRescanning;
@@ -49,8 +60,20 @@
 
     protected override async Task OnInitializedAsync()
     {
+        _theme = await SettingsService.GetThemeAsync();
         _notesFolderPath = await SettingsService.GetNotesFolderPathAsync();
         await RefreshCountAsync();
+    }
+
+    private async Task ToggleThemeAsync(ChangeEventArgs e)
+    {
+        _theme = e.Value is true ? AppTheme.Dark : AppTheme.Light;
+        await SettingsService.SetThemeAsync(_theme);
+
+        // Applies instantly without a reload — the <html> element persists across in-app
+        // navigation under InteractiveServer, so this sticks until a real page reload, at which
+        // point App.razor reads the now-persisted setting server-side anyway.
+        await JSRuntime.InvokeVoidAsync("document.documentElement.setAttribute", "data-bs-theme", _theme);
     }
 
     private async Task RefreshCountAsync()
