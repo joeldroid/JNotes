@@ -2,13 +2,17 @@
 @use "variables" as *;
 
 .note-editor-textarea {
-    min-height: $note-editor-min-height;
+    height: $note-editor-height;
     font-family: var(--bs-font-monospace, monospace);
-    resize: vertical;
+    // No manual resize: the textarea and preview pane must stay the same height, and a
+    // user-resized textarea would drift out of sync with the (fixed-height) preview next to it.
+    resize: none;
 }
 
 .note-editor-preview {
-    min-height: $note-editor-min-height;
+    height: $note-editor-height;
+    // Content taller than the fixed height scrolls internally rather than growing the pane out
+    // of sync with the textarea (kept in App.scss's imported Bootstrap: .overflow-auto).
 }
 
 .markdown-preview img {

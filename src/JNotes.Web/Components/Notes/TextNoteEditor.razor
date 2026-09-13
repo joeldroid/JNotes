@@ -1,18 +1,29 @@
+<div class="d-flex justify-content-end mb-2">
+    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => _showPreview = !_showPreview">
+        @(_showPreview ? "Hide preview" : "Show preview")
+    </button>
+</div>
+
 <div class="row g-3">
-    <div class="col-12 col-lg-6">
+    <div class="@(_showPreview ? "col-12 col-lg-6" : "col-12")">
         <textarea class="form-control note-editor-textarea" aria-label="Note body"
                   value="@Body" @oninput="OnInput"></textarea>
     </div>
-    <div class="col-12 col-lg-6">
-        <div class="border rounded p-3 overflow-auto note-editor-preview">
-            <MarkdownPreview Markdown="@Body" />
+    @if (_showPreview)
+    {
+        <div class="col-12 col-lg-6">
+            <div class="border rounded p-3 overflow-auto note-editor-preview">
+                <MarkdownPreview Markdown="@Body" />
+            </div>
         </div>
-    </div>
+    }
 </div>
 
 @code {
     [Parameter, EditorRequired] public string Body { get; set; } = "";
     [Parameter] public EventCallback<string> BodyChanged { get; set; }
+
+    private bool _showPreview = true;
 
     private Task OnInput(ChangeEventArgs e) => BodyChanged.InvokeAsync(e.Value?.ToString() ?? "");
 }

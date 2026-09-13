@@ -1,7 +1,8 @@
 // App-specific Sass variables. Bootstrap itself stays as vendored precompiled CSS
 // (wwwroot/lib/bootstrap) — these are only for JNotes's own styles below.
 
-$note-editor-min-height: 60vh;
+// Fixed (not min) so the textarea and its preview pane always match — see _note-editor.scss.
+$note-editor-height: 60vh;
 
 $error-boundary-bg: #b32121;
 $error-boundary-fg: #ffffff;
