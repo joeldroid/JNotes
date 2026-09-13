@@ -22,7 +22,10 @@
     Edit raw markdown
 </button>
 <div class="collapse" id="rawMarkdownCollapse">
-    <textarea class="form-control note-editor-textarea" aria-label="Raw checklist markdown"
+    <div class="mb-2">
+        <MarkdownToolbar TargetTextarea="_textareaRef" />
+    </div>
+    <textarea @ref="_textareaRef" class="form-control note-editor-textarea" aria-label="Raw checklist markdown"
               value="@Body" @oninput="OnInput"></textarea>
     <div class="form-text">Add, remove, or reorder items here — new task-list lines (<code>- [ ] …</code>) become checkboxes above once saved.</div>
 </div>
@@ -31,6 +34,8 @@
     [Parameter, EditorRequired] public string Body { get; set; } = "";
     [Parameter] public EventCallback<string> BodyChanged { get; set; }
     [Parameter] public EventCallback<int> ItemToggled { get; set; }
+
+    private ElementReference _textareaRef;
 
     private IReadOnlyList<ChecklistItem> Items => ChecklistMarkdownParser.Parse(Body);
 

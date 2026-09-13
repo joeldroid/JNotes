@@ -7,8 +7,10 @@ public sealed class MarkdownRenderer : IMarkdownRenderer
 {
     // Raw HTML embedded in a note is disabled (encoded as text) rather than passed through and
     // rendered — a pragmatic default for a single-user app, without pulling in a separate HTML
-    // sanitizer. Extend with further extensions (tables, etc.) here as note content needs grow.
+    // sanitizer. Pipe tables (GFM-style `| a | b |`) are enabled so the editor toolbar's "insert
+    // table" snippet actually renders as a table. Extend with further extensions here as needed.
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
+        .UsePipeTables()
         .DisableHtml()
         .Build();
 
