@@ -1,16 +1,23 @@
 # JNotes
 
-A self-hosted, single-user note-taking app built with Blazor Server (.NET 10). Notes are stored
+A self-hosted, multi-user note-taking app built with Blazor Server (.NET 10). Notes are stored
 as portable markdown files on disk — copy the folder and every note is a readable `.md` file in
 any editor. A SQLite database indexes the notes for fast search/listing and stores app settings;
 it's a derived cache, never the source of truth.
+
+**Login doesn't exist yet.** User accounts are admin-created (Settings → Users, username only, no
+password), and which account is "you" is currently chosen with a non-secure, dev-only "act as"
+switcher in the nav menu — anyone with access to the app can act as anyone. This is a placeholder
+for a real login system, not a security boundary; treat this app as accessible only to people you
+already trust until real authentication lands.
 
 ## Features
 
 - **Text notes** — free-form markdown, edited with a live preview.
 - **Checklist notes** — markdown task lists (`- [ ] item`) rendered as interactive checkboxes.
-- **Portable storage** — every note is `notes/<id>.md` with a small YAML front matter header
-  (title, tags, type, timestamps) followed by the markdown body.
+- **Multi-user** — admin-created accounts, each with their own notes and settings.
+- **Portable storage** — every note is `notes/<user-id>/<id>.md` with a small YAML front matter
+  header (title, tags, type, timestamps) followed by the markdown body.
 - **Responsive UI** — Bootstrap 5, usable on both desktop and mobile.
 - **Self-healing index** — the SQLite index is reconciled against the notes folder at startup and
   on demand (Settings → Rescan Now), so edits made directly to the files (outside the app, or
@@ -28,8 +35,8 @@ tests/
 ```
 
 `JNotes.Web` never touches the filesystem or EF Core/SQLite directly — it only consumes
-`INoteService`, `ISettingsService`, and `INoteIndexReconciler` from `JNotes.Core`. This is
-enforced at build time via `Microsoft.CodeAnalysis.BannedApiAnalyzers`
+`INoteService`, `ISettingsService`, `INoteIndexReconciler`, and `IUserRepository` from
+`JNotes.Core`. This is enforced at build time via `Microsoft.CodeAnalysis.BannedApiAnalyzers`
 (`src/JNotes.Web/BannedSymbols.txt`).
 
 ### Styling
@@ -63,6 +70,17 @@ By default this stores notes and the SQLite database under `src/JNotes.Web/App_D
 `NOTES_PATH`/`DB_PATH` keys in `appsettings.json`) — gitignored, safe to delete to start fresh.
 Override either with an environment variable of the same name (`NOTES_PATH`, `DB_PATH`) — this is
 how `docker-compose.yml` points them at `/data`.
+
+On first run with no users in the database, a default `admin` user is created automatically and
+its notes land under `App_Data/notes/<admin's user id>/`. Create additional users from
+Settings → Users, and switch between them with the "Acting as" dropdown in the nav menu (labeled
+dev-only/not secure — see the login note above).
+
+> **Upgrading from a pre-multi-user version of JNotes?** There's no automated migration — delete
+> `App_Data` (or your `NOTES_PATH`/`DB_PATH` targets) and start fresh. If you want to keep old
+> notes, move each `notes/<id>.md` file by hand into a `notes/<user-id>/` subfolder for whichever
+> user should own it (find the new user's id in Settings → Users, or the `Users` table in
+> `jnotes.db`) before starting the app.
 
 ### Configuration
 
@@ -101,9 +119,10 @@ docker compose up --build
 ```
 
 The app listens on `http://localhost:8080`. Notes and the database are bind-mounted to `./data`
-on the host (`./data/notes/*.md`, `./data/jnotes.db`) — edit files there directly with any editor
-and they'll be picked up next time the app starts (or via Settings → Rescan Now while it's
-running).
+on the host (`./data/notes/<user-id>/*.md`, `./data/jnotes.db`) — edit files there directly with
+any editor and they'll be picked up next time the app starts (or via Settings → Rescan Now while
+it's running). As with running locally, upgrading from a pre-multi-user version means deleting
+`./data` and starting fresh (see the note above) — there's no automated migration.
 
 > **Note on file permissions:** the container runs as its base image's non-root user. If Docker
 > can't write to `./data` on your host (uncommon, but possible with some Docker Engine/Linux
@@ -111,6 +130,8 @@ running).
 > `sudo chown -R $(id -u):$(id -g) ./data` before starting the container.
 
 ## Note file format
+
+Each note is `notes/<user-id>/<note-id>.md`, one markdown file per note, per user:
 
 ```markdown
 ---
