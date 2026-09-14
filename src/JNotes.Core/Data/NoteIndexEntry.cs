@@ -10,6 +10,8 @@ public sealed class NoteIndexEntry
 {
     public required Guid Id { get; set; }
 
+    public required Guid UserId { get; set; }
+
     public required string Title { get; set; }
 
     /// <summary>Stored as the string name of <see cref="Models.NoteType"/> (not an int) so a future

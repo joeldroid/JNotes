@@ -1,4 +1,5 @@
 ﻿@inject ISettingsService SettingsService
+@inject ICurrentUserContext CurrentUser
 
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="@_theme">
@@ -31,6 +32,6 @@
     {
         // Read during prerender so the initial HTML already has the right data-bs-theme —
         // avoids a flash of the wrong theme before the circuit connects.
-        _theme = await SettingsService.GetThemeAsync();
+        _theme = await SettingsService.GetThemeAsync(CurrentUser.UserId);
     }
 }

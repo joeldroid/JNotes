@@ -25,9 +25,9 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
             UpdatedAt = DateTimeOffset.UtcNow,
             Body = "hello",
         };
-        await _fixture.FileStore.WriteAsync(note);
+        await _fixture.FileStore.WriteAsync(_fixture.UserAId, note);
 
-        var result = await _fixture.Reconciler.RescanAsync();
+        var result = await _fixture.Reconciler.RescanAsync(_fixture.UserAId);
 
         Assert.Equal(1, result.Added);
         Assert.Equal(0, result.Updated);
@@ -44,9 +44,9 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
         var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "To be deleted", [], "body");
 
         // Deleted directly through the file store (bypassing NoteService, so the index row is left behind).
-        await _fixture.FileStore.DeleteAsync(note.Id);
+        await _fixture.FileStore.DeleteAsync(_fixture.UserAId, note.Id);
 
-        var result = await _fixture.Reconciler.RescanAsync();
+        var result = await _fixture.Reconciler.RescanAsync(_fixture.UserAId);
 
         Assert.Equal(0, result.Added);
         Assert.Equal(0, result.Updated);
@@ -64,11 +64,11 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
         // Ensure the filesystem mtime actually advances before the external edit.
         await Task.Delay(TimeSpan.FromMilliseconds(1100));
 
-        var current = await _fixture.FileStore.ReadAsync(note.Id);
+        var current = await _fixture.FileStore.ReadAsync(_fixture.UserAId, note.Id);
         current.Title = "Edited externally";
-        await _fixture.FileStore.WriteAsync(current); // bypasses NoteService's index update
+        await _fixture.FileStore.WriteAsync(_fixture.UserAId, current); // bypasses NoteService's index update
 
-        var result = await _fixture.Reconciler.RescanAsync();
+        var result = await _fixture.Reconciler.RescanAsync(_fixture.UserAId);
 
         Assert.Equal(0, result.Added);
         Assert.Equal(1, result.Updated);
@@ -83,7 +83,7 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
     {
         await _fixture.NoteService.CreateAsync(NoteType.Text, "Untouched", [], "body");
 
-        var result = await _fixture.Reconciler.RescanAsync();
+        var result = await _fixture.Reconciler.RescanAsync(_fixture.UserAId);
 
         Assert.Equal(0, result.Added);
         Assert.Equal(0, result.Updated);
@@ -97,10 +97,10 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
         var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Still good in the index", [], "body");
 
         // Corrupt the file directly on disk (not through any Core API) to simulate hand-editing gone wrong.
-        var filePath = Path.Combine(_fixture.NotesFolder, $"{note.Id}.md");
+        var filePath = Path.Combine(_fixture.NotesFolder, _fixture.UserAId.ToString(), $"{note.Id}.md");
         await File.WriteAllTextAsync(filePath, "this is not valid front matter at all");
 
-        var result = await _fixture.Reconciler.RescanAsync();
+        var result = await _fixture.Reconciler.RescanAsync(_fixture.UserAId);
 
         Assert.Equal(0, result.Added);
         Assert.Equal(0, result.Updated);
@@ -111,5 +111,28 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
         // The note stays visible with its last-known-good title rather than vanishing from listings.
         var listed = await _fixture.NoteService.ListAsync(new NoteSearchQuery());
         Assert.Contains(listed, n => n.Id == note.Id && n.Title == "Still good in the index");
+    }
+
+    [Fact]
+    public async Task RescanAsync_only_reconciles_the_given_users_files_not_another_users()
+    {
+        // A file dropped externally into user A's folder...
+        var note = new Note
+        {
+            Id = Guid.NewGuid(),
+            Title = "User A's externally-added note",
+            Type = NoteType.Text,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+            Body = "hello",
+        };
+        await _fixture.FileStore.WriteAsync(_fixture.UserAId, note);
+
+        // ...only shows up when rescanning user A, never when rescanning user B.
+        var userBResult = await _fixture.Reconciler.RescanAsync(_fixture.UserBId);
+        Assert.Equal(0, userBResult.Added);
+
+        var userAResult = await _fixture.Reconciler.RescanAsync(_fixture.UserAId);
+        Assert.Equal(1, userAResult.Added);
     }
 }

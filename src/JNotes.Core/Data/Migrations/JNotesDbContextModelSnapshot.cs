@@ -44,9 +44,12 @@ namespace JNotes.Core.Data.Migrations
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("UpdatedAt");
+                    b.HasIndex("UserId", "UpdatedAt");
 
                     b.ToTable("Notes");
                 });
@@ -87,11 +90,68 @@ namespace JNotes.Core.Data.Migrations
                     b.ToTable("Settings");
                 });
 
+            modelBuilder.Entity("JNotes.Core.Data.UserAccount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Username")
+                        .IsUnique();
+
+                    b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("JNotes.Core.Data.UserSetting", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Key")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("UserId", "Key");
+
+                    b.ToTable("UserSettings");
+                });
+
+            modelBuilder.Entity("JNotes.Core.Data.NoteIndexEntry", b =>
+                {
+                    b.HasOne("JNotes.Core.Data.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("JNotes.Core.Data.NoteTag", b =>
                 {
                     b.HasOne("JNotes.Core.Data.NoteIndexEntry", null)
                         .WithMany()
                         .HasForeignKey("NoteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("JNotes.Core.Data.UserSetting", b =>
+                {
+                    b.HasOne("JNotes.Core.Data.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

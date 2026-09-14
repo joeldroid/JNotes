@@ -1,10 +1,14 @@
 using JNotes.Core;
+using JNotes.Core.Users;
+using JNotes.Web;
 using JNotes.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddJNotesCore(builder.Configuration);
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUserContext, CookieCurrentUserContext>();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
@@ -17,10 +21,12 @@ builder.Services.AddSassCompiler();
 
 var app = builder.Build();
 
-// Apply pending EF Core migrations and reconcile the SQLite index against the notes folder
-// before serving traffic, so files added/edited/removed while the app wasn't running are
-// picked up immediately. See JNotes.Core.HostExtensions.
+// Apply pending EF Core migrations, ensure at least one user account exists (bootstrapping a
+// default "admin" if none do), and reconcile every user's SQLite index against their notes folder
+// before serving traffic, so files added/edited/removed while the app wasn't running are picked
+// up immediately. See JNotes.Core.HostExtensions.
 await app.Services.MigrateJNotesDatabaseAsync();
+await app.Services.EnsureDefaultUserAsync();
 await app.Services.RunStartupReconciliationAsync();
 
 // Configure the HTTP request pipeline.

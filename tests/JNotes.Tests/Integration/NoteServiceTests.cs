@@ -11,12 +11,14 @@ public class NoteServiceTests : IAsyncLifetime
 
     public async Task DisposeAsync() => await _fixture.DisposeAsync();
 
+    private string PathForUserA(Guid noteId) => Path.Combine(_fixture.NotesFolder, _fixture.UserAId.ToString(), $"{noteId}.md");
+
     [Fact]
     public async Task CreateAsync_writes_the_file_and_index_entry_so_ListAsync_reflects_it_immediately()
     {
         var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "New note", ["work"], "body text");
 
-        Assert.True(File.Exists(Path.Combine(_fixture.NotesFolder, $"{note.Id}.md")));
+        Assert.True(File.Exists(PathForUserA(note.Id)));
 
         var listed = await _fixture.NoteService.ListAsync(new NoteSearchQuery());
         var summary = Assert.Single(listed);
@@ -74,7 +76,7 @@ public class NoteServiceTests : IAsyncLifetime
 
         await _fixture.NoteService.DeleteAsync(note.Id);
 
-        Assert.False(File.Exists(Path.Combine(_fixture.NotesFolder, $"{note.Id}.md")));
+        Assert.False(File.Exists(PathForUserA(note.Id)));
         var listed = await _fixture.NoteService.ListAsync(new NoteSearchQuery());
         Assert.DoesNotContain(listed, n => n.Id == note.Id);
     }
@@ -92,5 +94,25 @@ public class NoteServiceTests : IAsyncLifetime
         var workTagged = await _fixture.NoteService.ListAsync(new NoteSearchQuery(Tag: "work"));
         Assert.Single(workTagged);
         Assert.Equal("Checklist note", workTagged[0].Title);
+    }
+
+    [Fact]
+    public async Task A_note_created_by_one_user_never_appears_in_another_users_listing_or_lookup()
+    {
+        _fixture.ActAsUserA();
+        var userANote = await _fixture.NoteService.CreateAsync(NoteType.Text, "User A's note", [], "secret to A");
+
+        _fixture.ActAsUserB();
+        var userBListing = await _fixture.NoteService.ListAsync(new NoteSearchQuery());
+        Assert.Empty(userBListing);
+        await Assert.ThrowsAsync<JNotes.Core.Storage.NoteNotFoundException>(() => _fixture.NoteService.GetAsync(userANote.Id));
+
+        // And each user's file genuinely lives under their own subfolder, not a shared one.
+        Assert.True(File.Exists(Path.Combine(_fixture.NotesFolder, _fixture.UserAId.ToString(), $"{userANote.Id}.md")));
+        Assert.False(File.Exists(Path.Combine(_fixture.NotesFolder, _fixture.UserBId.ToString(), $"{userANote.Id}.md")));
+
+        _fixture.ActAsUserA();
+        var userAListing = await _fixture.NoteService.ListAsync(new NoteSearchQuery());
+        Assert.Contains(userAListing, n => n.Id == userANote.Id);
     }
 }

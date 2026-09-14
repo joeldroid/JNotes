@@ -16,21 +16,21 @@ public sealed class FileSystemNoteFileStore : INoteFileStore
         _serializer = serializer;
     }
 
-    public async Task<Note> ReadAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<Note> ReadAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default)
     {
-        var path = await ResolvePathAsync(id, cancellationToken);
+        var path = await ResolvePathAsync(userId, noteId, cancellationToken);
         if (!File.Exists(path))
         {
-            throw new NoteNotFoundException(id);
+            throw new NoteNotFoundException(noteId);
         }
 
         var content = await File.ReadAllTextAsync(path, cancellationToken);
         return _serializer.Deserialize(content);
     }
 
-    public async Task<IReadOnlyList<Guid>> ListIdsAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Guid>> ListIdsAsync(Guid userId, CancellationToken cancellationToken = default)
     {
-        var folder = await ResolveFolderAsync(cancellationToken);
+        var folder = await ResolveFolderAsync(userId, cancellationToken);
 
         var ids = new List<Guid>();
         foreach (var file in Directory.EnumerateFiles(folder, "*.md"))
@@ -45,43 +45,44 @@ public sealed class FileSystemNoteFileStore : INoteFileStore
         return ids;
     }
 
-    public async Task WriteAsync(Note note, CancellationToken cancellationToken = default)
+    public async Task WriteAsync(Guid userId, Note note, CancellationToken cancellationToken = default)
     {
-        var path = await ResolvePathAsync(note.Id, cancellationToken);
+        var path = await ResolvePathAsync(userId, note.Id, cancellationToken);
         var content = _serializer.Serialize(note);
         await File.WriteAllTextAsync(path, content, cancellationToken);
     }
 
-    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task DeleteAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default)
     {
-        var path = await ResolvePathAsync(id, cancellationToken);
+        var path = await ResolvePathAsync(userId, noteId, cancellationToken);
         if (File.Exists(path))
         {
             File.Delete(path);
         }
     }
 
-    public async Task<DateTimeOffset> GetLastWriteTimeUtcAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<DateTimeOffset> GetLastWriteTimeUtcAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default)
     {
-        var path = await ResolvePathAsync(id, cancellationToken);
+        var path = await ResolvePathAsync(userId, noteId, cancellationToken);
         if (!File.Exists(path))
         {
-            throw new NoteNotFoundException(id);
+            throw new NoteNotFoundException(noteId);
         }
 
         return new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero);
     }
 
-    private async Task<string> ResolveFolderAsync(CancellationToken cancellationToken)
+    private async Task<string> ResolveFolderAsync(Guid userId, CancellationToken cancellationToken)
     {
-        var folder = await _settingsService.GetNotesFolderPathAsync(cancellationToken);
+        var notesRoot = await _settingsService.GetNotesFolderPathAsync(cancellationToken);
+        var folder = Path.Combine(notesRoot, userId.ToString());
         Directory.CreateDirectory(folder);
         return folder;
     }
 
-    private async Task<string> ResolvePathAsync(Guid id, CancellationToken cancellationToken)
+    private async Task<string> ResolvePathAsync(Guid userId, Guid noteId, CancellationToken cancellationToken)
     {
-        var folder = await ResolveFolderAsync(cancellationToken);
-        return Path.Combine(folder, $"{id}.md");
+        var folder = await ResolveFolderAsync(userId, cancellationToken);
+        return Path.Combine(folder, $"{noteId}.md");
     }
 }

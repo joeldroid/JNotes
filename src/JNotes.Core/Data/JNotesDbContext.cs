@@ -10,12 +10,22 @@ public sealed class JNotesDbContext(DbContextOptions<JNotesDbContext> options) :
 
     public DbSet<SettingEntry> Settings => Set<SettingEntry>();
 
+    public DbSet<UserAccount> Users => Set<UserAccount>();
+
+    public DbSet<UserSetting> UserSettings => Set<UserSetting>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<NoteIndexEntry>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.UpdatedAt);
+            // Searches always filter by user first now, so the useful index is the composite, not
+            // UpdatedAt alone.
+            entity.HasIndex(e => new { e.UserId, e.UpdatedAt });
+            entity.HasOne<UserAccount>()
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<NoteTag>(entity =>
@@ -32,6 +42,24 @@ public sealed class JNotesDbContext(DbContextOptions<JNotesDbContext> options) :
         modelBuilder.Entity<SettingEntry>(entity =>
         {
             entity.HasKey(e => e.Key);
+        });
+
+        modelBuilder.Entity<UserAccount>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            // NOCASE is SQLite's built-in ASCII-only case-insensitive collation — fine for expected
+            // usernames, not full Unicode case-folding.
+            entity.Property(e => e.Username).UseCollation("NOCASE");
+            entity.HasIndex(e => e.Username).IsUnique();
+        });
+
+        modelBuilder.Entity<UserSetting>(entity =>
+        {
+            entity.HasKey(e => new { e.UserId, e.Key });
+            entity.HasOne<UserAccount>()
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

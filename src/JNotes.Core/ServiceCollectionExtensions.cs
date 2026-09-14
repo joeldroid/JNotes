@@ -5,6 +5,7 @@ using JNotes.Core.Serialization;
 using JNotes.Core.Settings;
 using JNotes.Core.Storage;
 using JNotes.Core.Time;
+using JNotes.Core.Users;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,7 +17,10 @@ namespace JNotes.Core;
 /// The one place Core's services are wired up. <c>JNotes.Web</c>'s <c>Program.cs</c> calls only
 /// this (plus <see cref="HostExtensions"/>) — it never registers a <see cref="DbContext"/> or
 /// file-store implementation itself, which is what keeps Web from having a reason to reach past
-/// <c>INoteService</c>/<c>ISettingsService</c>/<c>INoteIndexReconciler</c> into Core's internals.
+/// <c>INoteService</c>/<c>ISettingsService</c>/<c>INoteIndexReconciler</c>/<c>IUserRepository</c>
+/// into Core's internals. One deliberate exception: <c>ICurrentUserContext</c> is declared in
+/// Core but registered by <c>JNotes.Web</c> itself, not here — its only implementation needs
+/// <c>IHttpContextAccessor</c>, an ASP.NET Core hosting type Core has never depended on.
 /// </summary>
 public static class ServiceCollectionExtensions
 {
@@ -56,6 +60,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INoteIndexRepository, EfNoteIndexRepository>();
         services.AddScoped<INoteService, NoteService>();
         services.AddScoped<INoteIndexReconciler, NoteIndexReconciler>();
+        services.AddScoped<IUserRepository, EfUserRepository>();
+        services.AddSingleton<DefaultUserProvider>();
+        services.AddSingleton<IDefaultUserProvider>(sp => sp.GetRequiredService<DefaultUserProvider>());
+        // ICurrentUserContext is intentionally NOT registered here — see the class doc comment.
 
         return services;
     }

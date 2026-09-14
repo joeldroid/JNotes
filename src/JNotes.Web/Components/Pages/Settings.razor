@@ -2,6 +2,8 @@
 @inject ISettingsService SettingsService
 @inject INoteIndexReconciler Reconciler
 @inject INoteService NoteService
+@inject IUserRepository UserRepository
+@inject ICurrentUserContext CurrentUser
 @inject IJSRuntime JSRuntime
 
 <PageTitle>Settings</PageTitle>
@@ -24,7 +26,7 @@
     <p class="mb-0"><strong>Notes indexed:</strong> @_noteCount</p>
 </section>
 
-<section>
+<section class="mb-4">
     <h2 class="h5">Index</h2>
     <p class="text-body-secondary small">
         The index is rebuilt automatically at startup. Use this if you've added, edited, or removed
@@ -51,6 +53,33 @@
     }
 </section>
 
+<section>
+    <h2 class="h5">Users</h2>
+    <p class="text-body-secondary small">
+        Admin-created accounts only — no self-registration, and no password yet (that arrives with
+        real login). This just lets you create the accounts file/index scoping is tested against.
+    </p>
+
+    <ul class="list-group mb-3" style="max-width: 420px;">
+        @foreach (var user in _users)
+        {
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                @user.Username
+                <small class="text-body-secondary">@user.CreatedAt.LocalDateTime.ToString("d")</small>
+            </li>
+        }
+    </ul>
+
+    <form class="d-flex gap-2" style="max-width: 420px;" @onsubmit="CreateUserAsync">
+        <input class="form-control" placeholder="Username" @bind="_newUsername" @bind:event="oninput" />
+        <button type="submit" class="btn btn-outline-primary text-nowrap" disabled="@_isCreatingUser">Add user</button>
+    </form>
+    @if (_createUserError is not null)
+    {
+        <div class="alert alert-danger py-2 mt-2 mb-0" style="max-width: 420px;">@_createUserError</div>
+    }
+</section>
+
 @code {
     private string _theme = AppTheme.Light;
     private string _notesFolderPath = "";
@@ -58,17 +87,23 @@
     private bool _isRescanning;
     private ReconciliationResult? _lastResult;
 
+    private IReadOnlyList<UserAccount> _users = [];
+    private string _newUsername = "";
+    private bool _isCreatingUser;
+    private string? _createUserError;
+
     protected override async Task OnInitializedAsync()
     {
-        _theme = await SettingsService.GetThemeAsync();
+        _theme = await SettingsService.GetThemeAsync(CurrentUser.UserId);
         _notesFolderPath = await SettingsService.GetNotesFolderPathAsync();
         await RefreshCountAsync();
+        await RefreshUsersAsync();
     }
 
     private async Task ToggleThemeAsync(ChangeEventArgs e)
     {
         _theme = e.Value is true ? AppTheme.Dark : AppTheme.Light;
-        await SettingsService.SetThemeAsync(_theme);
+        await SettingsService.SetThemeAsync(CurrentUser.UserId, _theme);
 
         // Applies instantly without a reload — the <html> element persists across in-app
         // navigation under InteractiveServer, so this sticks until a real page reload, at which
@@ -85,8 +120,39 @@
     private async Task RescanAsync()
     {
         _isRescanning = true;
-        _lastResult = await Reconciler.RescanAsync();
+        _lastResult = await Reconciler.RescanAsync(CurrentUser.UserId);
         await RefreshCountAsync();
         _isRescanning = false;
+    }
+
+    private async Task RefreshUsersAsync()
+    {
+        _users = await UserRepository.GetAllUsersAsync();
+    }
+
+    private async Task CreateUserAsync()
+    {
+        var username = _newUsername.Trim();
+        if (username.Length == 0)
+        {
+            return;
+        }
+
+        _isCreatingUser = true;
+        _createUserError = null;
+        try
+        {
+            await UserRepository.CreateUserAsync(username);
+            _newUsername = "";
+            await RefreshUsersAsync();
+        }
+        catch (DuplicateUsernameException)
+        {
+            _createUserError = $"Username '{username}' is already taken.";
+        }
+        finally
+        {
+            _isCreatingUser = false;
+        }
     }
 }

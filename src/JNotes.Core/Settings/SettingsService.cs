@@ -19,36 +19,47 @@ public sealed class SettingsService : ISettingsService
         _options = options.Value;
     }
 
-    public Task<string> GetNotesFolderPathAsync(CancellationToken cancellationToken = default) =>
-        GetAsync(NotesFolderPathKey, _options.NotesFolderPath, cancellationToken);
-
-    public Task SetNotesFolderPathAsync(string path, CancellationToken cancellationToken = default) =>
-        SetAsync(NotesFolderPathKey, path, cancellationToken);
-
-    public Task<string> GetThemeAsync(CancellationToken cancellationToken = default) =>
-        GetAsync(ThemeKey, AppTheme.Light, cancellationToken);
-
-    public Task SetThemeAsync(string theme, CancellationToken cancellationToken = default) =>
-        SetAsync(ThemeKey, theme, cancellationToken);
-
-    private async Task<string> GetAsync(string key, string defaultValue, CancellationToken cancellationToken)
+    public async Task<string> GetNotesFolderPathAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var entry = await db.Settings.FindAsync([key], cancellationToken);
-        return entry?.Value ?? defaultValue;
+        var entry = await db.Settings.FindAsync([NotesFolderPathKey], cancellationToken);
+        return entry?.Value ?? _options.NotesFolderPath;
     }
 
-    private async Task SetAsync(string key, string value, CancellationToken cancellationToken)
+    public async Task SetNotesFolderPathAsync(string path, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var entry = await db.Settings.FindAsync([key], cancellationToken);
+        var entry = await db.Settings.FindAsync([NotesFolderPathKey], cancellationToken);
         if (entry is null)
         {
-            db.Settings.Add(new SettingEntry { Key = key, Value = value });
+            db.Settings.Add(new SettingEntry { Key = NotesFolderPathKey, Value = path });
         }
         else
         {
-            entry.Value = value;
+            entry.Value = path;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<string> GetThemeAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var entry = await db.UserSettings.FindAsync([userId, ThemeKey], cancellationToken);
+        return entry?.Value ?? AppTheme.Light;
+    }
+
+    public async Task SetThemeAsync(Guid userId, string theme, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var entry = await db.UserSettings.FindAsync([userId, ThemeKey], cancellationToken);
+        if (entry is null)
+        {
+            db.UserSettings.Add(new UserSetting { UserId = userId, Key = ThemeKey, Value = theme });
+        }
+        else
+        {
+            entry.Value = theme;
         }
 
         await db.SaveChangesAsync(cancellationToken);

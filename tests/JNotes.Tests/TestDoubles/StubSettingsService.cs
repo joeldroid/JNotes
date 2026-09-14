@@ -3,10 +3,10 @@ using JNotes.Core.Settings;
 namespace JNotes.Tests.TestDoubles;
 
 /// <summary>In-memory <see cref="ISettingsService"/> for tests that don't need the real EF Core-backed one.</summary>
-internal sealed class StubSettingsService(string notesFolderPath, string theme = "light") : ISettingsService
+internal sealed class StubSettingsService(string notesFolderPath) : ISettingsService
 {
     private string _notesFolderPath = notesFolderPath;
-    private string _theme = theme;
+    private readonly Dictionary<Guid, string> _themesByUser = [];
 
     public Task<string> GetNotesFolderPathAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(_notesFolderPath);
@@ -17,11 +17,12 @@ internal sealed class StubSettingsService(string notesFolderPath, string theme =
         return Task.CompletedTask;
     }
 
-    public Task<string> GetThemeAsync(CancellationToken cancellationToken = default) => Task.FromResult(_theme);
+    public Task<string> GetThemeAsync(Guid userId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(_themesByUser.GetValueOrDefault(userId, AppTheme.Light));
 
-    public Task SetThemeAsync(string theme, CancellationToken cancellationToken = default)
+    public Task SetThemeAsync(Guid userId, string theme, CancellationToken cancellationToken = default)
     {
-        _theme = theme;
+        _themesByUser[userId] = theme;
         return Task.CompletedTask;
     }
 }

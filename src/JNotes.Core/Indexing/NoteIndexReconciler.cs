@@ -16,10 +16,10 @@ public sealed class NoteIndexReconciler : INoteIndexReconciler
         _indexRepository = indexRepository;
     }
 
-    public async Task<ReconciliationResult> RescanAsync(CancellationToken cancellationToken = default)
+    public async Task<ReconciliationResult> RescanAsync(Guid userId, CancellationToken cancellationToken = default)
     {
-        var fileIds = await _fileStore.ListIdsAsync(cancellationToken);
-        var indexedWriteTimes = await _indexRepository.GetIndexedFileWriteTimesAsync(cancellationToken);
+        var fileIds = await _fileStore.ListIdsAsync(userId, cancellationToken);
+        var indexedWriteTimes = await _indexRepository.GetIndexedFileWriteTimesAsync(userId, cancellationToken);
 
         var fileIdSet = fileIds.ToHashSet();
         var added = 0;
@@ -34,7 +34,7 @@ public sealed class NoteIndexReconciler : INoteIndexReconciler
             DateTimeOffset currentWriteTime;
             try
             {
-                currentWriteTime = await _fileStore.GetLastWriteTimeUtcAsync(id, cancellationToken);
+                currentWriteTime = await _fileStore.GetLastWriteTimeUtcAsync(userId, id, cancellationToken);
             }
             catch (NoteNotFoundException)
             {
@@ -49,16 +49,17 @@ public sealed class NoteIndexReconciler : INoteIndexReconciler
 
             try
             {
-                var note = await _fileStore.ReadAsync(id, cancellationToken);
+                var note = await _fileStore.ReadAsync(userId, id, cancellationToken);
                 var entry = new NoteIndexEntry
                 {
                     Id = note.Id,
+                    UserId = userId,
                     Title = note.Title,
                     NoteType = note.Type.ToString(),
                     CreatedAt = note.CreatedAt,
                     UpdatedAt = note.UpdatedAt,
                     IndexedFileWriteTimeUtc = currentWriteTime,
-                    FilePath = $"{note.Id}.md",
+                    FilePath = $"{userId}/{note.Id}.md",
                 };
                 await _indexRepository.UpsertAsync(entry, note.Tags, cancellationToken);
 
@@ -81,7 +82,7 @@ public sealed class NoteIndexReconciler : INoteIndexReconciler
 
         foreach (var id in indexedWriteTimes.Keys.Except(fileIdSet))
         {
-            await _indexRepository.DeleteAsync(id, cancellationToken);
+            await _indexRepository.DeleteAsync(userId, id, cancellationToken);
             removed++;
         }
 

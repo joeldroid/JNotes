@@ -15,11 +15,11 @@ public sealed class EfNoteIndexRepository : INoteIndexRepository
         _dbContextFactory = dbContextFactory;
     }
 
-    public async Task<IReadOnlyList<NoteSummary>> SearchAsync(NoteSearchQuery query, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<NoteSummary>> SearchAsync(Guid userId, NoteSearchQuery query, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
-        var notesQuery = db.Notes.AsNoTracking().AsQueryable();
+        var notesQuery = db.Notes.AsNoTracking().Where(n => n.UserId == userId);
 
         if (query.Type is { } type)
         {
@@ -65,10 +65,11 @@ public sealed class EfNoteIndexRepository : INoteIndexRepository
             .ToList();
     }
 
-    public async Task<IReadOnlyList<string>> GetDistinctTagsAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<string>> GetDistinctTagsAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         return await db.NoteTags.AsNoTracking()
+            .Where(t => db.Notes.Any(n => n.Id == t.NoteId && n.UserId == userId))
             .Select(t => t.Tag)
             .Distinct()
             .OrderBy(t => t)
@@ -96,10 +97,10 @@ public sealed class EfNoteIndexRepository : INoteIndexRepository
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task DeleteAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var existing = await db.Notes.FindAsync([id], cancellationToken);
+        var existing = await db.Notes.FirstOrDefaultAsync(n => n.Id == noteId && n.UserId == userId, cancellationToken);
         if (existing is not null)
         {
             db.Notes.Remove(existing); // NoteTags cascade-delete with it.
@@ -107,10 +108,11 @@ public sealed class EfNoteIndexRepository : INoteIndexRepository
         }
     }
 
-    public async Task<IReadOnlyDictionary<Guid, DateTimeOffset>> GetIndexedFileWriteTimesAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyDictionary<Guid, DateTimeOffset>> GetIndexedFileWriteTimesAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         return await db.Notes.AsNoTracking()
+            .Where(n => n.UserId == userId)
             .ToDictionaryAsync(n => n.Id, n => n.IndexedFileWriteTimeUtc, cancellationToken);
     }
 }
