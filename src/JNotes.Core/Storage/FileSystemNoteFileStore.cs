@@ -72,6 +72,27 @@ public sealed class FileSystemNoteFileStore : INoteFileStore
         return new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero);
     }
 
+    public async Task ArchiveUserFolderAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var notesRoot = await _settingsService.GetNotesFolderPathAsync(cancellationToken);
+        var sourceDir = Path.Combine(notesRoot, userId.ToString());
+        var deletedRoot = Path.Combine(notesRoot, "deleted");
+        var destDir = Path.Combine(deletedRoot, userId.ToString());
+
+        if (Directory.Exists(destDir))
+        {
+            return; // already archived (a retried delete after a partial failure) — nothing more to do
+        }
+
+        if (!Directory.Exists(sourceDir))
+        {
+            return; // this user never wrote a note — nothing to archive
+        }
+
+        Directory.CreateDirectory(deletedRoot);
+        Directory.Move(sourceDir, destDir);
+    }
+
     private async Task<string> ResolveFolderAsync(Guid userId, CancellationToken cancellationToken)
     {
         var notesRoot = await _settingsService.GetNotesFolderPathAsync(cancellationToken);

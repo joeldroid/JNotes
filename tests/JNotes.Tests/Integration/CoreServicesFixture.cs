@@ -1,4 +1,5 @@
 using JNotes.Core;
+using JNotes.Core.Data;
 using JNotes.Core.Indexing;
 using JNotes.Core.Notes;
 using JNotes.Core.Serialization;
@@ -88,8 +89,8 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
 
         var scope = provider.CreateScope();
         var userRepository = scope.ServiceProvider.GetRequiredService<IUserRepository>();
-        var userA = await userRepository.CreateUserAsync("user-a");
-        var userB = await userRepository.CreateUserAsync("user-b");
+        var userA = await userRepository.CreateUserAsync("user-a", UserRole.Member, email: null, password: "password123");
+        var userB = await userRepository.CreateUserAsync("user-b", UserRole.Member, email: null, password: "password123");
         currentUserContext.UserId = userA.Id; // default to acting as user A
 
         return new CoreServicesFixture(provider, scope, rootDir, notesFolder, currentUserContext, userA.Id, userB.Id);

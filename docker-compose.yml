@@ -13,4 +13,10 @@ services:
       - DB_PATH=/data/jnotes.db
       # Override by exporting TZ before running compose, or adding TZ=... to a .env file.
       - TZ=${TZ:-UTC}
+      # Optional OIDC login — uncomment and set via a .env file (or export before running compose)
+      # to enable. All three must be set, or OIDC stays disabled. See README.md's Authentication section.
+      # - OIDC_AUTHORITY=${OIDC_AUTHORITY}
+      # - OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
+      # - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
+      # - OIDC_DISPLAY_NAME=${OIDC_DISPLAY_NAME:-OIDC}
     restart: unless-stopped

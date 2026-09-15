@@ -1,4 +1,4 @@
-﻿@inject ISettingsService SettingsService
+@inject ISettingsService SettingsService
 @inject ICurrentUserContext CurrentUser
 
 <!DOCTYPE html>
@@ -13,11 +13,11 @@
     <link rel="stylesheet" href="@Assets["css/app.css"]" />
     <link rel="stylesheet" href="@Assets["JNotes.Web.styles.css"]" />
     <ImportMap />
-    <HeadOutlet @rendermode="InteractiveServer" />
+    <HeadOutlet @rendermode="RenderModeForPage" />
 </head>
 
 <body>
-    <Routes @rendermode="InteractiveServer" />
+    <Routes @rendermode="RenderModeForPage" />
     <ReconnectModal />
     <script src="@Assets["lib/bootstrap/dist/js/bootstrap.bundle.min.js"]"></script>
     <script src="@Assets["_framework/blazor.web.js"]"></script>
@@ -28,10 +28,28 @@
 @code {
     private string _theme = AppTheme.Light;
 
+    // /login and /setup handle a plain form POST that must call HttpContext.SignInAsync — that
+    // only works while the response is still being built, which is true for a statically-rendered
+    // page but not from inside an already-connected InteractiveServer circuit (headers long sent).
+    // HttpContext is available here as a cascading parameter because App.razor renders as part of
+    // the initial HTTP response, before any circuit exists.
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private IComponentRenderMode? RenderModeForPage =>
+        HttpContext.Request.Path.StartsWithSegments("/login") || HttpContext.Request.Path.StartsWithSegments("/setup")
+            ? null // static SSR
+            : InteractiveServer;
+
     protected override async Task OnInitializedAsync()
     {
-        // Read during prerender so the initial HTML already has the right data-bs-theme —
-        // avoids a flash of the wrong theme before the circuit connects.
-        _theme = await SettingsService.GetThemeAsync(CurrentUser.UserId);
+        // Read during prerender so the initial HTML already has the right data-bs-theme — avoids a
+        // flash of the wrong theme before the circuit connects. Guarded: on /login, /setup, or any
+        // request before anyone's authenticated, ICurrentUserContext would throw — default to light
+        // rather than making ICurrentUserContext.UserId nullable (which would ripple into every
+        // Core call site that assumes a valid Guid).
+        _theme = HttpContext.User.Identity?.IsAuthenticated == true
+            ? await SettingsService.GetThemeAsync(CurrentUser.UserId)
+            : AppTheme.Light;
     }
 }

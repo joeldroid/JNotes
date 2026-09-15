@@ -1,4 +1,5 @@
 using JNotes.Core.Data;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace JNotes.Core.Users;
@@ -7,24 +8,46 @@ namespace JNotes.Core.Users;
 public sealed class EfUserRepository : IUserRepository
 {
     private readonly IDbContextFactory<JNotesDbContext> _dbContextFactory;
-    private readonly DefaultUserProvider _defaultUserProvider;
+    private readonly PasswordHasher<UserAccount> _passwordHasher;
+    private readonly SetupStateProvider _setupStateProvider;
 
-    public EfUserRepository(IDbContextFactory<JNotesDbContext> dbContextFactory, DefaultUserProvider defaultUserProvider)
+    public EfUserRepository(
+        IDbContextFactory<JNotesDbContext> dbContextFactory,
+        PasswordHasher<UserAccount> passwordHasher,
+        SetupStateProvider setupStateProvider)
     {
         _dbContextFactory = dbContextFactory;
-        _defaultUserProvider = defaultUserProvider;
+        _passwordHasher = passwordHasher;
+        _setupStateProvider = setupStateProvider;
     }
 
-    public async Task<UserAccount> CreateUserAsync(string username, CancellationToken cancellationToken = default)
+    public async Task<UserAccount> CreateUserAsync(string username, UserRole role, string? email, string? password, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+        // Checked proactively (rather than relying solely on the two unique-index violations that
+        // would otherwise collide inside one generic DbUpdateException) so callers get the specific,
+        // correct exception — a tiny check-then-insert race remains, acceptable at this app's
+        // low-traffic single-instance scale, same trade-off already made elsewhere in this app.
+        if (await db.Users.AnyAsync(u => u.Username == username, cancellationToken))
+        {
+            throw new DuplicateUsernameException(username, new InvalidOperationException("Username already exists."));
+        }
+
+        if (email is not null && await db.Users.AnyAsync(u => u.Email == email, cancellationToken))
+        {
+            throw new DuplicateEmailException(email);
+        }
 
         var user = new UserAccount
         {
             Id = Guid.NewGuid(),
             Username = username,
             CreatedAt = DateTimeOffset.UtcNow,
+            Role = role,
+            Email = email,
         };
+        user.PasswordHash = password is null ? null : _passwordHasher.HashPassword(user, password);
 
         db.Users.Add(user);
 
@@ -34,13 +57,16 @@ public sealed class EfUserRepository : IUserRepository
         }
         catch (DbUpdateException ex)
         {
-            // The unique (NOCASE) index on Username is the only constraint this insert could violate.
+            // Backstop for the check-then-insert race above — can't tell which index actually
+            // fired here, so this is deliberately the less specific of the two exception types.
             throw new DuplicateUsernameException(username, ex);
         }
 
-        // Keep the cache CookieCurrentUserContext validates against in sync immediately — otherwise
-        // a freshly-created user would look "unknown" to any circuit resolved before the next restart.
-        _defaultUserProvider.AddKnownUserId(user.Id);
+        // "Setup complete" means "at least one user exists" — true after any successful create,
+        // not just the very first (idempotent to set again). Flip the in-memory flag right away so
+        // a request that lands between this write and the next restart doesn't get bounced to
+        // /setup as if no admin existed yet.
+        _setupStateProvider.SetSetupComplete(true);
 
         return user;
     }
@@ -60,5 +86,77 @@ public sealed class EfUserRepository : IUserRepository
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         return await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+    }
+
+    public async Task<UserAccount?> GetUserByUsernameAsync(string username, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        // Username's NOCASE column collation makes this comparison case-insensitive already.
+        return await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Username == username, cancellationToken);
+    }
+
+    public async Task<UserAccount?> GetUserByOidcSubjectAsync(string subject, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        return await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.OidcSubject == subject, cancellationToken);
+    }
+
+    public async Task<UserAccount?> GetUnlinkedUserByEmailAsync(string email, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        return await db.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Email == email && u.OidcSubject == null, cancellationToken);
+    }
+
+    public async Task<UserAccount?> VerifyPasswordAsync(string username, string password, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Username == username, cancellationToken);
+        if (user?.PasswordHash is null)
+        {
+            return null;
+        }
+
+        var result = _passwordHasher.VerifyHashedPassword(user, user.PasswordHash, password);
+        return result == PasswordVerificationResult.Failed ? null : user;
+    }
+
+    public async Task LinkOidcSubjectAsync(Guid userId, string subject, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var user = await db.Users.FindAsync([userId], cancellationToken);
+        if (user is null)
+        {
+            return;
+        }
+
+        user.OidcSubject = subject;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task SetPasswordAsync(Guid userId, string newPassword, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var user = await db.Users.FindAsync([userId], cancellationToken);
+        if (user is null)
+        {
+            return;
+        }
+
+        user.PasswordHash = _passwordHasher.HashPassword(user, newPassword);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteUserAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var user = await db.Users.FindAsync([userId], cancellationToken);
+        if (user is null)
+        {
+            return; // already gone — treat as success, matches IUserManagementService's retry tolerance
+        }
+
+        db.Users.Remove(user);
+        await db.SaveChangesAsync(cancellationToken);
     }
 }

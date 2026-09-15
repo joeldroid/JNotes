@@ -1,9 +1,12 @@
 @page "/settings"
+@attribute [Authorize]
+@using Microsoft.Extensions.Options
 @inject ISettingsService SettingsService
 @inject INoteIndexReconciler Reconciler
 @inject INoteService NoteService
 @inject IUserRepository UserRepository
 @inject ICurrentUserContext CurrentUser
+@inject IOptions<OidcOptions> OidcOptionsAccessor
 @inject IJSRuntime JSRuntime
 
 <PageTitle>Settings</PageTitle>
@@ -53,32 +56,46 @@
     }
 </section>
 
-<section>
-    <h2 class="h5">Users</h2>
-    <p class="text-body-secondary small">
-        Admin-created accounts only — no self-registration, and no password yet (that arrives with
-        real login). This just lets you create the accounts file/index scoping is tested against.
-    </p>
-
-    <ul class="list-group mb-3" style="max-width: 420px;">
-        @foreach (var user in _users)
-        {
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-                @user.Username
-                <small class="text-body-secondary">@user.CreatedAt.LocalDateTime.ToString("d")</small>
-            </li>
-        }
-    </ul>
-
-    <form class="d-flex gap-2" style="max-width: 420px;" @onsubmit="CreateUserAsync">
-        <input class="form-control" placeholder="Username" @bind="_newUsername" @bind:event="oninput" />
-        <button type="submit" class="btn btn-outline-primary text-nowrap" disabled="@_isCreatingUser">Add user</button>
-    </form>
-    @if (_createUserError is not null)
+<section class="mb-4" style="max-width: 420px;">
+    <h2 class="h5">Account</h2>
+    <div class="d-flex gap-2 align-items-end flex-wrap">
+        <div class="flex-grow-1">
+            <label class="form-label small mb-1">New password</label>
+            <input type="password" class="form-control" @bind="_newPassword" @bind:event="oninput" />
+        </div>
+        <button class="btn btn-outline-primary" @onclick="ChangePasswordAsync">Change password</button>
+    </div>
+    @if (_passwordChangeMessage is not null)
     {
-        <div class="alert alert-danger py-2 mt-2 mb-0" style="max-width: 420px;">@_createUserError</div>
+        <div class="alert @(_passwordChangeError ? "alert-danger" : "alert-success") py-2 mt-2 mb-0">@_passwordChangeMessage</div>
     }
 </section>
+
+<AuthorizeView Roles="Admin">
+    <section>
+        <h2 class="h5">Security</h2>
+        <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" role="switch" id="passwordAuthSwitch"
+                   checked="@_passwordAuthEnabled" disabled="@(!_oidc.IsConfigured && _passwordAuthEnabled)"
+                   @onchange="TogglePasswordAuthAsync" />
+            <label class="form-check-label" for="passwordAuthSwitch">Allow username/password login</label>
+        </div>
+        @if (!_oidc.IsConfigured)
+        {
+            <p class="text-body-secondary small">
+                Can't be turned off — OIDC isn't configured (set OIDC_AUTHORITY/OIDC_CLIENT_ID/OIDC_CLIENT_SECRET), so this is the only sign-in method available.
+            </p>
+        }
+        else
+        {
+            <p class="text-body-secondary small">OIDC is configured against <code>@_oidc.Authority</code>.</p>
+        }
+        @if (_securityError is not null)
+        {
+            <div class="alert alert-danger py-2">@_securityError</div>
+        }
+    </section>
+</AuthorizeView>
 
 @code {
     private string _theme = AppTheme.Light;
@@ -87,17 +104,22 @@
     private bool _isRescanning;
     private ReconciliationResult? _lastResult;
 
-    private IReadOnlyList<UserAccount> _users = [];
-    private string _newUsername = "";
-    private bool _isCreatingUser;
-    private string? _createUserError;
+    private string _newPassword = "";
+    private string? _passwordChangeMessage;
+    private bool _passwordChangeError;
+
+    private bool _passwordAuthEnabled;
+    private OidcOptions _oidc = new();
+    private string? _securityError;
 
     protected override async Task OnInitializedAsync()
     {
         _theme = await SettingsService.GetThemeAsync(CurrentUser.UserId);
         _notesFolderPath = await SettingsService.GetNotesFolderPathAsync();
         await RefreshCountAsync();
-        await RefreshUsersAsync();
+
+        _oidc = OidcOptionsAccessor.Value;
+        _passwordAuthEnabled = await SettingsService.GetPasswordAuthEnabledAsync();
     }
 
     private async Task ToggleThemeAsync(ChangeEventArgs e)
@@ -125,34 +147,33 @@
         _isRescanning = false;
     }
 
-    private async Task RefreshUsersAsync()
+    private async Task ChangePasswordAsync()
     {
-        _users = await UserRepository.GetAllUsersAsync();
-    }
-
-    private async Task CreateUserAsync()
-    {
-        var username = _newUsername.Trim();
-        if (username.Length == 0)
+        if (_newPassword.Length < 8)
         {
+            _passwordChangeError = true;
+            _passwordChangeMessage = "Password must be at least 8 characters.";
             return;
         }
 
-        _isCreatingUser = true;
-        _createUserError = null;
+        await UserRepository.SetPasswordAsync(CurrentUser.UserId, _newPassword);
+        _newPassword = "";
+        _passwordChangeError = false;
+        _passwordChangeMessage = "Password changed.";
+    }
+
+    private async Task TogglePasswordAuthAsync(ChangeEventArgs e)
+    {
+        var enabled = e.Value is true;
+        _securityError = null;
         try
         {
-            await UserRepository.CreateUserAsync(username);
-            _newUsername = "";
-            await RefreshUsersAsync();
+            await SettingsService.SetPasswordAuthEnabledAsync(enabled);
+            _passwordAuthEnabled = enabled;
         }
-        catch (DuplicateUsernameException)
+        catch (InvalidOperationException ex)
         {
-            _createUserError = $"Username '{username}' is already taken.";
-        }
-        finally
-        {
-            _isCreatingUser = false;
+            _securityError = ex.Message;
         }
     }
 }

@@ -7,6 +7,7 @@ internal sealed class StubSettingsService(string notesFolderPath) : ISettingsSer
 {
     private string _notesFolderPath = notesFolderPath;
     private readonly Dictionary<Guid, string> _themesByUser = [];
+    private bool _passwordAuthEnabled = true;
 
     public Task<string> GetNotesFolderPathAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(_notesFolderPath);
@@ -23,6 +24,15 @@ internal sealed class StubSettingsService(string notesFolderPath) : ISettingsSer
     public Task SetThemeAsync(Guid userId, string theme, CancellationToken cancellationToken = default)
     {
         _themesByUser[userId] = theme;
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> GetPasswordAuthEnabledAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(_passwordAuthEnabled);
+
+    public Task SetPasswordAuthEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        _passwordAuthEnabled = enabled;
         return Task.CompletedTask;
     }
 }

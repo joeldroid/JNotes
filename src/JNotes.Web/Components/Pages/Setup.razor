@@ -1,0 +1,106 @@
+@page "/setup"
+@layout AuthLayout
+@attribute [AllowAnonymous]
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@inject IUserRepository UserRepository
+@inject ISetupStateProvider SetupState
+@inject NavigationManager Navigation
+
+<PageTitle>Set up JNotes</PageTitle>
+
+<div class="mx-auto" style="max-width: 360px; margin-top: 4rem;">
+    <h1 class="h3 mb-2 text-center">Welcome to JNotes</h1>
+    <p class="text-body-secondary text-center mb-4">Create the first admin account to get started.</p>
+
+    <EditForm Model="Model" FormName="setup" OnValidSubmit="HandleSetupAsync">
+        <DataAnnotationsValidator />
+        @if (_error is not null)
+        {
+            <div class="alert alert-danger py-2">@_error</div>
+        }
+        <div class="mb-3">
+            <label class="form-label" for="username">Username</label>
+            <InputText id="username" class="form-control" @bind-Value="Model!.Username" autofocus />
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="password">Password</label>
+            <InputText id="password" type="password" class="form-control" @bind-Value="Model!.Password" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="confirmPassword">Confirm password</label>
+            <InputText id="confirmPassword" type="password" class="form-control" @bind-Value="Model!.ConfirmPassword" />
+        </div>
+        <button type="submit" class="btn btn-primary w-100">Create admin account</button>
+    </EditForm>
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private SetupModel? Model { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private string? _error;
+
+    protected override void OnInitialized()
+    {
+        // A bookmarked/stale /setup URL after setup already happened is a no-op, not a way to mint
+        // a second "first admin" — the setup-gate middleware handles the "not yet set up" direction.
+        if (SetupState.IsSetupComplete)
+        {
+            Navigation.NavigateTo("/", forceLoad: true);
+            return;
+        }
+
+        // [SupplyParameterFromForm] can hand back null (e.g. the first GET, before any POST) — a
+        // property initializer wouldn't survive that, so it's assigned here instead.
+        Model ??= new SetupModel();
+    }
+
+    private async Task HandleSetupAsync()
+    {
+        if (Model!.Password != Model.ConfirmPassword)
+        {
+            _error = "Passwords don't match.";
+            return;
+        }
+
+        if (Model.Password.Length < 8)
+        {
+            _error = "Password must be at least 8 characters.";
+            return;
+        }
+
+        UserAccount admin;
+        try
+        {
+            admin = await UserRepository.CreateUserAsync(Model.Username.Trim(), UserRole.Admin, email: null, password: Model.Password);
+        }
+        catch (DuplicateUsernameException)
+        {
+            _error = $"Username '{Model.Username}' is already taken.";
+            return;
+        }
+
+        var principal = ClaimsPrincipalFactory.Create(admin, CookieAuthenticationDefaults.AuthenticationScheme);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal,
+            new AuthenticationProperties { IsPersistent = true });
+
+        Navigation.NavigateTo("/", forceLoad: true);
+    }
+
+    private sealed class SetupModel
+    {
+        [Required]
+        public string Username { get; set; } = "";
+
+        [Required]
+        public string Password { get; set; } = "";
+
+        [Required]
+        public string ConfirmPassword { get; set; } = "";
+    }
+}

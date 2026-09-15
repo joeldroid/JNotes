@@ -34,4 +34,12 @@ public interface INoteFileStore
 
     /// <exception cref="NoteNotFoundException">No file exists for <paramref name="noteId"/>.</exception>
     Task<DateTimeOffset> GetLastWriteTimeUtcAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Moves (never deletes) <paramref name="userId"/>'s entire notes folder to
+    /// <c>{NotesFolder}/deleted/{userId}/</c> — used when an admin deletes an account, so nothing
+    /// is lost. Idempotent: a no-op if the destination already exists (already archived) or the
+    /// source doesn't (the user never wrote a note).
+    /// </summary>
+    Task ArchiveUserFolderAsync(Guid userId, CancellationToken cancellationToken = default);
 }

@@ -1,0 +1,112 @@
+@page "/login"
+@layout AuthLayout
+@attribute [AllowAnonymous]
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using Microsoft.Extensions.Options
+@inject IUserRepository UserRepository
+@inject ISettingsService SettingsService
+@inject IOptions<OidcOptions> OidcOptionsAccessor
+@inject NavigationManager Navigation
+
+<PageTitle>Sign in</PageTitle>
+
+<div class="mx-auto" style="max-width: 360px; margin-top: 4rem;">
+    <h1 class="h3 mb-4 text-center">JNotes</h1>
+
+    @if (Error == "no-account")
+    {
+        <div class="alert alert-warning">No account was found for that sign-in. Ask your admin to create one.</div>
+    }
+
+    @if (!_passwordAuthEnabled && !_oidc.IsConfigured)
+    {
+        <div class="alert alert-danger">
+            No sign-in method is available — password login is disabled and OIDC isn't configured.
+            Contact your administrator.
+        </div>
+    }
+    else
+    {
+        @if (_passwordAuthEnabled)
+        {
+            <EditForm Model="Model" FormName="login" OnValidSubmit="HandleLoginAsync" class="mb-3">
+                <DataAnnotationsValidator />
+                @if (_loginError is not null)
+                {
+                    <div class="alert alert-danger py-2">@_loginError</div>
+                }
+                <div class="mb-3">
+                    <label class="form-label" for="username">Username</label>
+                    <InputText id="username" class="form-control" @bind-Value="Model!.Username" autofocus />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="password">Password</label>
+                    <InputText id="password" type="password" class="form-control" @bind-Value="Model!.Password" />
+                </div>
+                <button type="submit" class="btn btn-primary w-100">Sign in</button>
+            </EditForm>
+        }
+
+        @if (_oidc.IsConfigured)
+        {
+            <a class="btn btn-outline-secondary w-100" href="@($"/login/oidc?returnUrl={Uri.EscapeDataString(ReturnUrl ?? "/")}")">
+                Sign in with @_oidc.DisplayName
+            </a>
+        }
+    }
+</div>
+
+@code {
+    [SupplyParameterFromForm]
+    private LoginModel? Model { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? Error { get; set; }
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    private OidcOptions _oidc = new();
+    private bool _passwordAuthEnabled;
+    private string? _loginError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // [SupplyParameterFromForm] can hand back null (e.g. the first GET, before any POST) —
+        // a property initializer wouldn't survive that, so it's assigned here instead.
+        Model ??= new LoginModel();
+
+        _oidc = OidcOptionsAccessor.Value;
+        _passwordAuthEnabled = await SettingsService.GetPasswordAuthEnabledAsync();
+    }
+
+    private async Task HandleLoginAsync()
+    {
+        var user = await UserRepository.VerifyPasswordAsync(Model!.Username.Trim(), Model.Password);
+        if (user is null)
+        {
+            _loginError = "Invalid username or password.";
+            return;
+        }
+
+        var principal = ClaimsPrincipalFactory.Create(user, CookieAuthenticationDefaults.AuthenticationScheme);
+        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal,
+            new AuthenticationProperties { IsPersistent = true });
+
+        Navigation.NavigateTo(string.IsNullOrEmpty(ReturnUrl) ? "/" : ReturnUrl, forceLoad: true);
+    }
+
+    private sealed class LoginModel
+    {
+        [Required]
+        public string Username { get; set; } = "";
+
+        [Required]
+        public string Password { get; set; } = "";
+    }
+}

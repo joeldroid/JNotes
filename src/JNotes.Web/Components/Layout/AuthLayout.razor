@@ -1,0 +1,19 @@
+@inherits LayoutComponentBase
+
+@* Bare layout for /login and /setup — no sidebar nav, since none of those links are reachable
+   before you're signed in (or before the first admin even exists). *@
+<div class="d-flex flex-column vh-100">
+    <nav class="navbar navbar-dark bg-dark px-3 flex-shrink-0">
+        <span class="navbar-brand ms-2">JNotes</span>
+    </nav>
+
+    <main class="flex-grow-1 overflow-auto p-3 p-md-4">
+        @Body
+    </main>
+</div>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>

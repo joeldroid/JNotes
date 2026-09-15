@@ -1,0 +1,244 @@
+@page "/users"
+@attribute [Authorize(Policy = "AdminOnly")]
+@using System.ComponentModel.DataAnnotations
+@inject IUserRepository UserRepository
+@inject IUserManagementService UserManagementService
+@inject ICurrentUserContext CurrentUser
+
+<PageTitle>User Management</PageTitle>
+
+<h1 class="h3 mb-3">User Management</h1>
+
+<table class="table align-middle" style="max-width: 900px;">
+    <thead>
+        <tr>
+            <th>Username</th>
+            <th>Role</th>
+            <th>Email</th>
+            <th>Auth methods</th>
+            <th>Created</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var user in _users)
+        {
+            var isSelf = user.Id == CurrentUser.UserId;
+            var isLastAdmin = user.Role == UserRole.Admin && _adminCount <= 1;
+
+            <tr>
+                <td>@user.Username @(isSelf ? "(you)" : "")</td>
+                <td>@user.Role</td>
+                <td>@(user.Email ?? "—")</td>
+                <td>
+                    @(user.PasswordHash is not null ? "Password" : "")
+                    @(user.PasswordHash is not null && user.OidcSubject is not null ? " + " : "")
+                    @(user.OidcSubject is not null ? "OIDC" : "")
+                </td>
+                <td>@user.CreatedAt.LocalDateTime.ToString("d")</td>
+                <td class="text-end">
+                    <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => BeginResetPassword(user)">Reset password</button>
+                    <button class="btn btn-sm btn-outline-danger" disabled="@(isSelf || isLastAdmin)" @onclick="() => BeginDelete(user)">Delete</button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<section class="mt-4" style="max-width: 420px;">
+    <h2 class="h5">Add user</h2>
+    <EditForm Model="_newUser" OnValidSubmit="CreateUserAsync">
+        <DataAnnotationsValidator />
+        @if (_createUserError is not null)
+        {
+            <div class="alert alert-danger py-2">@_createUserError</div>
+        }
+        <div class="mb-2">
+            <label class="form-label">Username</label>
+            <InputText class="form-control" @bind-Value="_newUser.Username" />
+        </div>
+        <div class="mb-2">
+            <label class="form-label">Role</label>
+            <InputSelect class="form-select" @bind-Value="_newUser.Role">
+                <option value="@UserRole.Member">Member</option>
+                <option value="@UserRole.Admin">Admin</option>
+            </InputSelect>
+        </div>
+        <div class="mb-2">
+            <label class="form-label">Email <span class="text-body-secondary small">(needed to link an OIDC sign-in later)</span></label>
+            <InputText class="form-control" @bind-Value="_newUser.Email" />
+        </div>
+        <div class="mb-2">
+            <label class="form-label">Password <span class="text-body-secondary small">(leave blank for an OIDC-only account)</span></label>
+            <InputText type="password" class="form-control" @bind-Value="_newUser.Password" />
+        </div>
+        <button type="submit" class="btn btn-outline-primary" disabled="@_isCreating">Add user</button>
+    </EditForm>
+</section>
+
+@if (_resetPasswordTarget is not null)
+{
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Reset password for @_resetPasswordTarget.Username</h5>
+                    <button type="button" class="btn-close" @onclick="() => _resetPasswordTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_resetPasswordError is not null)
+                    {
+                        <div class="alert alert-danger py-2">@_resetPasswordError</div>
+                    }
+                    <label class="form-label">New password</label>
+                    <input type="password" class="form-control" @bind="_newPassword" @bind:event="oninput" />
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _resetPasswordTarget = null">Cancel</button>
+                    <button class="btn btn-primary" @onclick="ConfirmResetPasswordAsync">Set password</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_deleteTarget is not null)
+{
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Delete @_deleteTarget.Username?</h5>
+                    <button type="button" class="btn-close" @onclick="() => _deleteTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p>
+                        Their notes won't be deleted — the folder is moved aside
+                        (<code>notes/deleted/@_deleteTarget.Id/</code>) and their account is removed.
+                    </p>
+                    @if (_deleteError is not null)
+                    {
+                        <div class="alert alert-danger py-2">@_deleteError</div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _deleteTarget = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<UserAccount> _users = [];
+    private int _adminCount;
+
+    private NewUserModel _newUser = new();
+    private bool _isCreating;
+    private string? _createUserError;
+
+    private UserAccount? _resetPasswordTarget;
+    private string _newPassword = "";
+    private string? _resetPasswordError;
+
+    private UserAccount? _deleteTarget;
+    private string? _deleteError;
+
+    protected override async Task OnInitializedAsync() => await RefreshUsersAsync();
+
+    private async Task RefreshUsersAsync()
+    {
+        _users = await UserRepository.GetAllUsersAsync();
+        _adminCount = _users.Count(u => u.Role == UserRole.Admin);
+    }
+
+    private async Task CreateUserAsync()
+    {
+        var username = _newUser.Username.Trim();
+        var email = string.IsNullOrWhiteSpace(_newUser.Email) ? null : _newUser.Email.Trim();
+        var password = string.IsNullOrWhiteSpace(_newUser.Password) ? null : _newUser.Password;
+
+        if (email is null && password is null)
+        {
+            _createUserError = "Set a password, an email (for OIDC), or both.";
+            return;
+        }
+
+        _isCreating = true;
+        _createUserError = null;
+        try
+        {
+            await UserRepository.CreateUserAsync(username, _newUser.Role, email, password);
+            _newUser = new NewUserModel();
+            await RefreshUsersAsync();
+        }
+        catch (DuplicateUsernameException)
+        {
+            _createUserError = $"Username '{username}' is already taken.";
+        }
+        catch (DuplicateEmailException)
+        {
+            _createUserError = $"Email '{email}' is already in use.";
+        }
+        finally
+        {
+            _isCreating = false;
+        }
+    }
+
+    private void BeginResetPassword(UserAccount user)
+    {
+        _resetPasswordTarget = user;
+        _newPassword = "";
+        _resetPasswordError = null;
+    }
+
+    private async Task ConfirmResetPasswordAsync()
+    {
+        if (_newPassword.Length < 8)
+        {
+            _resetPasswordError = "Password must be at least 8 characters.";
+            return;
+        }
+
+        await UserRepository.SetPasswordAsync(_resetPasswordTarget!.Id, _newPassword);
+        _resetPasswordTarget = null;
+    }
+
+    private void BeginDelete(UserAccount user)
+    {
+        _deleteTarget = user;
+        _deleteError = null;
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        try
+        {
+            await UserManagementService.DeleteUserAsync(_deleteTarget!.Id, CurrentUser.UserId);
+            _deleteTarget = null;
+            await RefreshUsersAsync();
+        }
+        catch (CannotDeleteSelfException ex)
+        {
+            _deleteError = ex.Message;
+        }
+        catch (CannotDeleteLastAdminException ex)
+        {
+            _deleteError = ex.Message;
+        }
+    }
+
+    private sealed class NewUserModel
+    {
+        [Required]
+        public string Username { get; set; } = "";
+
+        public UserRole Role { get; set; } = UserRole.Member;
+
+        public string Email { get; set; } = "";
+
+        public string Password { get; set; } = "";
+    }
+}

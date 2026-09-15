@@ -5,17 +5,15 @@ as portable markdown files on disk — copy the folder and every note is a reada
 any editor. A SQLite database indexes the notes for fast search/listing and stores app settings;
 it's a derived cache, never the source of truth.
 
-**Login doesn't exist yet.** User accounts are admin-created (Settings → Users, username only, no
-password), and which account is "you" is currently chosen with a non-secure, dev-only "act as"
-switcher in the nav menu — anyone with access to the app can act as anyone. This is a placeholder
-for a real login system, not a security boundary; treat this app as accessible only to people you
-already trust until real authentication lands.
+The very first time you run JNotes, you'll land on a setup screen to create the admin account —
+see [Authentication](#authentication) below for that flow, adding more users, and OIDC.
 
 ## Features
 
 - **Text notes** — free-form markdown, edited with a live preview.
 - **Checklist notes** — markdown task lists (`- [ ] item`) rendered as interactive checkboxes.
-- **Multi-user** — admin-created accounts, each with their own notes and settings.
+- **Multi-user with real accounts** — admin-created users, each with their own notes and settings;
+  sign in with a password, OIDC, or both.
 - **Portable storage** — every note is `notes/<user-id>/<id>.md` with a small YAML front matter
   header (title, tags, type, timestamps) followed by the markdown body.
 - **Responsive UI** — Bootstrap 5, usable on both desktop and mobile.
@@ -35,9 +33,9 @@ tests/
 ```
 
 `JNotes.Web` never touches the filesystem or EF Core/SQLite directly — it only consumes
-`INoteService`, `ISettingsService`, `INoteIndexReconciler`, and `IUserRepository` from
-`JNotes.Core`. This is enforced at build time via `Microsoft.CodeAnalysis.BannedApiAnalyzers`
-(`src/JNotes.Web/BannedSymbols.txt`).
+`INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`, and
+`IUserManagementService` from `JNotes.Core`. This is enforced at build time via
+`Microsoft.CodeAnalysis.BannedApiAnalyzers` (`src/JNotes.Web/BannedSymbols.txt`).
 
 ### Styling
 
@@ -71,16 +69,17 @@ By default this stores notes and the SQLite database under `src/JNotes.Web/App_D
 Override either with an environment variable of the same name (`NOTES_PATH`, `DB_PATH`) — this is
 how `docker-compose.yml` points them at `/data`.
 
-On first run with no users in the database, a default `admin` user is created automatically and
-its notes land under `App_Data/notes/<admin's user id>/`. Create additional users from
-Settings → Users, and switch between them with the "Acting as" dropdown in the nav menu (labeled
-dev-only/not secure — see the login note above).
+On first run with no users in the database, every request redirects to a setup screen where you
+pick the admin's username and password — see [Authentication](#authentication) below.
 
-> **Upgrading from a pre-multi-user version of JNotes?** There's no automated migration — delete
-> `App_Data` (or your `NOTES_PATH`/`DB_PATH` targets) and start fresh. If you want to keep old
-> notes, move each `notes/<id>.md` file by hand into a `notes/<user-id>/` subfolder for whichever
-> user should own it (find the new user's id in Settings → Users, or the `Users` table in
-> `jnotes.db`) before starting the app.
+> **Upgrading from an older version of JNotes that predates real authentication?** There's no
+> automated migration, and — unlike earlier upgrades — this one leaves the app **completely
+> unusable** if you skip the reset: existing accounts have no password and no admin role, so
+> there's no way to sign in or reach `/users` to fix it. Delete `App_Data` (or your
+> `NOTES_PATH`/`DB_PATH` targets) and start fresh; you'll go through the setup screen again. If you
+> want to keep old notes, move each `notes/<id>.md` file by hand into a `notes/<user-id>/`
+> subfolder for whichever user should own it (find the new user's id in `/users`, or the `Users`
+> table in `jnotes.db`) before starting the app.
 
 ### Configuration
 
@@ -89,8 +88,12 @@ dev-only/not secure — see the login note above).
 | `NOTES_PATH` | `App_Data/notes` (local) / `/data/notes` (Docker) | Folder note markdown files are read from/written to. |
 | `DB_PATH` | `App_Data/jnotes.db` (local) / `/data/jnotes.db` (Docker) | SQLite index/settings database file. |
 | `TZ` | `UTC` | IANA time zone id (e.g. `America/New_York`, `Europe/London`) note timestamps are *displayed* in. Storage is always UTC regardless — this only affects what you see in the UI. |
+| `OIDC_AUTHORITY` | unset | Your OIDC provider's issuer URL. Leave unset to disable OIDC entirely. |
+| `OIDC_CLIENT_ID` | unset | OIDC client id registered with your provider. |
+| `OIDC_CLIENT_SECRET` | unset | OIDC client secret. All three `OIDC_*` values must be set for OIDC to be offered. |
+| `OIDC_DISPLAY_NAME` | `OIDC` | Label on the "Sign in with …" button on the login page. |
 
-All three take effect at startup only — changing one requires an app/container restart.
+All of these take effect at startup only — changing one requires an app/container restart.
 
 ### Tests
 
@@ -128,6 +131,26 @@ it's running). As with running locally, upgrading from a pre-multi-user version 
 > can't write to `./data` on your host (uncommon, but possible with some Docker Engine/Linux
 > setups), fix host-side permissions with `chmod -R a+rwX ./data` or run
 > `sudo chown -R $(id -u):$(id -g) ./data` before starting the container.
+
+## Authentication
+
+**First run:** with no users yet, every page redirects to a setup screen where you choose the
+admin's username and password. That account can then manage everyone else from **User
+Management** (linked from the nav once signed in as an admin) — create additional users, reset a
+password, or delete an account. Deleting a user never deletes their notes: the folder is moved to
+`notes/deleted/<user-id>/` rather than removed, and the account itself is deleted. There's no
+"restore" button yet — put the folder back and re-create the account by hand if you need to.
+
+**Each user needs a password, an email (for OIDC), or both** — set when they're created. There's
+no self-service password reset or invite email (JNotes has no mail-sending capability); an admin
+sets or resets a password directly, and anyone can change their own from Settings → Account.
+
+**OIDC** is optional and configured with the `OIDC_AUTHORITY`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`
+env vars (see Configuration above) — once set, a "Sign in with …" button appears on the login page.
+Accounts aren't auto-created from OIDC: an admin creates the user first with their email set, and
+that account links to the IdP automatically the first time they sign in with a matching email.
+Once OIDC is configured, an admin can turn password login off entirely from Settings → Security
+(refused if OIDC isn't configured, so you can't lock everyone out).
 
 ## Note file format
 

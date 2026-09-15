@@ -51,6 +51,13 @@ public sealed class JNotesDbContext(DbContextOptions<JNotesDbContext> options) :
             // usernames, not full Unicode case-folding.
             entity.Property(e => e.Username).UseCollation("NOCASE");
             entity.HasIndex(e => e.Username).IsUnique();
+            // Stored as the enum's name, never its int ordinal — reordering UserRole must never
+            // silently reassign who's an admin.
+            entity.Property(e => e.Role).HasConversion<string>();
+            // Filtered: Email/OidcSubject are optional (password-only accounts have neither), and
+            // SQLite/EF Core's default unique index would otherwise only tolerate one NULL row.
+            entity.HasIndex(e => e.Email).IsUnique().HasFilter("\"Email\" IS NOT NULL");
+            entity.HasIndex(e => e.OidcSubject).IsUnique().HasFilter("\"OidcSubject\" IS NOT NULL");
         });
 
         modelBuilder.Entity<UserSetting>(entity =>
