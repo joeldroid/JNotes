@@ -95,6 +95,13 @@ pick the admin's username and password — see [Authentication](#authentication)
 
 All of these take effect at startup only — changing one requires an app/container restart.
 
+> **Backing up `jnotes.db`?** It runs in SQLite's WAL journal mode, so two more files sit next to
+> it — `jnotes.db-wal` and `jnotes.db-shm`. A plain copy of just `jnotes.db` mid-run can miss data
+> still sitting in the WAL file. Stop the app before copying, or checkpoint first
+> (`sqlite3 jnotes.db "PRAGMA wal_checkpoint(TRUNCATE);"`) and copy all three files together. This
+> only affects the derived index/settings database — your notes themselves are always plain `.md`
+> files, safe to copy anytime.
+
 ### Tests
 
 ```bash
