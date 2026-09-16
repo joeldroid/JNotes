@@ -102,6 +102,12 @@ namespace JNotes.Core.Data.Migrations
                     b.Property<string>("Email")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("FirstName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastName")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("OidcSubject")
                         .HasColumnType("TEXT");
 

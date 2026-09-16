@@ -1,0 +1,123 @@
+@page "/profile"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@inject IUserRepository UserRepository
+@inject IUserManagementService UserManagementService
+@inject ICurrentUserContext CurrentUser
+@inject NavigationManager NavigationManager
+
+<PageTitle>My Profile</PageTitle>
+
+<h1 class="h3 mb-3">My Profile</h1>
+
+@if (_user is null)
+{
+    <p class="text-body-secondary">Loading…</p>
+}
+else
+{
+    <EditForm Model="_model" OnValidSubmit="SaveAsync" style="max-width: 420px;">
+        <DataAnnotationsValidator />
+        @if (_error is not null)
+        {
+            <div class="alert alert-danger py-2">@_error</div>
+        }
+
+        <p class="mb-3">
+            <strong>Username:</strong> @_user.Username
+            <span class="text-body-secondary small">(username can't be changed here)</span>
+        </p>
+
+        <div class="mb-2">
+            <label class="form-label">First name</label>
+            <InputText class="form-control" @bind-Value="_model.FirstName" />
+        </div>
+        <div class="mb-2">
+            <label class="form-label">Last name</label>
+            <InputText class="form-control" @bind-Value="_model.LastName" />
+        </div>
+        <div class="mb-2">
+            <label class="form-label">Email</label>
+            <InputText class="form-control" @bind-Value="_model.Email" disabled="@(!_canEditEmail)" />
+            @if (!_canEditEmail)
+            {
+                <div class="form-text">Only an admin can change your email.</div>
+            }
+        </div>
+
+        <button type="submit" class="btn btn-primary" disabled="@_isSaving">
+            @(_isSaving ? "Saving…" : "Save")
+        </button>
+    </EditForm>
+}
+
+@code {
+    private UserAccount? _user;
+    private ProfileModel _model = new();
+    private bool _canEditEmail;
+    private bool _isSaving;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await UserRepository.GetUserByIdAsync(CurrentUser.UserId);
+        if (_user is null)
+        {
+            return;
+        }
+
+        _canEditEmail = _user.Role == UserRole.Admin;
+        _model = new ProfileModel
+        {
+            FirstName = _user.FirstName ?? "",
+            LastName = _user.LastName ?? "",
+            Email = _user.Email ?? "",
+        };
+    }
+
+    private async Task SaveAsync()
+    {
+        _isSaving = true;
+        _error = null;
+
+        var firstName = string.IsNullOrWhiteSpace(_model.FirstName) ? null : _model.FirstName.Trim();
+        var lastName = string.IsNullOrWhiteSpace(_model.LastName) ? null : _model.LastName.Trim();
+        // If email isn't editable, send back exactly what's already on the account rather than the
+        // (disabled, but still present) input's value — belt-and-suspenders alongside the
+        // server-side check in IUserManagementService, not a substitute for it.
+        var email = _canEditEmail
+            ? (string.IsNullOrWhiteSpace(_model.Email) ? null : _model.Email.Trim())
+            : _user!.Email;
+
+        try
+        {
+            await UserManagementService.UpdateProfileAsync(CurrentUser.UserId, CurrentUser.UserId, firstName, lastName, email);
+
+            // Forced full reload so NavMenu's "Signed in as" (which reads the freshly-saved first
+            // name) refreshes immediately — it's part of MainLayout, a sibling that a normal
+            // in-circuit re-render of this page alone wouldn't touch.
+            NavigationManager.NavigateTo("/profile", forceLoad: true);
+        }
+        catch (DuplicateEmailException)
+        {
+            _error = $"Email '{email}' is already in use by another account.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private sealed class ProfileModel
+    {
+        public string FirstName { get; set; } = "";
+
+        public string LastName { get; set; } = "";
+
+        public string Email { get; set; } = "";
+    }
+}

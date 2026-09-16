@@ -26,6 +26,20 @@ everyone out). OIDC provisioning is admin-gated, not self-service: an admin pre-
 with an `Email` set, and the first successful OIDC login for that email links it
 (`OidcAccountLinker`, matches an **unlinked** account only — never relinks or auto-creates).
 
+**Profile editing (`/profile`, `Users.razor`'s "Edit profile") has one permission rule: Email is
+Admin-only, enforced in Core, not just the UI.** `IUserManagementService.UpdateProfileAsync(targetUserId,
+requestingUserId, ...)` is the single entry point both `Profile.razor` (self-edit — `targetUserId ==
+requestingUserId`) and the admin-only `/users` page (editing someone else) call. FirstName/LastName
+are always allowed for your own profile, or anyone's if you're an Admin; Email is refused
+server-side (`InvalidOperationException`) for a Member changing their own — the UI disables the
+input too, but that alone wouldn't stop a client that skipped it, so the same rule is checked again
+in `UserManagementService` itself, the same belt-and-suspenders `SetPasswordAuthEnabledAsync`
+already established. `NavMenu`'s "Signed in as" shows `FirstName ?? Username`, re-queried fresh on
+every circuit init (not baked into the auth cookie's claims, which would go stale until next login)
+— both `Profile.razor` and the admin edit modal force a full reload after saving so `NavMenu` (a
+sibling component, not a descendant of either) picks up the change immediately instead of waiting
+for the user's next navigation.
+
 ## Commands
 
 ```bash

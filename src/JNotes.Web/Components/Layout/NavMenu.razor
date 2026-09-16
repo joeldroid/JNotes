@@ -1,3 +1,7 @@
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IUserRepository UserRepository
+@inject ICurrentUserContext CurrentUser
+
 <ul class="nav nav-pills flex-column gap-1">
     <li class="nav-item">
         <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
@@ -7,6 +11,11 @@
     <li class="nav-item">
         <NavLink class="nav-link" href="/settings">
             Settings
+        </NavLink>
+    </li>
+    <li class="nav-item">
+        <NavLink class="nav-link" href="/profile">
+            My Profile
         </NavLink>
     </li>
     <AuthorizeView Roles="Admin">
@@ -20,10 +29,28 @@
 
 <AuthorizeView>
     <div class="mt-3 pt-3 border-top small">
-        <div class="text-body-secondary mb-2">Signed in as <strong>@context.User.Identity?.Name</strong></div>
+        <div class="text-body-secondary mb-2">Signed in as <strong>@_displayName</strong></div>
         <form method="post" action="/logout">
             <AntiforgeryToken />
             <button type="submit" class="btn btn-outline-secondary btn-sm w-100">Sign out</button>
         </form>
     </div>
 </AuthorizeView>
+
+@code {
+    private string? _displayName;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Guarded on IsAuthenticated (not just wrapped in <AuthorizeView> in the markup above) —
+        // NavMenu renders inside MainLayout, which NotFound/Error also use with [AllowAnonymous],
+        // so this can run for a signed-out visitor too. ICurrentUserContext.UserId throws in that
+        // case, so it must never be touched outside this check.
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            var user = await UserRepository.GetUserByIdAsync(CurrentUser.UserId);
+            _displayName = user?.FirstName is { Length: > 0 } firstName ? firstName : user?.Username;
+        }
+    }
+}

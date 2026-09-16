@@ -42,4 +42,30 @@ public sealed class UserManagementService : IUserManagementService
         await _fileStore.ArchiveUserFolderAsync(targetUserId, cancellationToken);
         await _userRepository.DeleteUserAsync(targetUserId, cancellationToken);
     }
+
+    public async Task UpdateProfileAsync(Guid targetUserId, Guid requestingUserId, string? firstName, string? lastName, string? email, CancellationToken cancellationToken = default)
+    {
+        var requester = await _userRepository.GetUserByIdAsync(requestingUserId, cancellationToken);
+        var requesterIsAdmin = requester?.Role == UserRole.Admin;
+
+        if (targetUserId != requestingUserId && !requesterIsAdmin)
+        {
+            // Not reachable through the UI today (only the admin-gated Users page can target
+            // someone else) — defensive, the same belt-and-suspenders DeleteUserAsync already does.
+            throw new InvalidOperationException("Only an admin can edit another user's profile.");
+        }
+
+        var target = targetUserId == requestingUserId ? requester : await _userRepository.GetUserByIdAsync(targetUserId, cancellationToken);
+        if (target is null)
+        {
+            return; // gone — nothing to update
+        }
+
+        if (email is not null && email != target.Email && !requesterIsAdmin)
+        {
+            throw new InvalidOperationException("Only an admin can change your email.");
+        }
+
+        await _userRepository.UpdateProfileAsync(targetUserId, firstName, lastName, email, cancellationToken);
+    }
 }

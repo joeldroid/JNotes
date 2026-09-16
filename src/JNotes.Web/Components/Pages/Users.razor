@@ -4,6 +4,7 @@
 @inject IUserRepository UserRepository
 @inject IUserManagementService UserManagementService
 @inject ICurrentUserContext CurrentUser
+@inject NavigationManager NavigationManager
 
 <PageTitle>User Management</PageTitle>
 
@@ -13,6 +14,7 @@
     <thead>
         <tr>
             <th>Username</th>
+            <th>Name</th>
             <th>Role</th>
             <th>Email</th>
             <th>Auth methods</th>
@@ -25,9 +27,11 @@
         {
             var isSelf = user.Id == CurrentUser.UserId;
             var isLastAdmin = user.Role == UserRole.Admin && _adminCount <= 1;
+            var name = string.Join(" ", new[] { user.FirstName, user.LastName }.Where(n => !string.IsNullOrWhiteSpace(n)));
 
             <tr>
                 <td>@user.Username @(isSelf ? "(you)" : "")</td>
+                <td>@(name.Length > 0 ? name : "—")</td>
                 <td>@user.Role</td>
                 <td>@(user.Email ?? "—")</td>
                 <td>
@@ -36,7 +40,8 @@
                     @(user.OidcSubject is not null ? "OIDC" : "")
                 </td>
                 <td>@user.CreatedAt.LocalDateTime.ToString("d")</td>
-                <td class="text-end">
+                <td class="text-end text-nowrap">
+                    <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => BeginEditProfile(user)">Edit profile</button>
                     <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => BeginResetPassword(user)">Reset password</button>
                     <button class="btn btn-sm btn-outline-danger" disabled="@(isSelf || isLastAdmin)" @onclick="() => BeginDelete(user)">Delete</button>
                 </td>
@@ -75,6 +80,42 @@
         <button type="submit" class="btn btn-outline-primary" disabled="@_isCreating">Add user</button>
     </EditForm>
 </section>
+
+@if (_editProfileTarget is not null)
+{
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit profile for @_editProfileTarget.Username</h5>
+                    <button type="button" class="btn-close" @onclick="() => _editProfileTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    @if (_editProfileError is not null)
+                    {
+                        <div class="alert alert-danger py-2">@_editProfileError</div>
+                    }
+                    <div class="mb-2">
+                        <label class="form-label">First name</label>
+                        <input class="form-control" @bind="_editFirstName" @bind:event="oninput" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Last name</label>
+                        <input class="form-control" @bind="_editLastName" @bind:event="oninput" />
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label">Email</label>
+                        <input class="form-control" @bind="_editEmail" @bind:event="oninput" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _editProfileTarget = null">Cancel</button>
+                    <button class="btn btn-primary" @onclick="ConfirmEditProfileAsync">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
 
 @if (_resetPasswordTarget is not null)
 {
@@ -138,6 +179,12 @@
     private bool _isCreating;
     private string? _createUserError;
 
+    private UserAccount? _editProfileTarget;
+    private string _editFirstName = "";
+    private string _editLastName = "";
+    private string _editEmail = "";
+    private string? _editProfileError;
+
     private UserAccount? _resetPasswordTarget;
     private string _newPassword = "";
     private string? _resetPasswordError;
@@ -184,6 +231,47 @@
         finally
         {
             _isCreating = false;
+        }
+    }
+
+    private void BeginEditProfile(UserAccount user)
+    {
+        _editProfileTarget = user;
+        _editFirstName = user.FirstName ?? "";
+        _editLastName = user.LastName ?? "";
+        _editEmail = user.Email ?? "";
+        _editProfileError = null;
+    }
+
+    private async Task ConfirmEditProfileAsync()
+    {
+        var firstName = string.IsNullOrWhiteSpace(_editFirstName) ? null : _editFirstName.Trim();
+        var lastName = string.IsNullOrWhiteSpace(_editLastName) ? null : _editLastName.Trim();
+        var email = string.IsNullOrWhiteSpace(_editEmail) ? null : _editEmail.Trim();
+        var targetId = _editProfileTarget!.Id;
+
+        try
+        {
+            await UserManagementService.UpdateProfileAsync(targetId, CurrentUser.UserId, firstName, lastName, email);
+            _editProfileTarget = null;
+
+            if (targetId == CurrentUser.UserId)
+            {
+                // Refresh NavMenu's displayed name — same reasoning as Profile.razor's own save.
+                NavigationManager.NavigateTo("/users", forceLoad: true);
+            }
+            else
+            {
+                await RefreshUsersAsync();
+            }
+        }
+        catch (DuplicateEmailException)
+        {
+            _editProfileError = $"Email '{email}' is already in use by another account.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            _editProfileError = ex.Message;
         }
     }
 

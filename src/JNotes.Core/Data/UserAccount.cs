@@ -28,4 +28,9 @@ public sealed class UserAccount
     /// admin can't type this in ahead of time — it's opaque and IdP-specific). Null until linked.
     /// </summary>
     public string? OidcSubject { get; set; }
+
+    /// <summary>Set via the /profile screen — null until the user (or an admin) sets one.</summary>
+    public string? FirstName { get; set; }
+
+    public string? LastName { get; set; }
 }

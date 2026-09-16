@@ -200,6 +200,41 @@ public class EfUserRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task UpdateProfileAsync_sets_FirstName_LastName_and_Email()
+    {
+        var created = await _repository.CreateUserAsync("alice", UserRole.Member, null, "password123");
+
+        await _repository.UpdateProfileAsync(created.Id, "Alice", "Anderson", "alice@example.com");
+
+        var reloaded = await _repository.GetUserByIdAsync(created.Id);
+        Assert.NotNull(reloaded);
+        Assert.Equal("Alice", reloaded.FirstName);
+        Assert.Equal("Anderson", reloaded.LastName);
+        Assert.Equal("alice@example.com", reloaded.Email);
+    }
+
+    [Fact]
+    public async Task UpdateProfileAsync_throws_DuplicateEmailException_for_a_different_users_email()
+    {
+        await _repository.CreateUserAsync("alice", UserRole.Member, "alice@example.com", "password123");
+        var bob = await _repository.CreateUserAsync("bob", UserRole.Member, null, "password123");
+
+        await Assert.ThrowsAsync<DuplicateEmailException>(
+            () => _repository.UpdateProfileAsync(bob.Id, null, null, "alice@example.com"));
+    }
+
+    [Fact]
+    public async Task UpdateProfileAsync_does_not_throw_when_saving_a_users_own_unchanged_email()
+    {
+        var created = await _repository.CreateUserAsync("alice", UserRole.Member, "alice@example.com", "password123");
+
+        await _repository.UpdateProfileAsync(created.Id, "Alice", null, "alice@example.com");
+
+        var reloaded = await _repository.GetUserByIdAsync(created.Id);
+        Assert.Equal("Alice", reloaded!.FirstName);
+    }
+
+    [Fact]
     public async Task DeleteUserAsync_removes_the_user()
     {
         var created = await _repository.CreateUserAsync("alice", UserRole.Member, null, "password123");

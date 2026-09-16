@@ -119,4 +119,76 @@ public class UserManagementServiceTests : IAsyncLifetime
 
         Assert.Null(await _userRepository.GetUserByIdAsync(adminB.Id));
     }
+
+    [Fact]
+    public async Task UpdateProfileAsync_lets_a_member_change_their_own_name()
+    {
+        var member = await _userRepository.CreateUserAsync("member", UserRole.Member, null, "password123");
+
+        await _userManagementService.UpdateProfileAsync(member.Id, member.Id, "Mem", "Ber", null);
+
+        var reloaded = await _userRepository.GetUserByIdAsync(member.Id);
+        Assert.Equal("Mem", reloaded!.FirstName);
+        Assert.Equal("Ber", reloaded.LastName);
+    }
+
+    [Fact]
+    public async Task UpdateProfileAsync_refuses_a_member_changing_their_own_email()
+    {
+        var member = await _userRepository.CreateUserAsync("member", UserRole.Member, "member@example.com", "password123");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _userManagementService.UpdateProfileAsync(member.Id, member.Id, "Mem", null, "new@example.com"));
+
+        var reloaded = await _userRepository.GetUserByIdAsync(member.Id);
+        Assert.Equal("member@example.com", reloaded!.Email);
+        Assert.Null(reloaded.FirstName); // the whole call is refused — nothing partially applied
+    }
+
+    [Fact]
+    public async Task UpdateProfileAsync_allows_a_member_saving_their_own_email_back_unchanged()
+    {
+        var member = await _userRepository.CreateUserAsync("member", UserRole.Member, "member@example.com", "password123");
+
+        await _userManagementService.UpdateProfileAsync(member.Id, member.Id, "Mem", null, "member@example.com");
+
+        var reloaded = await _userRepository.GetUserByIdAsync(member.Id);
+        Assert.Equal("Mem", reloaded!.FirstName);
+    }
+
+    [Fact]
+    public async Task UpdateProfileAsync_lets_an_admin_change_their_own_email()
+    {
+        var admin = await _userRepository.CreateUserAsync("admin", UserRole.Admin, "admin@example.com", "password123");
+
+        await _userManagementService.UpdateProfileAsync(admin.Id, admin.Id, null, null, "new-admin@example.com");
+
+        var reloaded = await _userRepository.GetUserByIdAsync(admin.Id);
+        Assert.Equal("new-admin@example.com", reloaded!.Email);
+    }
+
+    [Fact]
+    public async Task UpdateProfileAsync_lets_an_admin_edit_another_users_full_profile()
+    {
+        var admin = await _userRepository.CreateUserAsync("admin", UserRole.Admin, null, "password123");
+        var member = await _userRepository.CreateUserAsync("member", UserRole.Member, null, "password123");
+
+        await _userManagementService.UpdateProfileAsync(member.Id, admin.Id, "Mem", "Ber", "member@example.com");
+
+        var reloaded = await _userRepository.GetUserByIdAsync(member.Id);
+        Assert.Equal("Mem", reloaded!.FirstName);
+        Assert.Equal("member@example.com", reloaded.Email);
+    }
+
+    [Fact]
+    public async Task UpdateProfileAsync_refuses_a_member_editing_someone_elses_profile()
+    {
+        var memberA = await _userRepository.CreateUserAsync("member-a", UserRole.Member, null, "password123");
+        var memberB = await _userRepository.CreateUserAsync("member-b", UserRole.Member, null, "password123");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _userManagementService.UpdateProfileAsync(memberB.Id, memberA.Id, "Hacked", null, null));
+
+        Assert.Null((await _userRepository.GetUserByIdAsync(memberB.Id))!.FirstName);
+    }
 }

@@ -29,4 +29,13 @@ public interface IUserRepository
 
     /// <summary>Hard-deletes the account row (cascades its notes-index/settings rows) — callers that also need to preserve the user's files should archive them first, see <c>IUserManagementService</c>.</summary>
     Task DeleteUserAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets FirstName/LastName/Email unconditionally — permission (whether the caller is even
+    /// allowed to change <paramref name="email"/>) is enforced by <c>IUserManagementService</c>,
+    /// not here, the same layering as <c>DeleteUserAsync</c>/<c>IUserManagementService.DeleteUserAsync</c>.
+    /// A no-op if <paramref name="userId"/> doesn't exist.
+    /// </summary>
+    /// <exception cref="DuplicateEmailException"><paramref name="email"/> is already in use by a different account.</exception>
+    Task UpdateProfileAsync(Guid userId, string? firstName, string? lastName, string? email, CancellationToken cancellationToken = default);
 }

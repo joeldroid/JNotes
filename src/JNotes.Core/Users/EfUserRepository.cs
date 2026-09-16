@@ -159,4 +159,26 @@ public sealed class EfUserRepository : IUserRepository
         db.Users.Remove(user);
         await db.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task UpdateProfileAsync(Guid userId, string? firstName, string? lastName, string? email, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var user = await db.Users.FindAsync([userId], cancellationToken);
+        if (user is null)
+        {
+            return;
+        }
+
+        // Same proactive-check pattern as CreateUserAsync — only when the email is actually
+        // changing, so saving a profile back with its own unchanged email never false-positives.
+        if (email is not null && email != user.Email && await db.Users.AnyAsync(u => u.Id != userId && u.Email == email, cancellationToken))
+        {
+            throw new DuplicateEmailException(email);
+        }
+
+        user.FirstName = firstName;
+        user.LastName = lastName;
+        user.Email = email;
+        await db.SaveChangesAsync(cancellationToken);
+    }
 }

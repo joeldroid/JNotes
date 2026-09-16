@@ -16,4 +16,17 @@ public interface IUserManagementService
     /// <exception cref="CannotDeleteSelfException"><paramref name="targetUserId"/> equals <paramref name="requestingUserId"/>.</exception>
     /// <exception cref="CannotDeleteLastAdminException">The target is the only remaining <see cref="Data.UserRole.Admin"/>.</exception>
     Task DeleteUserAsync(Guid targetUserId, Guid requestingUserId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates <paramref name="targetUserId"/>'s profile. FirstName/LastName are always allowed for
+    /// your own profile, or any profile if you're an Admin. Email is Admin-only to change — a
+    /// Member can never change their own email, by design (see /profile), enforced here rather
+    /// than just in the UI so it can't be bypassed by a client that skips the disabled input.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// <paramref name="requestingUserId"/> isn't an Admin and either targets someone else, or is
+    /// trying to change <paramref name="email"/>.
+    /// </exception>
+    /// <exception cref="DuplicateEmailException"><paramref name="email"/> is already in use by a different account.</exception>
+    Task UpdateProfileAsync(Guid targetUserId, Guid requestingUserId, string? firstName, string? lastName, string? email, CancellationToken cancellationToken = default);
 }
