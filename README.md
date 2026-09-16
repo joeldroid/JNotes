@@ -75,11 +75,11 @@ pick the admin's username and password — see [Authentication](#authentication)
 > **Upgrading from an older version of JNotes that predates real authentication?** There's no
 > automated migration, and — unlike earlier upgrades — this one leaves the app **completely
 > unusable** if you skip the reset: existing accounts have no password and no admin role, so
-> there's no way to sign in or reach `/users` to fix it. Delete `App_Data` (or your
+> there's no way to sign in or reach `/settings` to fix it. Delete `App_Data` (or your
 > `NOTES_PATH`/`DB_PATH` targets) and start fresh; you'll go through the setup screen again. If you
 > want to keep old notes, move each `notes/<id>.md` file by hand into a `notes/<user-id>/`
-> subfolder for whichever user should own it (find the new user's id in `/users`, or the `Users`
-> table in `jnotes.db`) before starting the app.
+> subfolder for whichever user should own it (find the new user's id in `/settings`'s
+> Administration settings section, or the `Users` table in `jnotes.db`) before starting the app.
 
 ### Configuration
 
@@ -142,11 +142,11 @@ it's running). As with running locally, upgrading from a pre-multi-user version 
 ## Authentication
 
 **First run:** with no users yet, every page redirects to a setup screen where you choose the
-admin's username and password. That account can then manage everyone else from **User
-Management** (linked from the nav once signed in as an admin) — create additional users, reset a
-password, or delete an account. Deleting a user never deletes their notes: the folder is moved to
-`notes/deleted/<user-id>/` rather than removed, and the account itself is deleted. There's no
-"restore" button yet — put the folder back and re-create the account by hand if you need to.
+admin's username and password. That account can then manage everyone else from Settings →
+**Administration settings** (only visible once signed in as an admin) — create additional users,
+reset a password, or delete an account. Deleting a user never deletes their notes: the folder is
+moved to `notes/deleted/<user-id>/` rather than removed, and the account itself is deleted. There's
+no "restore" button yet — put the folder back and re-create the account by hand if you need to.
 
 **Each user needs a password, an email (for OIDC), or both** — set when they're created. There's
 no self-service password reset or invite email (JNotes has no mail-sending capability); an admin
@@ -156,8 +156,8 @@ sets or resets a password directly, and anyone can change their own from Setting
 env vars (see Configuration above) — once set, a "Sign in with …" button appears on the login page.
 Accounts aren't auto-created from OIDC: an admin creates the user first with their email set, and
 that account links to the IdP automatically the first time they sign in with a matching email.
-Once OIDC is configured, an admin can turn password login off entirely from Settings → Security
-(refused if OIDC isn't configured, so you can't lock everyone out).
+Once OIDC is configured, an admin can turn password login off entirely from Settings →
+Administration settings → Security (refused if OIDC isn't configured, so you can't lock everyone out).
 
 ## Note file format
 

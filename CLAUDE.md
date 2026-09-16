@@ -15,9 +15,12 @@ configuration reference.
 `OidcSubject` — an account needs at least a password or an email (for OIDC) to ever sign in. The
 very first admin is created through a first-run `/setup` screen (gated by `ISetupStateProvider`,
 seeded at startup by `HostExtensions.InitializeSetupStateAsync` from "does any `UserAccount` exist
-yet") — there's no more auto-created default user. Admins manage everyone else from `/users`
-(`[Authorize(Policy = "AdminOnly")]`): create, reset a password, or delete (see "Files are the
-source of truth" below for what deleting does). OIDC is supported alongside password login and can
+yet") — there's no more auto-created default user. Admins manage everyone else from `/settings`'s
+Administration settings section (markup-gated via `<AuthorizeView Roles="Admin">`, plus a
+server-side role check before the page ever loads every account's data into a Member's circuit
+state — see "Settings and user management share one page" below): create, reset a password, or
+delete (see "Files are the source of truth" below for what deleting does). OIDC is supported
+alongside password login and can
 be configured via `OIDC_AUTHORITY`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`/`OIDC_DISPLAY_NAME` env
 vars (`JNotes.Core.Users.OidcOptions`, read the same flat-env-var way as `NOTES_PATH`/`DB_PATH`/`TZ`);
 password login itself can be turned off from Settings → Security once OIDC is configured
@@ -26,10 +29,11 @@ everyone out). OIDC provisioning is admin-gated, not self-service: an admin pre-
 with an `Email` set, and the first successful OIDC login for that email links it
 (`OidcAccountLinker`, matches an **unlinked** account only — never relinks or auto-creates).
 
-**Profile editing (`/profile`, `Users.razor`'s "Edit profile") has one permission rule: Email is
-Admin-only, enforced in Core, not just the UI.** `IUserManagementService.UpdateProfileAsync(targetUserId,
-requestingUserId, ...)` is the single entry point both `Profile.razor` (self-edit — `targetUserId ==
-requestingUserId`) and the admin-only `/users` page (editing someone else) call. FirstName/LastName
+**Profile editing (`/profile`, `Settings.razor`'s Administration settings "Edit profile") has one
+permission rule: Email is Admin-only, enforced in Core, not just the UI.**
+`IUserManagementService.UpdateProfileAsync(targetUserId, requestingUserId, ...)` is the single
+entry point both `Profile.razor` (self-edit — `targetUserId == requestingUserId`) and the
+admin-only section of `Settings.razor` (editing someone else) call. FirstName/LastName
 are always allowed for your own profile, or anyone's if you're an Admin; Email is refused
 server-side (`InvalidOperationException`) for a Member changing their own — the UI disables the
 input too, but that alone wouldn't stop a client that skipped it, so the same rule is checked again
@@ -39,6 +43,24 @@ every circuit init (not baked into the auth cookie's claims, which would go stal
 — both `Profile.razor` and the admin edit modal force a full reload after saving so `NavMenu` (a
 sibling component, not a descendant of either) picks up the change immediately instead of waiting
 for the user's next navigation.
+
+**Settings and user management share one page, split into two sections by role, not two routes.**
+`Settings.razor` (`/settings`, `[Authorize]` — any signed-in user) has an "App settings" section
+(Appearance/Storage/Index/Account) everyone sees, and an "Administration settings" section
+(Security, the user table, add/edit/delete user) wrapped in `<AuthorizeView Roles="Admin">` — the
+former standalone `/users` page (`[Authorize(Policy = "AdminOnly")]`) folded in here rather than
+staying a separate route, so there's one settings destination instead of two nav entries. Markup
+gating alone isn't enough for `OnInitializedAsync`, though: it only stops the Administration section
+from *rendering*, not from being fetched into a Member's component state, so `Settings.razor` checks
+`AuthenticationStateProvider`'s `IsInRole(nameof(UserRole.Admin))` before ever calling
+`UserRepository.GetAllUsersAsync()` — otherwise every account's email/role/auth-method data would
+sit in a Member's circuit state even though the table never renders for them. The user-management
+mutations themselves (create/delete/reset-password) still have no server-side role check in
+`IUserRepository`/`UserManagementService` beyond what `UpdateProfileAsync`/`DeleteUserAsync` already
+do — same as the pre-existing `Security` section's `TogglePasswordAuthAsync` — relying on Blazor
+Server's render-tree-scoped event dispatch (a Member's circuit never receives an event handler id
+for a button `AuthorizeView` didn't render, so there's nothing to invoke) rather than a route guard,
+now that the admin-only page-level `[Authorize(Policy = "AdminOnly")]` guard is gone.
 
 ## Commands
 
