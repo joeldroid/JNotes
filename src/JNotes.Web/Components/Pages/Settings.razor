@@ -29,40 +29,6 @@
         </div>
     </section>
 
-    <section class="mb-4">
-        <h3 class="h5">Storage</h3>
-        <p class="mb-1"><strong>Notes folder:</strong> <code>@_notesFolderPath</code></p>
-        <p class="text-body-secondary small">Changing the notes folder requires an app restart to take effect.</p>
-        <p class="mb-0"><strong>Notes indexed:</strong> @_noteCount</p>
-    </section>
-
-    <section class="mb-4">
-        <h3 class="h5">Index</h3>
-        <p class="text-body-secondary small">
-            The index is rebuilt automatically at startup. Use this if you've added, edited, or removed
-            note files directly on disk while the app is running.
-        </p>
-        <button class="btn btn-outline-primary" @onclick="RescanAsync" disabled="@_isRescanning">
-            @(_isRescanning ? "Rescanning…" : "Rescan Now")
-        </button>
-
-        @if (_lastResult is { } result)
-        {
-            <div class="alert @(result.Errors.Count > 0 ? "alert-warning" : "alert-success") mt-3 mb-0">
-                <div>Added @result.Added, updated @result.Updated, removed @result.Removed.</div>
-                @if (result.Errors.Count > 0)
-                {
-                    <ul class="mb-0 mt-2">
-                        @foreach (var error in result.Errors)
-                        {
-                            <li>@error</li>
-                        }
-                    </ul>
-                }
-            </div>
-        }
-    </section>
-
     <section style="max-width: 420px;">
         <h3 class="h5">Account</h3>
         <div class="d-flex gap-2 align-items-end flex-wrap">
@@ -104,6 +70,40 @@
             @if (_securityError is not null)
             {
                 <div class="alert alert-danger py-2">@_securityError</div>
+            }
+        </section>
+
+        <section class="mb-4">
+            <h3 class="h5">Storage</h3>
+            <p class="mb-1"><strong>Notes folder:</strong> <code>@_notesFolderPath</code></p>
+            <p class="text-body-secondary small">Changing the notes folder requires an app restart to take effect.</p>
+            <p class="mb-0"><strong>Notes indexed:</strong> @_noteCount</p>
+        </section>
+
+        <section class="mb-4">
+            <h3 class="h5">Index</h3>
+            <p class="text-body-secondary small">
+                The index is rebuilt automatically at startup. Use this if you've added, edited, or removed
+                note files directly on disk while the app is running.
+            </p>
+            <button class="btn btn-outline-primary" @onclick="RescanAsync" disabled="@_isRescanning">
+                @(_isRescanning ? "Rescanning…" : "Rescan Now")
+            </button>
+
+            @if (_lastResult is { } result)
+            {
+                <div class="alert @(result.Errors.Count > 0 ? "alert-warning" : "alert-success") mt-3 mb-0">
+                    <div>Added @result.Added, updated @result.Updated, removed @result.Removed.</div>
+                    @if (result.Errors.Count > 0)
+                    {
+                        <ul class="mb-0 mt-2">
+                            @foreach (var error in result.Errors)
+                            {
+                                <li>@error</li>
+                            }
+                        </ul>
+                    }
+                </div>
             }
         </section>
 
@@ -277,16 +277,17 @@
 @code {
     // App settings
     private string _theme = AppTheme.Light;
-    private string _notesFolderPath = "";
-    private int _noteCount;
-    private bool _isRescanning;
-    private ReconciliationResult? _lastResult;
 
     private string _newPassword = "";
     private string? _passwordChangeMessage;
     private bool _passwordChangeError;
 
     // Administration settings
+    private string _notesFolderPath = "";
+    private int _noteCount;
+    private bool _isRescanning;
+    private ReconciliationResult? _lastResult;
+
     private bool _passwordAuthEnabled;
     private OidcOptions _oidc = new();
     private string? _securityError;
@@ -314,14 +315,16 @@
     protected override async Task OnInitializedAsync()
     {
         _theme = await SettingsService.GetThemeAsync(CurrentUser.UserId);
-        _notesFolderPath = await SettingsService.GetNotesFolderPathAsync();
-        await RefreshCountAsync();
 
         // The Administration settings section is markup-gated (AuthorizeView Roles="Admin"), but
-        // that alone wouldn't stop a Member's circuit from fetching every account's data into this
-        // component's state — RequireAdminAsync's check avoids ever running that query for them.
+        // that alone wouldn't stop a Member's circuit from fetching this data into this
+        // component's state — IsCurrentUserAdminAsync's check avoids ever running these queries
+        // for them.
         if (await IsCurrentUserAdminAsync())
         {
+            _notesFolderPath = await SettingsService.GetNotesFolderPathAsync();
+            await RefreshCountAsync();
+
             _oidc = OidcOptionsAccessor.Value;
             _passwordAuthEnabled = await SettingsService.GetPasswordAuthEnabledAsync();
             await RefreshUsersAsync();
