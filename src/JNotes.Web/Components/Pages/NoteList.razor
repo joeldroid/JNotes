@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject INoteService NoteService
 @inject NavigationManager NavigationManager
+@inject IAppTimeZoneProvider TimeZoneProvider
 
 <PageTitle>Notes</PageTitle>
 
@@ -44,16 +45,29 @@ else if (_notes.Count == 0)
 }
 else
 {
-    <div class="list-group">
-        @foreach (var note in _notes)
-        {
-            <NoteListItem Note="note" />
-        }
-    </div>
+    @foreach (var group in _groups)
+    {
+        var groupId = $"note-group-{group.Label.Replace(' ', '-').ToLowerInvariant()}";
+
+        <button class="btn btn-link text-decoration-none d-flex align-items-center gap-2 px-0 mb-2 note-group-header"
+                type="button" data-bs-toggle="collapse" data-bs-target="@($"#{groupId}")" aria-expanded="true">
+            <span class="note-group-chevron">▸</span>
+            <h2 class="h6 mb-0 text-body">@group.Label <span class="text-body-secondary fw-normal">(@group.Notes.Count)</span></h2>
+        </button>
+        <div class="collapse show mb-4" id="@groupId">
+            <div class="list-group">
+                @foreach (var note in group.Notes)
+                {
+                    <NoteListItem Note="note" />
+                }
+            </div>
+        </div>
+    }
 }
 
 @code {
     private IReadOnlyList<NoteSummary>? _notes;
+    private IReadOnlyList<NoteGroup> _groups = [];
     private IReadOnlyList<string> _availableTags = [];
     private string _searchText = "";
     private string _typeFilter = "";
@@ -73,7 +87,10 @@ else
             Tag: string.IsNullOrWhiteSpace(_tagFilter) ? null : _tagFilter,
             Type: type);
 
+        // ListAsync already orders by UpdatedAt descending (EfNoteIndexRepository.SearchAsync) —
+        // grouping never re-sorts, so that order carries straight through into each bucket.
         _notes = await NoteService.ListAsync(query);
+        _groups = NoteGrouping.GroupByRelativeDate(_notes, DateTimeOffset.UtcNow, TimeZoneProvider.TimeZone);
     }
 
     private async Task CreateNoteAsync(NoteType type)

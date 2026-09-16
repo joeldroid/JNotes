@@ -180,6 +180,23 @@ does one best-effort `Metadata`-scope flush if anything's still unsaved when the
 down (navigating away right after typing), so the last stretch of edits and the index both catch
 up together rather than waiting for the next reconciliation.
 
+**The default notes view groups by relative date, not just sorts.** `NoteGrouping.GroupByRelativeDate`
+(`JNotes.Core/Notes/`) buckets an already-`UpdatedAt`-descending list (`EfNoteIndexRepository.SearchAsync`
+already sorts; grouping never re-sorts) into Today/Yesterday/This week/Last week/This month/Previous,
+skipping empty buckets, keeping each bucket's notes in whatever order they arrived. It's a plain
+static class with no DI, like `ChecklistMarkdownParser` — pure bucketing logic with no clock/timezone
+reads of its own, so `NoteList.razor` passes in `DateTimeOffset.UtcNow` and
+`IAppTimeZoneProvider.TimeZone` explicitly, keeping it deterministic and unit-testable
+(`tests/JNotes.Tests/Notes/NoteGroupingTests.cs`). Both the "now" and each note's `UpdatedAt` are
+converted to the same time zone before comparing dates — comparing raw UTC dates would misbucket a
+note whose local calendar day differs from its UTC one. Bucket boundaries are checked in strict
+priority order (today → yesterday → this week → last week → this month → previous) rather than as
+independent ranges, since `monthStart` can chronologically fall *after* `lastWeekStart` near the start
+of a calendar month. `NoteList.razor`'s sections are collapsible via Bootstrap's native
+`data-bs-toggle="collapse"` (the same pattern `ChecklistNoteEditor`'s "Edit raw markdown" toggle
+already uses) — no new JS or C# toggle state, just CSS (`Styles/_note-list.scss`) that rotates the
+chevron off Bootstrap's own `.collapsed` class.
+
 **Checklist toggling is line-based regex, not a Markdig AST round-trip**
 (`JNotes.Core/Serialization/ChecklistMarkdownParser.cs`). Markdig is used only for read-only
 preview rendering; re-emitting markdown from its parsed tree risks reformatting content outside
