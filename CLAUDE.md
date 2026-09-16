@@ -142,6 +142,30 @@ never an index-less orphaned file tree. This shapes `NoteService`
 - `ListAsync`/search reads only the SQLite index (fast, never touches disk); only `GetAsync`
   (opening one note) reads the actual file.
 
+**Autosave has two persistence scopes, and the cheaper one is deliberately incomplete.**
+`NoteService.AutosaveAsync(note, NoteSaveScope scope)` (`JNotes.Core/Notes/`) is what
+`NoteEditor.razor`'s debounced autosave, the explicit Save button, checklist toggling, and
+`UpdateAsync` all funnel through. `NoteSaveScope.ContentOnly` (body edits, checklist toggles) writes
+only the file — never the index, since body isn't indexed and title/tags haven't changed. This is
+intentionally the same "file changed, index doesn't know yet" state a hand-edited file is in, so
+`NoteIndexReconciler` (already described above) catches it up for free the next time it runs — no
+separate sync path was built for autosave. The visible trade-off: a note's position in the
+`UpdatedAt`-sorted list doesn't move while you're only editing its body, until a `Metadata`-scope
+save (title/tag edit, explicit Save, or leaving the page — see below) or a reconciliation pass.
+`NoteSaveScope.Metadata` (title or tag edits) writes the file *and* reindexes immediately — nothing
+narrower was needed since `EfNoteIndexRepository.UpsertAsync` already replaces both the
+`NoteIndexEntry` row and the note's `NoteTag` rows in one call.
+
+`NoteEditor.razor`'s autosave: two independent debounces (`AutosaveDebouncer`,
+`JNotes.Web/Components/Notes/`) — content and metadata edits shouldn't wait on each other — but
+since both ultimately write the *same* file, the actual save (not the debounce delay) is serialized
+through one `SemaphoreSlim(1, 1)` per open editor, so a title save can never race a content
+autosave's file write. `DeleteAsync` cancels pending debounces and waits on that same gate before
+deleting, so a delete can't race an in-flight autosave either. `IAsyncDisposable.DisposeAsync`
+does one best-effort `Metadata`-scope flush if anything's still unsaved when the component tears
+down (navigating away right after typing), so the last stretch of edits and the index both catch
+up together rather than waiting for the next reconciliation.
+
 **Checklist toggling is line-based regex, not a Markdig AST round-trip**
 (`JNotes.Core/Serialization/ChecklistMarkdownParser.cs`). Markdig is used only for read-only
 preview rendering; re-emitting markdown from its parsed tree risks reformatting content outside

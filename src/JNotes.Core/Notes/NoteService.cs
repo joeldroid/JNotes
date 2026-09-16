@@ -48,12 +48,8 @@ public sealed class NoteService : INoteService
         return note;
     }
 
-    public async Task<Note> UpdateAsync(Note note, CancellationToken cancellationToken = default)
-    {
-        note.UpdatedAt = DateTimeOffset.UtcNow;
-        await WriteAndIndexAsync(note, cancellationToken);
-        return note;
-    }
+    public Task<Note> UpdateAsync(Note note, CancellationToken cancellationToken = default) =>
+        AutosaveAsync(note, NoteSaveScope.Metadata, cancellationToken);
 
     public async Task<Note> ToggleChecklistItemAsync(Guid noteId, int lineIndex, CancellationToken cancellationToken = default)
     {
@@ -64,7 +60,26 @@ public sealed class NoteService : INoteService
         }
 
         note.Body = ChecklistMarkdownParser.ToggleItem(note.Body, lineIndex);
+        // A checkbox toggle is a body edit like any other — it doesn't need the index either.
+        return await AutosaveAsync(note, NoteSaveScope.ContentOnly, cancellationToken);
+    }
+
+    public async Task<Note> AutosaveAsync(Note note, NoteSaveScope scope, CancellationToken cancellationToken = default)
+    {
+        var userId = _currentUser.UserId;
         note.UpdatedAt = DateTimeOffset.UtcNow;
+
+        if (scope == NoteSaveScope.ContentOnly)
+        {
+            // File only — deliberately doesn't touch NoteIndexReconciler.IndexedFileWriteTimeUtc,
+            // so this is indistinguishable from "a file edited outside the app" to the reconciler,
+            // which already knows how to catch the index up (Title/UpdatedAt/tags) the next time it
+            // runs (startup, or Settings -> Rescan Now). No new sync mechanism needed — see
+            // NoteIndexReconciler.RescanAsync.
+            await _fileStore.WriteAsync(userId, note, cancellationToken);
+            return note;
+        }
+
         await WriteAndIndexAsync(note, cancellationToken);
         return note;
     }

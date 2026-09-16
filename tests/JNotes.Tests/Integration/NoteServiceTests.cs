@@ -70,6 +70,59 @@ public class NoteServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ToggleChecklistItemAsync_does_not_update_the_index_immediately()
+    {
+        // Same self-healing trade-off as a ContentOnly autosave: toggling is a body edit, so the
+        // index (and therefore list ordering) only catches up on the next thing that touches it —
+        // a title/tag edit, explicit Save, or reconciliation.
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Groceries", [], "- [ ] milk");
+        var indexedBefore = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
+        await Task.Delay(TimeSpan.FromMilliseconds(10));
+
+        await _fixture.NoteService.ToggleChecklistItemAsync(note.Id, lineIndex: 0);
+
+        var indexedAfter = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
+        Assert.Equal(indexedBefore.UpdatedAt, indexedAfter.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task AutosaveAsync_with_ContentOnly_scope_writes_the_file_but_leaves_the_index_untouched()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Original title", [], "original body");
+        var indexedBefore = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
+        await Task.Delay(TimeSpan.FromMilliseconds(10));
+
+        note.Body = "new body from autosave";
+        await _fixture.NoteService.AutosaveAsync(note, NoteSaveScope.ContentOnly);
+
+        var reloaded = await _fixture.NoteService.GetAsync(note.Id);
+        Assert.Equal("new body from autosave", reloaded.Body);
+
+        var indexedAfter = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
+        Assert.Equal(indexedBefore.Title, indexedAfter.Title);
+        Assert.Equal(indexedBefore.UpdatedAt, indexedAfter.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task AutosaveAsync_with_Metadata_scope_writes_both_the_file_and_the_index_immediately()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Original title", [], "body");
+
+        note.Title = "Renamed via autosave";
+        note.Tags = ["autosaved"];
+        await _fixture.NoteService.AutosaveAsync(note, NoteSaveScope.Metadata);
+
+        var listed = await _fixture.NoteService.ListAsync(new NoteSearchQuery());
+        var summary = Assert.Single(listed);
+        Assert.Equal("Renamed via autosave", summary.Title);
+        Assert.Equal(["autosaved"], summary.Tags);
+
+        var reloaded = await _fixture.NoteService.GetAsync(note.Id);
+        Assert.Equal("Renamed via autosave", reloaded.Title);
+        Assert.Equal(["autosaved"], reloaded.Tags);
+    }
+
+    [Fact]
     public async Task DeleteAsync_removes_both_the_file_and_the_index_entry()
     {
         var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Temporary", [], "body");

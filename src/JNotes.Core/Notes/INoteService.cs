@@ -19,7 +19,17 @@ public interface INoteService
 
     Task<Note> CreateAsync(NoteType type, string title, IEnumerable<string> tags, string body, CancellationToken cancellationToken = default);
 
+    /// <summary>Full flush — writes the file and updates the index. Equivalent to <c>AutosaveAsync(note, NoteSaveScope.Metadata)</c>.</summary>
     Task<Note> UpdateAsync(Note note, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Persists <paramref name="note"/> at whatever scope actually changed — see
+    /// <see cref="NoteSaveScope"/>. Always bumps <see cref="Note.UpdatedAt"/>: even a
+    /// <see cref="NoteSaveScope.ContentOnly"/> save is a real edit, so the file's own timestamp
+    /// should reflect it — the index just doesn't find out about it until the next thing that
+    /// does touch the index (a <see cref="NoteSaveScope.Metadata"/> save, or reconciliation).
+    /// </summary>
+    Task<Note> AutosaveAsync(Note note, NoteSaveScope scope, CancellationToken cancellationToken = default);
 
     /// <exception cref="InvalidOperationException">The note is not a <see cref="NoteType.Checklist"/> note, or the line isn't a checklist item.</exception>
     Task<Note> ToggleChecklistItemAsync(Guid noteId, int lineIndex, CancellationToken cancellationToken = default);

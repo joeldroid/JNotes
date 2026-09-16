@@ -1,5 +1,6 @@
 @page "/notes/{Id:guid}"
 @attribute [Authorize]
+@implements IAsyncDisposable
 @inject INoteService NoteService
 @inject NavigationManager NavigationManager
 @inject IAppTimeZoneProvider TimeZoneProvider
@@ -20,14 +21,22 @@ else
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
         <div class="flex-grow-1" style="min-width: 240px;">
             <input class="form-control form-control-lg fw-semibold" placeholder="Untitled note"
-                   @bind="_note.Title" @bind:event="oninput" />
-            <input class="form-control mt-2" placeholder="tags, comma, separated" @bind="_tagsText" @bind:event="oninput" />
+                   @bind="_note.Title" @bind:event="oninput" @bind:after="OnMetadataEdited" />
+            <input class="form-control mt-2" placeholder="tags, comma, separated"
+                   @bind="_tagsText" @bind:event="oninput" @bind:after="OnMetadataEdited" />
         </div>
-        <div class="d-flex gap-2 flex-shrink-0">
-            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_isSaving">
-                @(_isSaving ? "Saving…" : "Save")
-            </button>
-            <button class="btn btn-outline-danger" @onclick="DeleteAsync">Delete</button>
+        <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0">
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_isSaving">
+                    @(_isSaving ? "Saving…" : "Save")
+                </button>
+                <button class="btn btn-outline-danger" @onclick="DeleteAsync">Delete</button>
+            </div>
+            <small class="text-body-secondary">@SaveStatusText</small>
+            @if (_saveError is not null)
+            {
+                <small class="text-danger">@_saveError</small>
+            }
         </div>
     </div>
 
@@ -35,21 +44,42 @@ else
 
     @if (_note.Type == NoteType.Checklist)
     {
-        <ChecklistNoteEditor @bind-Body="_note.Body" ItemToggled="ToggleItemAsync" />
+        <ChecklistNoteEditor @bind-Body="_note.Body" @bind-Body:after="OnContentEdited" ItemToggled="ToggleItemAsync" />
     }
     else
     {
-        <TextNoteEditor @bind-Body="_note.Body" />
+        <TextNoteEditor @bind-Body="_note.Body" @bind-Body:after="OnContentEdited" />
     }
 }
 
 @code {
+    private static readonly TimeSpan ContentDebounceDelay = TimeSpan.FromMilliseconds(800);
+    private static readonly TimeSpan MetadataDebounceDelay = TimeSpan.FromMilliseconds(500);
+
     [Parameter] public Guid Id { get; set; }
 
     private Note? _note;
     private bool _notFound;
     private bool _isSaving;
+    private bool _hasUnsavedChanges;
+    private string? _saveError;
     private string _tagsText = "";
+
+    // Content and metadata autosave debounce independently (typing in the body shouldn't wait on
+    // title/tags edits or vice versa), but both ultimately write the same file, so the actual save
+    // execution is serialized through one gate rather than risking two overlapping writes.
+    private readonly AutosaveDebouncer _contentDebouncer;
+    private readonly AutosaveDebouncer _metadataDebouncer;
+    private readonly SemaphoreSlim _saveGate = new(1, 1);
+
+    public NoteEditor()
+    {
+        _contentDebouncer = new AutosaveDebouncer(ContentDebounceDelay, () => SaveNowAsync(NoteSaveScope.ContentOnly));
+        _metadataDebouncer = new AutosaveDebouncer(MetadataDebounceDelay, () => SaveNowAsync(NoteSaveScope.Metadata));
+    }
+
+    private string SaveStatusText =>
+        _isSaving ? "Saving…" : _hasUnsavedChanges ? "Unsaved changes" : "All changes saved";
 
     protected override async Task OnParametersSetAsync()
     {
@@ -58,6 +88,7 @@ else
         {
             _note = await NoteService.GetAsync(Id);
             _tagsText = string.Join(", ", _note.Tags);
+            _hasUnsavedChanges = false;
         }
         catch (NoteNotFoundException)
         {
@@ -65,7 +96,39 @@ else
         }
     }
 
-    private async Task SaveAsync()
+    private void OnContentEdited()
+    {
+        _hasUnsavedChanges = true;
+        _contentDebouncer.Trigger();
+    }
+
+    private void OnMetadataEdited()
+    {
+        // Keep _note.Tags in sync with the raw input immediately (not just at save time) — a
+        // content-only autosave firing while a tag edit is mid-debounce still writes *some*
+        // current snapshot of Tags to the file (the file format has no partial write), so it
+        // should be the freshest one, not whatever was last actually saved.
+        _note!.Tags = _tagsText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        _hasUnsavedChanges = true;
+        _metadataDebouncer.Trigger();
+    }
+
+    private Task SaveAsync()
+    {
+        // Explicit Save is a full flush, right now — supersede whichever autosave was pending.
+        _contentDebouncer.Cancel();
+        _metadataDebouncer.Cancel();
+        return SaveNowAsync(NoteSaveScope.Metadata);
+    }
+
+    /// <summary>
+    /// The single path every save — debounced autosave (either scope) or an explicit Save click —
+    /// goes through, so the in-flight/error/dirty status shown in the UI is always accurate
+    /// regardless of what triggered the save. Safe to call from both a direct UI event handler and
+    /// a debounce's background continuation: <c>InvokeAsync</c> is a no-op wrapper when already on
+    /// the right synchronization context.
+    /// </summary>
+    private async Task SaveNowAsync(NoteSaveScope scope)
     {
         if (_note is null)
         {
@@ -73,9 +136,28 @@ else
         }
 
         _isSaving = true;
-        _note.Tags = _tagsText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        _note = await NoteService.UpdateAsync(_note);
-        _isSaving = false;
+        await InvokeAsync(StateHasChanged);
+
+        await _saveGate.WaitAsync();
+        try
+        {
+            _note = await NoteService.AutosaveAsync(_note, scope);
+            _hasUnsavedChanges = false;
+            _saveError = null;
+        }
+        catch (Exception ex)
+        {
+            // Surfaced, not swallowed — autosave failures shouldn't disappear silently just
+            // because nothing was awaiting this particular save.
+            _saveError = $"Autosave failed: {ex.Message}";
+        }
+        finally
+        {
+            _saveGate.Release();
+            _isSaving = false;
+        }
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ToggleItemAsync(int lineIndex)
@@ -85,10 +167,23 @@ else
             return;
         }
 
-        // Persists immediately (unlike Title/Tags/raw-body edits, which wait for Save). Only
-        // Body/UpdatedAt come from the result — Title/Tags stay whatever's currently in the
+        // Goes through the same save gate as content/metadata autosaves — toggling writes the same
+        // file, so it must not race an in-flight autosave write to that file.
+        // Only Body/UpdatedAt come from the result — Title/Tags stay whatever's currently in the
         // inputs, so an unsaved edit there isn't clobbered by a toggle's disk-truth response.
-        var result = await NoteService.ToggleChecklistItemAsync(_note.Id, lineIndex);
+        _isSaving = true;
+        Note result;
+        await _saveGate.WaitAsync();
+        try
+        {
+            result = await NoteService.ToggleChecklistItemAsync(_note.Id, lineIndex);
+        }
+        finally
+        {
+            _saveGate.Release();
+            _isSaving = false;
+        }
+
         _note.Body = result.Body;
         _note.UpdatedAt = result.UpdatedAt;
     }
@@ -100,7 +195,51 @@ else
             return;
         }
 
-        await NoteService.DeleteAsync(_note.Id);
+        // Cancel any pending autosave and wait for one already in flight to finish, so a delete
+        // can never race an autosave write (which could otherwise resurrect the file, or throw
+        // against one that's already gone).
+        _contentDebouncer.Cancel();
+        _metadataDebouncer.Cancel();
+        await _saveGate.WaitAsync();
+        try
+        {
+            await NoteService.DeleteAsync(_note.Id);
+        }
+        finally
+        {
+            _saveGate.Release();
+        }
+
         NavigationManager.NavigateTo("/");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _contentDebouncer.Dispose();
+        _metadataDebouncer.Dispose();
+
+        if (_hasUnsavedChanges && _note is not null)
+        {
+            // Best-effort final flush so navigating away right after typing doesn't lose the last
+            // stretch of edits — always the full scope, so the index isn't left stale either.
+            try
+            {
+                await _saveGate.WaitAsync();
+                try
+                {
+                    await NoteService.AutosaveAsync(_note, NoteSaveScope.Metadata);
+                }
+                finally
+                {
+                    _saveGate.Release();
+                }
+            }
+            catch
+            {
+                // Nothing left to show this to — the component's already tearing down.
+            }
+        }
+
+        _saveGate.Dispose();
     }
 }

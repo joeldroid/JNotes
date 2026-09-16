@@ -79,6 +79,30 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RescanAsync_catches_up_a_note_left_stale_by_a_ContentOnly_autosave()
+    {
+        // A ContentOnly autosave is, by design, indistinguishable to the reconciler from "a file
+        // edited outside the app" — this is what makes it self-healing with no new sync mechanism.
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Original title", [], "original body");
+        var indexedBefore = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
+
+        await Task.Delay(TimeSpan.FromMilliseconds(1100)); // ensure the filesystem mtime actually advances
+        note.Body = "autosaved body";
+        await _fixture.NoteService.AutosaveAsync(note, NoteSaveScope.ContentOnly);
+
+        // Still stale immediately after the autosave — this is the known, deliberate trade-off.
+        var indexedRightAfter = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
+        Assert.Equal(indexedBefore.UpdatedAt, indexedRightAfter.UpdatedAt);
+
+        var result = await _fixture.Reconciler.RescanAsync(_fixture.UserAId);
+
+        Assert.Equal(0, result.Added);
+        Assert.Equal(1, result.Updated);
+        var indexedAfterRescan = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
+        Assert.True(indexedAfterRescan.UpdatedAt > indexedBefore.UpdatedAt);
+    }
+
+    [Fact]
     public async Task RescanAsync_is_a_noop_when_nothing_changed_since_the_last_index()
     {
         await _fixture.NoteService.CreateAsync(NoteType.Text, "Untouched", [], "body");
