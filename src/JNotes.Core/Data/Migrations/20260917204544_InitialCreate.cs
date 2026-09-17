@@ -6,21 +6,22 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace JNotes.Core.Data.Migrations
 {
     /// <inheritdoc />
-    public partial class AddMultiUserSupport : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_Notes_UpdatedAt",
-                table: "Notes");
-
-            migrationBuilder.AddColumn<Guid>(
-                name: "UserId",
-                table: "Notes",
-                type: "TEXT",
-                nullable: false,
-                defaultValue: new Guid("00000000-0000-0000-0000-000000000000"));
+            migrationBuilder.CreateTable(
+                name: "Settings",
+                columns: table => new
+                {
+                    Key = table.Column<string>(type: "TEXT", nullable: false),
+                    Value = table.Column<string>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Settings", x => x.Key);
+                });
 
             migrationBuilder.CreateTable(
                 name: "Users",
@@ -28,7 +29,13 @@ namespace JNotes.Core.Data.Migrations
                 {
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
                     Username = table.Column<string>(type: "TEXT", nullable: false, collation: "NOCASE"),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false)
+                    CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    Role = table.Column<string>(type: "TEXT", nullable: false),
+                    PasswordHash = table.Column<string>(type: "TEXT", nullable: true),
+                    Email = table.Column<string>(type: "TEXT", nullable: true),
+                    OidcSubject = table.Column<string>(type: "TEXT", nullable: true),
+                    FirstName = table.Column<string>(type: "TEXT", nullable: true),
+                    LastName = table.Column<string>(type: "TEXT", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -55,50 +62,37 @@ namespace JNotes.Core.Data.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_Notes_UserId_UpdatedAt",
-                table: "Notes",
-                columns: new[] { "UserId", "UpdatedAt" });
+                name: "IX_Users_Email",
+                table: "Users",
+                column: "Email",
+                unique: true,
+                filter: "\"Email\" IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Users_OidcSubject",
+                table: "Users",
+                column: "OidcSubject",
+                unique: true,
+                filter: "\"OidcSubject\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Users_Username",
                 table: "Users",
                 column: "Username",
                 unique: true);
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_Notes_Users_UserId",
-                table: "Notes",
-                column: "UserId",
-                principalTable: "Users",
-                principalColumn: "Id",
-                onDelete: ReferentialAction.Cascade);
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(
-                name: "FK_Notes_Users_UserId",
-                table: "Notes");
+            migrationBuilder.DropTable(
+                name: "Settings");
 
             migrationBuilder.DropTable(
                 name: "UserSettings");
 
             migrationBuilder.DropTable(
                 name: "Users");
-
-            migrationBuilder.DropIndex(
-                name: "IX_Notes_UserId_UpdatedAt",
-                table: "Notes");
-
-            migrationBuilder.DropColumn(
-                name: "UserId",
-                table: "Notes");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_Notes_UpdatedAt",
-                table: "Notes",
-                column: "UpdatedAt");
         }
     }
 }
