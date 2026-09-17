@@ -23,6 +23,19 @@ public sealed class EfUserRepository : IUserRepository
 
     public async Task<UserAccount> CreateUserAsync(string username, UserRole role, string? email, string? password, CancellationToken cancellationToken = default)
     {
+        // Enforced here (not just in the UI) so every creation path — /setup, the admin "Add
+        // user" form, and any future caller — gets the same guarantee, the same belt-and-suspenders
+        // reasoning as UpdateProfileAsync's email-permission check.
+        if (!UserValidation.IsLowercase(username))
+        {
+            throw new InvalidUsernameException(username);
+        }
+
+        if (email is not null && !UserValidation.IsValidEmail(email))
+        {
+            throw new InvalidEmailException(email);
+        }
+
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
         // Checked proactively (rather than relying solely on the two unique-index violations that

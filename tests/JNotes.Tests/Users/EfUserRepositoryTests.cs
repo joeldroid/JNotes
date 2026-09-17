@@ -67,12 +67,10 @@ public class EfUserRepositoryTests : IAsyncLifetime
     [Theory]
     [InlineData("Alice")]
     [InlineData("ALICE")]
-    public async Task CreateUserAsync_throws_DuplicateUsernameException_case_insensitively(string duplicate)
+    public async Task CreateUserAsync_throws_InvalidUsernameException_for_a_username_that_isnt_lowercase(string username)
     {
-        await _repository.CreateUserAsync("alice", UserRole.Member, null, "password123");
-
-        await Assert.ThrowsAsync<DuplicateUsernameException>(
-            () => _repository.CreateUserAsync(duplicate, UserRole.Member, null, "password123"));
+        await Assert.ThrowsAsync<InvalidUsernameException>(
+            () => _repository.CreateUserAsync(username, UserRole.Member, null, "password123"));
     }
 
     [Fact]
@@ -82,6 +80,16 @@ public class EfUserRepositoryTests : IAsyncLifetime
 
         await Assert.ThrowsAsync<DuplicateEmailException>(
             () => _repository.CreateUserAsync("bob", UserRole.Member, "shared@example.com", "password123"));
+    }
+
+    [Theory]
+    [InlineData("not-an-email")]
+    [InlineData("missing-domain@")]
+    [InlineData("@missing-local.com")]
+    public async Task CreateUserAsync_throws_InvalidEmailException_for_a_malformed_email(string email)
+    {
+        await Assert.ThrowsAsync<InvalidEmailException>(
+            () => _repository.CreateUserAsync("alice", UserRole.Member, email, "password123"));
     }
 
     [Fact]

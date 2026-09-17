@@ -159,7 +159,7 @@
                         <div class="alert alert-danger py-2">@_createUserError</div>
                     }
                     <div class="mb-2">
-                        <label class="form-label">Username</label>
+                        <label class="form-label">Username <span class="text-body-secondary small">(lowercase only)</span></label>
                         <InputText class="form-control" @bind-Value="_newUser.Username" />
                     </div>
                     <div class="mb-2">
@@ -404,6 +404,18 @@
         var email = string.IsNullOrWhiteSpace(_newUser.Email) ? null : _newUser.Email.Trim();
         var password = string.IsNullOrWhiteSpace(_newUser.Password) ? null : _newUser.Password;
 
+        if (!UserValidation.IsLowercase(username))
+        {
+            _createUserError = "Username must be lowercase.";
+            return;
+        }
+
+        if (email is not null && !UserValidation.IsValidEmail(email))
+        {
+            _createUserError = "Enter a valid email address.";
+            return;
+        }
+
         if (email is null && password is null)
         {
             _createUserError = "Set a password, an email (for OIDC), or both.";
@@ -425,6 +437,14 @@
         catch (DuplicateEmailException)
         {
             _createUserError = $"Email '{email}' is already in use.";
+        }
+        catch (InvalidUsernameException ex)
+        {
+            _createUserError = ex.Message;
+        }
+        catch (InvalidEmailException ex)
+        {
+            _createUserError = ex.Message;
         }
         finally
         {

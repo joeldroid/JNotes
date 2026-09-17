@@ -29,6 +29,23 @@ everyone out). OIDC provisioning is admin-gated, not self-service: an admin pre-
 with an `Email` set, and the first successful OIDC login for that email links it
 (`OidcAccountLinker`, matches an **unlinked** account only — never relinks or auto-creates).
 
+**Username/email format rules live in one place: `JNotes.Core.Users.UserValidation`**, a pure
+static class (`IsLowercase`/`IsValidEmail`, the latter backed by a `[GeneratedRegex]` — the same
+reasoning `ChecklistMarkdownParser`/`UserInitials` are plain static classes for). Enforced in two
+layers, not one: `EfUserRepository.CreateUserAsync` throws `InvalidUsernameException`/
+`InvalidEmailException` so *every* creation path gets the guarantee even if a future caller skips
+the UI, while `/setup` and `/settings`'s "Add user" form also check `UserValidation` up front so
+the error shows next to the form instead of round-tripping through an exception. Usernames must be
+lowercase everywhere (the `Username` column's NOCASE collation already makes lookups
+case-insensitive, but mixed-case *input* would still render inconsistently across the UI). Email
+is mandatory at `/setup` (checked in `Setup.razor`'s `HandleSetupAsync`, not a repository-level
+rule — `CreateUserAsync`'s `email` parameter stays nullable since the admin "Add user" form still
+allows a password-only or email-only account) but only format-validated, not required, when adding
+a user. The `/setup` email `<InputText>` deliberately has no `type="email"` — that would trigger
+the browser's own native constraint validation, which intercepts form submission before
+`HandleSetupAsync` (and thus `UserValidation`) ever runs, hiding JNotes's own error message behind
+a native tooltip.
+
 **Profile editing (`/profile`, `Settings.razor`'s Administration settings "Edit profile") has one
 permission rule: Email is Admin-only, enforced in Core, not just the UI.**
 `IUserManagementService.UpdateProfileAsync(targetUserId, requestingUserId, ...)` is the single

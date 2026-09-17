@@ -5,6 +5,8 @@ namespace JNotes.Core.Users;
 public interface IUserRepository
 {
     /// <exception cref="DuplicateUsernameException">The username (case-insensitively) or email is already taken.</exception>
+    /// <exception cref="InvalidUsernameException"><paramref name="username"/> isn't all lowercase.</exception>
+    /// <exception cref="InvalidEmailException"><paramref name="email"/> doesn't look like a valid address.</exception>
     Task<UserAccount> CreateUserAsync(string username, UserRole role, string? email, string? password, CancellationToken cancellationToken = default);
 
     /// <summary>Ordered by <see cref="UserAccount.CreatedAt"/> ascending — "first" always means "oldest".</summary>

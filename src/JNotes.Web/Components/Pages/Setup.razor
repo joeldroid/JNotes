@@ -23,6 +23,11 @@
         <div class="mb-3">
             <label class="form-label" for="username">Username</label>
             <InputText id="username" class="form-control" @bind-Value="Model!.Username" autofocus />
+            <div class="form-text">Lowercase only.</div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="email">Email</label>
+            <InputText id="email" class="form-control" @bind-Value="Model!.Email" />
         </div>
         <div class="mb-3">
             <label class="form-label" for="password">Password</label>
@@ -62,7 +67,22 @@
 
     private async Task HandleSetupAsync()
     {
-        if (Model!.Password != Model.ConfirmPassword)
+        var username = Model!.Username.Trim();
+        var email = Model.Email.Trim();
+
+        if (!UserValidation.IsLowercase(username))
+        {
+            _error = "Username must be lowercase.";
+            return;
+        }
+
+        if (!UserValidation.IsValidEmail(email))
+        {
+            _error = "Enter a valid email address.";
+            return;
+        }
+
+        if (Model.Password != Model.ConfirmPassword)
         {
             _error = "Passwords don't match.";
             return;
@@ -77,11 +97,21 @@
         UserAccount admin;
         try
         {
-            admin = await UserRepository.CreateUserAsync(Model.Username.Trim(), UserRole.Admin, email: null, password: Model.Password);
+            admin = await UserRepository.CreateUserAsync(username, UserRole.Admin, email, password: Model.Password);
         }
         catch (DuplicateUsernameException)
         {
-            _error = $"Username '{Model.Username}' is already taken.";
+            _error = $"Username '{username}' is already taken.";
+            return;
+        }
+        catch (InvalidUsernameException ex)
+        {
+            _error = ex.Message;
+            return;
+        }
+        catch (InvalidEmailException ex)
+        {
+            _error = ex.Message;
             return;
         }
 
@@ -96,6 +126,9 @@
     {
         [Required]
         public string Username { get; set; } = "";
+
+        [Required]
+        public string Email { get; set; } = "";
 
         [Required]
         public string Password { get; set; } = "";
