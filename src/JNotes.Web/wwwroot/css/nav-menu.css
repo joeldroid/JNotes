@@ -6,6 +6,16 @@
     text-align: center;
 }
 
+/* "New note"'s dropdown-toggle should look like the plain Notes/Settings/Trash pills at rest, and
+   only pick up the active-pill styling while its type-picker menu is actually open. Bootstrap's
+   own dropdown JS toggles ".show" on the toggle element itself here (not on the parent, the way
+   ".nav-pills .show>.nav-link" assumes), so that stock rule doesn't fire — this mirrors it by hand
+   for the one state it misses. */
+.nav-pills .nav-link.dropdown-toggle.show {
+    color: var(--bs-nav-pills-link-active-color);
+    background-color: var(--bs-nav-pills-link-active-bg);
+}
+
 /* The sidebar's bottom-anchored account widget (avatar + name, expands to My Profile/Sign out). */
 .account-avatar {
     display: inline-flex;

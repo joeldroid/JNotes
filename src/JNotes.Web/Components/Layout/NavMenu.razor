@@ -10,18 +10,24 @@
             <input type="search" class="form-control form-control-sm" placeholder="Search"
                    value="@_searchText" @oninput="OnSearchInput" @onkeydown="OnSearchKeyDown" @onclick="ClearSearch" />
         </div>
-        <div class="dropdown mb-3">
-            <button class="btn btn-primary dropdown-toggle w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                <span class="nav-icon" aria-hidden="true">✎&#xFE0E;</span> New note
-            </button>
-            <ul class="dropdown-menu">
-                <li><button class="dropdown-item" @onclick='() => CreateNoteAsync(NoteType.Text)'>Text note</button></li>
-                <li><button class="dropdown-item" @onclick='() => CreateNoteAsync(NoteType.Checklist)'>Checklist</button></li>
-            </ul>
-        </div>
     </AuthorizeView>
 
     <ul class="nav nav-pills flex-column gap-1">
+        <AuthorizeView>
+            <!-- Same list as Notes/Settings/Trash below (not a separate btn-primary block) so it
+                 picks up their nav-link alignment/spacing for free, and Bootstrap's own
+                 ".nav-pills .show>.nav-link" rule highlights it only while the type-picker dropdown
+                 is actually open — not permanently, the way a standalone colored button would be. -->
+            <li class="nav-item dropdown">
+                <button class="nav-link dropdown-toggle text-start w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <span class="nav-icon" aria-hidden="true">✎&#xFE0E;</span> New note
+                </button>
+                <ul class="dropdown-menu">
+                    <li><button class="dropdown-item" @onclick='() => CreateNoteAsync(NoteType.Text)'>Text note</button></li>
+                    <li><button class="dropdown-item" @onclick='() => CreateNoteAsync(NoteType.Checklist)'>Checklist</button></li>
+                </ul>
+            </li>
+        </AuthorizeView>
         <li class="nav-item">
             <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
                 <span class="nav-icon" aria-hidden="true">▤</span> Notes
@@ -34,7 +40,7 @@
         </li>
         <li class="nav-item">
             <NavLink class="nav-link" href="/trash">
-                <span class="nav-icon" aria-hidden="true">⌫</span> Trash
+                <span class="nav-icon" aria-hidden="true">♻&#xFE0E;</span> Trash
             </NavLink>
         </li>
     </ul>
@@ -115,7 +121,7 @@
 
         // Always lands on / (the notes list) regardless of which page the search was triggered
         // from — NoteList.razor's [SupplyParameterFromQuery] "q" parameter is the only thing that
-        // knows how to actually run the search (title/body/tag, via EfNoteIndexRepository.SearchAsync).
+        // knows how to actually run the search (title/body/tag, via RedisNoteIndexRepository.SearchAsync).
         var trimmed = _searchText.Trim();
         NavigationManager.NavigateTo(trimmed.Length == 0 ? "/" : $"/?q={Uri.EscapeDataString(trimmed)}");
     }

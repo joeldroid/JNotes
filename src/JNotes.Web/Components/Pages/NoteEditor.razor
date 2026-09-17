@@ -26,7 +26,9 @@ else
                    @bind="_tagsText" @bind:event="oninput" @bind:after="OnMetadataEdited" />
         </div>
         <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0">
-            <button class="btn btn-outline-danger" @onclick="TrashAsync">Move to Trash</button>
+            <button class="btn btn-outline-danger" type="button" title="Move to Trash" aria-label="Move to Trash" @onclick="TrashAsync">
+                <span aria-hidden="true">♻&#xFE0E;</span>
+            </button>
             <small class="text-body-secondary">@SaveStatusText</small>
             @if (_saveError is not null)
             {

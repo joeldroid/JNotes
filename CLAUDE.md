@@ -104,13 +104,15 @@ sign-out instead of being a permanently-visible link.
 plain Unicode glyphs, not a vendored icon font.** No icon library is vendored (same reasoning as
 Bootstrap being the only vendored UI dependency, under `wwwroot/lib/`) — instead, each label except
 the search box is preceded by a `<span class="nav-icon">` wrapping a single monochrome dingbat/
-symbol character (✎ new note, ▤ notes, ⚙ settings, ⌫ trash), the same "plain text glyph, no new
+symbol character (✎ new note, ▤ notes, ⚙ settings, ♻ trash), the same "plain text glyph, no new
 dependency" precedent `NoteList.razor`'s `▸` group-header chevron and `NavMenu`'s own
-`account-menu-chevron` already established. The gear and pencil glyphs append the `︎` text-
-presentation variation selector to force monochrome/text rendering instead of color emoji — the
-other two symbols (▤, ⌫) live in Unicode blocks with no emoji presentation at all, so they render
-monochrome by default with no selector needed. `.nav-icon` (`wwwroot/css/nav-menu.css`) is a fixed-
-width inline-block purely so labels stay left-aligned regardless of each glyph's natural width. The
+`account-menu-chevron` already established. The pencil, gear, and recycling-symbol glyphs append
+the `︎` text-presentation variation selector to force monochrome/text rendering instead of color
+emoji — tried the literal 🗑 wastebasket first, but unlike ♻ it ignores the selector and still
+renders as a colored emoji in Chrome, so it was dropped in favor of ♻, which actually respects it.
+Only ▤ (notes) lives in a Unicode block with no emoji presentation at all, so it renders monochrome
+by default with no selector needed. `.nav-icon` (`wwwroot/css/nav-menu.css`) is a fixed-width
+inline-block purely so labels stay left-aligned regardless of each glyph's natural width. The
 search `<input>` is deliberately excluded from icon treatment (the placeholder text "Search" already
 signals its purpose) and clears itself via `@onclick` whenever it's clicked, whether or not it
 currently holds a previous query — so starting a new search never requires manually clearing the
@@ -119,12 +121,18 @@ box first.
 **"New note" lives in `NavMenu.razor`, not `NoteList.razor` — it needs to work from any page, not
 just `/`.** The create-and-navigate logic (`INoteService.CreateAsync` then
 `NavigationManager.NavigateTo($"/notes/{note.Id}")`) moved there verbatim; `NoteList.razor` no
-longer injects `NavigationManager` at all, since nothing else in that page needed it. The button
-is wrapped in the same unqualified `<AuthorizeView>` as the account widget below it (not a manual
-`IsAuthenticated` check) — that's deliberate here, unlike the avatar/initials lookup in
-`OnInitializedAsync`: `NavMenu` renders for `NotFound`/`Error` too (both `[AllowAnonymous]`, both
-using `MainLayout`), and Blazor Server never hands an anonymous circuit a valid event-handler id
-for markup `AuthorizeView` didn't render, so there's nothing for a signed-out visitor to click —
+longer injects `NavigationManager` at all, since nothing else in that page needed it. It's a
+`<li class="nav-item dropdown">` inside the *same* `<ul class="nav nav-pills">` as Notes/Settings/
+Trash below it, not a separate `btn-primary` block — deliberately, so it shares their `.nav-link`
+alignment/padding for free, and so it's only ever visually highlighted while its own type-picker
+dropdown is open (Bootstrap's stock `.nav-pills .show>.nav-link` rule, the same mechanism Bootstrap
+ships for exactly this "nav pills with a dropdown item" shape — no custom CSS needed), rather than
+permanently standing out from the other nav items the way a colored button would. The item is
+wrapped in its own unqualified `<AuthorizeView>` (not a manual `IsAuthenticated` check) — that's
+deliberate here, unlike the avatar/initials lookup in `OnInitializedAsync`: `NavMenu` renders for
+`NotFound`/`Error` too (both `[AllowAnonymous]`, both using `MainLayout`), and Blazor Server never
+hands an anonymous circuit a valid event-handler id for markup `AuthorizeView` didn't render, so
+there's nothing for a signed-out visitor to click —
 the same render-tree-scoped dispatch reasoning already relied on for the Administration settings
 mutations.
 
