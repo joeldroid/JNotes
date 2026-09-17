@@ -61,3 +61,4 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 **.idea/
+**.DS_Store
