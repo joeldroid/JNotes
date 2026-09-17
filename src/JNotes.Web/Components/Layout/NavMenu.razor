@@ -1,8 +1,22 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IUserRepository UserRepository
 @inject ICurrentUserContext CurrentUser
+@inject INoteService NoteService
+@inject NavigationManager NavigationManager
 
 <div class="d-flex flex-column h-100">
+    <AuthorizeView>
+        <div class="dropdown mb-3">
+            <button class="btn btn-primary dropdown-toggle w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                New note
+            </button>
+            <ul class="dropdown-menu">
+                <li><button class="dropdown-item" @onclick='() => CreateNoteAsync(NoteType.Text)'>Text note</button></li>
+                <li><button class="dropdown-item" @onclick='() => CreateNoteAsync(NoteType.Checklist)'>Checklist</button></li>
+            </ul>
+        </div>
+    </AuthorizeView>
+
     <ul class="nav nav-pills flex-column gap-1">
         <li class="nav-item">
             <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
@@ -61,5 +75,12 @@
                 _initials = UserInitials.Compute(user.FirstName, user.LastName, user.Username);
             }
         }
+    }
+
+    private async Task CreateNoteAsync(NoteType type)
+    {
+        var defaultBody = type == NoteType.Checklist ? "- [ ] " : "";
+        var note = await NoteService.CreateAsync(type, "Untitled note", [], defaultBody);
+        NavigationManager.NavigateTo($"/notes/{note.Id}");
     }
 }

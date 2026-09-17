@@ -1,7 +1,6 @@
 @page "/"
 @attribute [Authorize]
 @inject INoteService NoteService
-@inject NavigationManager NavigationManager
 @inject IAppTimeZoneProvider TimeZoneProvider
 
 <PageTitle>Notes</PageTitle>
@@ -23,16 +22,6 @@
             <option value="@tag">@tag</option>
         }
     </select>
-
-    <div class="dropdown ms-auto">
-        <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-            New note
-        </button>
-        <ul class="dropdown-menu dropdown-menu-end">
-            <li><button class="dropdown-item" @onclick='() => CreateNoteAsync(NoteType.Text)'>Text note</button></li>
-            <li><button class="dropdown-item" @onclick='() => CreateNoteAsync(NoteType.Checklist)'>Checklist</button></li>
-        </ul>
-    </div>
 </div>
 
 @if (_notes is null)
@@ -91,12 +80,5 @@ else
         // grouping never re-sorts, so that order carries straight through into each bucket.
         _notes = await NoteService.ListAsync(query);
         _groups = NoteGrouping.GroupByRelativeDate(_notes, DateTimeOffset.UtcNow, TimeZoneProvider.TimeZone);
-    }
-
-    private async Task CreateNoteAsync(NoteType type)
-    {
-        var defaultBody = type == NoteType.Checklist ? "- [ ] " : "";
-        var note = await NoteService.CreateAsync(type, "Untitled note", [], defaultBody);
-        NavigationManager.NavigateTo($"/notes/{note.Id}");
     }
 }

@@ -100,6 +100,18 @@ chevron-rotation pattern as `NoteList.razor`'s group headers) revealing "My Prof
 out" — `/profile` no longer has its own top-level nav entry, since it lives here now alongside
 sign-out instead of being a permanently-visible link.
 
+**"New note" lives in `NavMenu.razor`, not `NoteList.razor` — it needs to work from any page, not
+just `/`.** The create-and-navigate logic (`INoteService.CreateAsync` then
+`NavigationManager.NavigateTo($"/notes/{note.Id}")`) moved there verbatim; `NoteList.razor` no
+longer injects `NavigationManager` at all, since nothing else in that page needed it. The button
+is wrapped in the same unqualified `<AuthorizeView>` as the account widget below it (not a manual
+`IsAuthenticated` check) — that's deliberate here, unlike the avatar/initials lookup in
+`OnInitializedAsync`: `NavMenu` renders for `NotFound`/`Error` too (both `[AllowAnonymous]`, both
+using `MainLayout`), and Blazor Server never hands an anonymous circuit a valid event-handler id
+for markup `AuthorizeView` didn't render, so there's nothing for a signed-out visitor to click —
+the same render-tree-scoped dispatch reasoning already relied on for the Administration settings
+mutations.
+
 ## Commands
 
 ```bash
