@@ -12,10 +12,6 @@
 src/JNotes.Web/App_Data/
 /data/
 
-# Compiled from src/JNotes.Web/Styles/*.scss by AspNetCore.SassCompiler on every build/publish —
-# see src/JNotes.Web/sasscompiler.json.
-src/JNotes.Web/wwwroot/css/
-
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/

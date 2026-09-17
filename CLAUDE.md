@@ -95,7 +95,7 @@ dotnet format JNotes.slnx --verify-no-changes   # CI-style check, no changes wri
 
 # Run locally (needs .NET 10 SDK; stores data under src/JNotes.Web/App_Data/, gitignored)
 dotnet run --project src/JNotes.Web
-dotnet watch --project src/JNotes.Web run       # live-reloads C#, Razor, and Styles/*.scss
+dotnet watch --project src/JNotes.Web run       # live-reloads C#, Razor, and wwwroot/css/*.css
 
 # EF Core migrations — startup-project is Core, NOT Web: JNotes.Web deliberately has no
 # EF Core Design package reference (see Architecture below), so Web can't be the startup project.
@@ -237,8 +237,8 @@ priority order (today → yesterday → this week → last week → this month �
 independent ranges, since `monthStart` can chronologically fall *after* `lastWeekStart` near the start
 of a calendar month. `NoteList.razor`'s sections are collapsible via Bootstrap's native
 `data-bs-toggle="collapse"` (the same pattern `ChecklistNoteEditor`'s "Edit raw markdown" toggle
-already uses) — no new JS or C# toggle state, just CSS (`Styles/_note-list.scss`) that rotates the
-chevron off Bootstrap's own `.collapsed` class.
+already uses) — no new JS or C# toggle state, just CSS (`wwwroot/css/note-list.css`) that rotates
+the chevron off Bootstrap's own `.collapsed` class.
 
 **Checklist toggling is line-based regex, not a Markdig AST round-trip**
 (`JNotes.Core/Serialization/ChecklistMarkdownParser.cs`). Markdig is used only for read-only
@@ -267,6 +267,18 @@ explicit ids. `Users/EfUserRepositoryTests.cs` and `Users/UserManagementServiceT
 their own `AddJNotesCore` provider (not `CoreServicesFixture`) since they need direct access to
 things it doesn't expose (`ISetupStateProvider`, `IUserManagementService`) — the latter covers the
 file-move-before-DB-delete soft-delete design, including idempotency on a retried delete.
+
+**CSS is plain, hand-authored, and lives directly under `wwwroot/css/` — no Sass, no build step.**
+(This app briefly used `AspNetCore.SassCompiler`/`.scss` under `Styles/`; that's been reverted.)
+`variables.css` holds app-wide custom properties (`:root { --note-editor-height: 60vh; ... }`) in
+place of Sass `$variables`; `note-editor.css`/`note-list.css`/`nav-menu.css` use native CSS nesting
+(`&`) in place of Sass nesting; `app.css` is the entry point (linked from `App.razor`) and pulls the
+rest together with native `@import` in place of Sass `@use` — same one-file-per-concern shape as
+before, just with nothing to compile. Since these are ordinary static files under `wwwroot`, `dotnet
+watch` and `app.MapStaticAssets()` (`Program.cs`) handle them exactly like any other asset — no
+special-cased build step or DI registration needed, unlike the Sass compiler this replaced. Add a
+new concern as its own `.css` file and `@import` it from `app.css`, the same way `note-list.css`
+and `nav-menu.css` were added.
 
 **Docker build gotcha:** the Dockerfile's multi-stage build restores against just the `.csproj`
 files first (for layer caching) then copies full source — the publish step must **not** pass

@@ -1,0 +1,13 @@
+/* The default notes view's collapsible relative-date sections (Today/Yesterday/This week/…). */
+.note-group-header {
+    & .note-group-chevron {
+        display: inline-block;
+        transition: transform 0.15s ease;
+    }
+
+    /* Bootstrap's collapse JS toggles .collapsed on the trigger element itself — present when the
+       target is hidden, absent while it's shown. Rotate the chevron to point down while expanded. */
+    &:not(.collapsed) .note-group-chevron {
+        transform: rotate(90deg);
+    }
+}

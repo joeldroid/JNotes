@@ -39,19 +39,15 @@ tests/
 
 ### Styling
 
-JNotes's own CSS is written as Sass modules under `src/JNotes.Web/Styles/` — `_variables.scss`,
-`_blazor-template.scss` (framework boilerplate), `_note-editor.scss` (the editor/preview styles,
-the module that'll grow with the app), all pulled together by the `app.scss` entry point. Add a
-new concern as its own `_*.scss` partial and `@use` it from `app.scss`.
-
-[`AspNetCore.SassCompiler`](https://github.com/koenvzeijl/AspNetCore.SassCompiler) compiles this
-to `wwwroot/css/app.css` automatically as part of `dotnet build`/`dotnet publish` (no Node.js
-needed — it bundles a dart-sass binary) — the compiled output is gitignored, and
-`dotnet watch --project src/JNotes.Web run` live-recompiles on save. Config is in
-`src/JNotes.Web/sasscompiler.json` (expanded output in Debug, compressed in Release/Docker).
+JNotes's own CSS is plain, modern CSS — hand-authored files served directly from
+`src/JNotes.Web/wwwroot/css/`, no build step, no Node.js, no CSS preprocessor. `variables.css`
+defines app-wide custom properties (`:root { --note-editor-height: 60vh; ... }`); `note-editor.css`,
+`note-list.css`, and `nav-menu.css` are one file per concern, using native CSS nesting (`&`) instead
+of a Sass equivalent; `app.css` pulls them all together with native `@import`. Add a new concern as
+its own `.css` file and `@import` it from `app.css`.
 
 Bootstrap itself stays as the vendored precompiled CSS/JS in `wwwroot/lib/bootstrap` — it isn't
-part of the Sass build. Compiling Bootstrap from its own Sass source (to override its variables
+part of JNotes's own CSS. Compiling Bootstrap from its own Sass source (to override its variables
 for a custom theme) is possible later but is a separate, larger change.
 
 ## Running locally
