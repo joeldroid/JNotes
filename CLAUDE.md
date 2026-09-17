@@ -187,6 +187,18 @@ initial HTTP response before any circuit exists): `null` (static SSR) for `/logi
 Login/logout/the OIDC challenge are plain form posts / minimal API endpoints in `Program.cs` for
 the same reason — never an `@onclick` inside an interactive component.
 
+**Dark is the app-wide default theme; `/login` and `/setup` are always dark, never per-user.**
+`SettingsService.GetThemeAsync` returns `AppTheme.Dark` when a user has no `UserSetting` row yet
+(rather than `AppTheme.Light`) — a user who's never touched the Appearance toggle gets dark until
+they explicitly pick light, not the other way around. `App.razor`'s `OnInitializedAsync` sets the
+`<html data-bs-theme>` prerendered into the initial response (see "Render-mode split" above for why
+this runs during the HTTP response rather than after the circuit connects): `AppTheme.Dark` for any
+unauthenticated request (`/login`, `/setup`, or anything before `ICurrentUserContext` is usable) —
+this is a fixed choice, not that visitor's eventual account's saved preference, since there's no
+signed-in user yet to have one. A user who's explicitly set *light* still sees a dark login screen
+right up until the moment they sign in, then sees their own light preference immediately after —
+confirmed by toggling light as an existing user, signing out (still dark), and back in (light again).
+
 **Data Protection keys are persisted next to the database** (`{DB_PATH's directory}/keys/`,
 `Program.cs`), not left at the default (the container's ephemeral filesystem). Those keys are what
 sign/decrypt the auth cookie — left at the default, every restart regenerates them and silently

@@ -19,7 +19,7 @@ internal sealed class StubSettingsService(string notesFolderPath) : ISettingsSer
     }
 
     public Task<string> GetThemeAsync(Guid userId, CancellationToken cancellationToken = default) =>
-        Task.FromResult(_themesByUser.GetValueOrDefault(userId, AppTheme.Light));
+        Task.FromResult(_themesByUser.GetValueOrDefault(userId, AppTheme.Dark));
 
     public Task SetThemeAsync(Guid userId, string theme, CancellationToken cancellationToken = default)
     {

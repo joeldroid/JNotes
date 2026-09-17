@@ -50,7 +50,9 @@ public sealed class SettingsService : ISettingsService
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         var entry = await db.UserSettings.FindAsync([userId, ThemeKey], cancellationToken);
-        return entry?.Value ?? AppTheme.Light;
+        // Dark is the app-wide default — a user who has never touched the toggle gets dark until
+        // they explicitly pick light, not the other way around.
+        return entry?.Value ?? AppTheme.Dark;
     }
 
     public async Task SetThemeAsync(Guid userId, string theme, CancellationToken cancellationToken = default)

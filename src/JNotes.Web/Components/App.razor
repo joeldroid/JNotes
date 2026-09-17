@@ -26,7 +26,7 @@
 </html>
 
 @code {
-    private string _theme = AppTheme.Light;
+    private string _theme = AppTheme.Dark;
 
     // /login and /setup handle a plain form POST that must call HttpContext.SignInAsync — that
     // only works while the response is still being built, which is true for a statically-rendered
@@ -45,11 +45,12 @@
     {
         // Read during prerender so the initial HTML already has the right data-bs-theme — avoids a
         // flash of the wrong theme before the circuit connects. Guarded: on /login, /setup, or any
-        // request before anyone's authenticated, ICurrentUserContext would throw — default to light
-        // rather than making ICurrentUserContext.UserId nullable (which would ripple into every
-        // Core call site that assumes a valid Guid).
+        // request before anyone's authenticated, ICurrentUserContext would throw — default to dark
+        // (this app's app-wide default, see SettingsService.GetThemeAsync) rather than making
+        // ICurrentUserContext.UserId nullable (which would ripple into every Core call site that
+        // assumes a valid Guid).
         _theme = HttpContext.User.Identity?.IsAuthenticated == true
             ? await SettingsService.GetThemeAsync(CurrentUser.UserId)
-            : AppTheme.Light;
+            : AppTheme.Dark;
     }
 }
