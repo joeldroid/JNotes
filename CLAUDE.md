@@ -236,9 +236,21 @@ note whose local calendar day differs from its UTC one. Bucket boundaries are ch
 priority order (today → yesterday → this week → last week → this month → previous) rather than as
 independent ranges, since `monthStart` can chronologically fall *after* `lastWeekStart` near the start
 of a calendar month. `NoteList.razor`'s sections are collapsible via Bootstrap's native
-`data-bs-toggle="collapse"` (the same pattern `ChecklistNoteEditor`'s "Edit raw markdown" toggle
-already uses) — no new JS or C# toggle state, just CSS (`wwwroot/css/note-list.css`) that rotates
-the chevron off Bootstrap's own `.collapsed` class.
+`data-bs-toggle="collapse"` — no new JS or C# toggle state, just CSS (`wwwroot/css/note-list.css`)
+that rotates the chevron off Bootstrap's own `.collapsed` class.
+
+**`ChecklistNoteEditor` and `TextNoteEditor` share the same toggleable-side-panel layout.**
+(`JNotes.Web/Components/Notes/`) Both use a plain `bool` field (`_showRawMarkdown` /
+`_showPreview`) and a `row g-3` / `col-12 col-lg-6` split — the always-visible editable view
+(checklist checkboxes / the body `<textarea>`) on the left, the togglable secondary view (raw
+markdown `<textarea>` / rendered `MarkdownPreview`) on the right, `col-12` full-width on the left
+when the right side is hidden. `ChecklistNoteEditor` used to hide its raw-markdown `<textarea>` in
+a full-width Bootstrap `.collapse` below the checklist instead — replaced with this plain-C#
+toggle specifically to match `TextNoteEditor`'s side-by-side shape, since a Bootstrap `.collapse`
+can't drive the left column's Blazor-rendered `col-12`/`col-lg-6` class switch on its own (that
+state lives in the DOM via Bootstrap's JS, not in the component). `MarkdownToolbar` (bound to the
+raw-markdown `<textarea>`'s `ElementReference`) only renders while that panel is open — there's
+nothing for it to act on while it's hidden.
 
 **Checklist toggling is line-based regex, not a Markdig AST round-trip**
 (`JNotes.Core/Serialization/ChecklistMarkdownParser.cs`). Markdig is used only for read-only
