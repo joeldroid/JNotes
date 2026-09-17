@@ -242,17 +242,19 @@ never an index-less orphaned file tree. This shapes `NoteService`
 
 **Autosave has two persistence scopes, and the cheaper one is deliberately incomplete.**
 `NoteService.AutosaveAsync(note, NoteSaveScope scope)` (`JNotes.Core/Notes/`) is what
-`NoteEditor.razor`'s debounced autosave, the explicit Save button, checklist toggling, and
-`UpdateAsync` all funnel through. `NoteSaveScope.ContentOnly` (body edits, checklist toggles) writes
-only the file — never the index, since body isn't indexed and title/tags haven't changed. This is
-intentionally the same "file changed, index doesn't know yet" state a hand-edited file is in, so
-`NoteIndexReconciler` (already described above) catches it up for free the next time it runs — no
-separate sync path was built for autosave. The visible trade-off: a note's position in the
-`UpdatedAt`-sorted list doesn't move while you're only editing its body, until a `Metadata`-scope
-save (title/tag edit, explicit Save, or leaving the page — see below) or a reconciliation pass.
-`NoteSaveScope.Metadata` (title or tag edits) writes the file *and* reindexes immediately — nothing
-narrower was needed since `EfNoteIndexRepository.UpsertAsync` already replaces both the
-`NoteIndexEntry` row and the note's `NoteTag` rows in one call.
+`NoteEditor.razor`'s debounced autosave, checklist toggling, and `UpdateAsync` all funnel through —
+there's no explicit Save button in the editor at all; every edit reaches disk on its own debounce
+timer (see below), the same "trust autosave" reasoning the "New note" sidebar move already leans
+on. `NoteSaveScope.ContentOnly` (body edits, checklist toggles) writes only the file — never the
+index, since body isn't indexed and title/tags haven't changed. This is intentionally the same
+"file changed, index doesn't know yet" state a hand-edited file is in, so `NoteIndexReconciler`
+(already described above) catches it up for free the next time it runs — no separate sync path was
+built for autosave. The visible trade-off: a note's position in the `UpdatedAt`-sorted list doesn't
+move while you're only editing its body, until a `Metadata`-scope save (title/tag edit, or leaving
+the page — see below) or a reconciliation pass. `NoteSaveScope.Metadata` (title or tag edits)
+writes the file *and* reindexes immediately — nothing narrower was needed since
+`EfNoteIndexRepository.UpsertAsync` already replaces both the `NoteIndexEntry` row and the note's
+`NoteTag` rows in one call.
 
 `NoteEditor.razor`'s autosave: two independent debounces (`AutosaveDebouncer`,
 `JNotes.Web/Components/Notes/`) — content and metadata edits shouldn't wait on each other — but
