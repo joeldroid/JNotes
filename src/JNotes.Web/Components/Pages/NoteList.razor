@@ -5,10 +5,12 @@
 
 <PageTitle>Notes</PageTitle>
 
-<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-    <input type="search" class="form-control" style="max-width: 260px;" placeholder="Search notes…"
-           @bind="_searchText" @bind:event="oninput" @bind:after="RefreshAsync" />
+@if (!string.IsNullOrWhiteSpace(Query))
+{
+    <p class="text-body-secondary mb-3">Search results for &ldquo;@Query&rdquo; &middot; <a href="/">Clear</a></p>
+}
 
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
     <select class="form-select" style="max-width: 160px;" @bind="_typeFilter" @bind:after="RefreshAsync">
         <option value="">All types</option>
         <option value="Text">Text</option>
@@ -30,7 +32,9 @@
 }
 else if (_notes.Count == 0)
 {
-    <p class="text-body-secondary">No notes yet — create one to get started.</p>
+    <p class="text-body-secondary">
+        @(string.IsNullOrWhiteSpace(Query) ? "No notes yet — create one to get started." : "No notes match your search.")
+    </p>
 }
 else
 {
@@ -55,16 +59,26 @@ else
 }
 
 @code {
+    [SupplyParameterFromQuery(Name = "q")]
+    public string? Query { get; set; }
+
     private IReadOnlyList<NoteSummary>? _notes;
     private IReadOnlyList<NoteGroup> _groups = [];
     private IReadOnlyList<string> _availableTags = [];
-    private string _searchText = "";
     private string _typeFilter = "";
     private string _tagFilter = "";
 
     protected override async Task OnInitializedAsync()
     {
         _availableTags = await NoteService.GetDistinctTagsAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Fires on first load and again whenever Query changes (the sidebar search box navigates
+        // to /?q=... without leaving this page) — the single place RefreshAsync needs to be
+        // triggered from for anything driven by the URL, same reasoning NoteEditor.razor's Id
+        // route parameter uses OnParametersSetAsync instead of OnInitializedAsync for.
         await RefreshAsync();
     }
 
@@ -72,7 +86,7 @@ else
     {
         var type = Enum.TryParse<NoteType>(_typeFilter, out var parsed) ? parsed : (NoteType?)null;
         var query = new NoteSearchQuery(
-            SearchText: string.IsNullOrWhiteSpace(_searchText) ? null : _searchText,
+            SearchText: string.IsNullOrWhiteSpace(Query) ? null : Query,
             Tag: string.IsNullOrWhiteSpace(_tagFilter) ? null : _tagFilter,
             Type: type);
 

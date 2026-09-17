@@ -103,6 +103,22 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task RescanAsync_backfills_the_indexed_body_so_search_finds_a_ContentOnly_autosaved_change()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Note", [], "original body");
+        await Task.Delay(TimeSpan.FromMilliseconds(1100)); // ensure the filesystem mtime actually advances
+
+        note.Body = "contains a needle";
+        await _fixture.NoteService.AutosaveAsync(note, NoteSaveScope.ContentOnly);
+        Assert.Empty(await _fixture.NoteService.ListAsync(new NoteSearchQuery(SearchText: "needle")));
+
+        await _fixture.Reconciler.RescanAsync(_fixture.UserAId);
+
+        var results = await _fixture.NoteService.ListAsync(new NoteSearchQuery(SearchText: "needle"));
+        Assert.Single(results);
+    }
+
+    [Fact]
     public async Task RescanAsync_is_a_noop_when_nothing_changed_since_the_last_index()
     {
         await _fixture.NoteService.CreateAsync(NoteType.Text, "Untouched", [], "body");

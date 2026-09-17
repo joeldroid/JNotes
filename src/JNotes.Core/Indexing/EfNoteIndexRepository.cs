@@ -29,8 +29,13 @@ public sealed class EfNoteIndexRepository : INoteIndexRepository
 
         if (!string.IsNullOrWhiteSpace(query.SearchText))
         {
+            // Matches title, body, or any tag — the sidebar search box's whole point is not
+            // needing to remember which of the three a note was found by.
             var pattern = $"%{query.SearchText}%";
-            notesQuery = notesQuery.Where(n => EF.Functions.Like(n.Title, pattern));
+            notesQuery = notesQuery.Where(n =>
+                EF.Functions.Like(n.Title, pattern) ||
+                EF.Functions.Like(n.Body, pattern) ||
+                db.NoteTags.Any(t => t.NoteId == n.Id && EF.Functions.Like(t.Tag, pattern)));
         }
 
         if (!string.IsNullOrWhiteSpace(query.Tag))

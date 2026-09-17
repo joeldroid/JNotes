@@ -1,10 +1,10 @@
 namespace JNotes.Core.Data;
 
 /// <summary>
-/// The SQLite-indexed metadata for one note — mirrors the note file for fast listing/search.
-/// Never holds body content: the markdown file is the source of truth for that, this is a
-/// derived cache kept in sync by <c>NoteService</c> (on write) and <c>INoteIndexReconciler</c>
-/// (reconciling against the filesystem).
+/// The SQLite-indexed metadata for one note — mirrors the note file for fast listing/search. The
+/// markdown file is still the source of truth: this is a derived cache kept in sync by
+/// <c>NoteService</c> (on write) and <c>INoteIndexReconciler</c> (reconciling against the
+/// filesystem), never edited from anywhere else.
 /// </summary>
 public sealed class NoteIndexEntry
 {
@@ -13,6 +13,16 @@ public sealed class NoteIndexEntry
     public required Guid UserId { get; set; }
 
     public required string Title { get; set; }
+
+    /// <summary>
+    /// A copy of the note's body, kept here purely so search can match on content without opening
+    /// every file — never rendered from here (<c>NoteService.GetAsync</c> still reads the file for
+    /// that). A <see cref="Notes.NoteSaveScope.ContentOnly"/> autosave doesn't update this
+    /// immediately, same as it doesn't update anything else in the index — it catches up on the
+    /// next <see cref="Notes.NoteSaveScope.Metadata"/> save or reconciliation pass, like everything
+    /// else here.
+    /// </summary>
+    public required string Body { get; set; }
 
     /// <summary>Stored as the string name of <see cref="Models.NoteType"/> (not an int) so a future
     /// reordering of the enum can't silently corrupt existing rows.</summary>

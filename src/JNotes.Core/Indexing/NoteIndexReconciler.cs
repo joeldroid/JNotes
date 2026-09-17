@@ -55,6 +55,7 @@ public sealed class NoteIndexReconciler : INoteIndexReconciler
                     Id = note.Id,
                     UserId = userId,
                     Title = note.Title,
+                    Body = note.Body,
                     NoteType = note.Type.ToString(),
                     CreatedAt = note.CreatedAt,
                     UpdatedAt = note.UpdatedAt,

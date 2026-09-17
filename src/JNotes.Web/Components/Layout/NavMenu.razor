@@ -15,6 +15,10 @@
                 <li><button class="dropdown-item" @onclick='() => CreateNoteAsync(NoteType.Checklist)'>Checklist</button></li>
             </ul>
         </div>
+        <div class="mb-3">
+            <input type="search" class="form-control form-control-sm" placeholder="Search notes…"
+                   @bind="_searchText" @bind:event="oninput" @onkeydown="OnSearchKeyDown" />
+        </div>
     </AuthorizeView>
 
     <ul class="nav nav-pills flex-column gap-1">
@@ -63,6 +67,7 @@
 @code {
     private string _displayName = "";
     private string _initials = "";
+    private string _searchText = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -87,5 +92,19 @@
         var defaultBody = type == NoteType.Checklist ? "- [ ] " : "";
         var note = await NoteService.CreateAsync(type, "Untitled note", [], defaultBody);
         NavigationManager.NavigateTo($"/notes/{note.Id}");
+    }
+
+    private void OnSearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter")
+        {
+            return;
+        }
+
+        // Always lands on / (the notes list) regardless of which page the search was triggered
+        // from — NoteList.razor's [SupplyParameterFromQuery] "q" parameter is the only thing that
+        // knows how to actually run the search (title/body/tag, via EfNoteIndexRepository.SearchAsync).
+        var trimmed = _searchText.Trim();
+        NavigationManager.NavigateTo(trimmed.Length == 0 ? "/" : $"/?q={Uri.EscapeDataString(trimmed)}");
     }
 }

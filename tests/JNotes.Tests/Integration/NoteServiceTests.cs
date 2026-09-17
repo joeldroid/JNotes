@@ -201,6 +201,55 @@ public class NoteServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ListAsync_SearchText_matches_the_title()
+    {
+        await _fixture.NoteService.CreateAsync(NoteType.Text, "Grocery list", [], "milk, eggs");
+        await _fixture.NoteService.CreateAsync(NoteType.Text, "Meeting notes", [], "agenda items");
+
+        var results = await _fixture.NoteService.ListAsync(new NoteSearchQuery(SearchText: "grocery"));
+
+        Assert.Single(results);
+        Assert.Equal("Grocery list", results[0].Title);
+    }
+
+    [Fact]
+    public async Task ListAsync_SearchText_matches_the_body()
+    {
+        await _fixture.NoteService.CreateAsync(NoteType.Text, "Untitled", [], "remember to buy oat milk");
+        await _fixture.NoteService.CreateAsync(NoteType.Text, "Other note", [], "unrelated content");
+
+        var results = await _fixture.NoteService.ListAsync(new NoteSearchQuery(SearchText: "oat milk"));
+
+        Assert.Single(results);
+        Assert.Equal("Untitled", results[0].Title);
+    }
+
+    [Fact]
+    public async Task ListAsync_SearchText_matches_a_tag()
+    {
+        await _fixture.NoteService.CreateAsync(NoteType.Text, "Tagged note", ["urgent"], "body");
+        await _fixture.NoteService.CreateAsync(NoteType.Text, "Untagged note", [], "body");
+
+        var results = await _fixture.NoteService.ListAsync(new NoteSearchQuery(SearchText: "urgent"));
+
+        Assert.Single(results);
+        Assert.Equal("Tagged note", results[0].Title);
+    }
+
+    [Fact]
+    public async Task ListAsync_SearchText_reflects_a_body_edit_after_a_Metadata_scope_autosave()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Note", [], "original body");
+        Assert.Empty(await _fixture.NoteService.ListAsync(new NoteSearchQuery(SearchText: "needle")));
+
+        note.Body = "contains a needle in it";
+        await _fixture.NoteService.AutosaveAsync(note, NoteSaveScope.Metadata);
+
+        var results = await _fixture.NoteService.ListAsync(new NoteSearchQuery(SearchText: "needle"));
+        Assert.Single(results);
+    }
+
+    [Fact]
     public async Task A_note_created_by_one_user_never_appears_in_another_users_listing_or_lookup()
     {
         _fixture.ActAsUserA();

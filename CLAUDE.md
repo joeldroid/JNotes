@@ -288,6 +288,33 @@ does one best-effort `Metadata`-scope flush if anything's still unsaved when the
 down (navigating away right after typing), so the last stretch of edits and the index both catch
 up together rather than waiting for the next reconciliation.
 
+**Search lives in the sidebar (`NavMenu.razor`), not on the notes list page — it's a single
+free-text box with no type/tag options, matching title, body, and tags all at once.** Pressing
+Enter navigates to `/?q=<text>` (URL-encoded, empty text just navigates to `/`); `NoteList.razor`
+reads that back via `[SupplyParameterFromQuery(Name = "q")]` and refreshes from
+`OnParametersSetAsync` (not `OnInitializedAsync` — the same page instance is reused across repeat
+searches, since only the query string changes, so it has to react to parameter updates, not just
+run once on first load; `NoteEditor.razor`'s `Id` route parameter is the same pattern for the same
+reason). Routing search through the URL rather than component-local state is what makes it work
+from *any* page — the search box itself lives in the persistent sidebar layout, so typing while on
+`/settings` or inside a note still lands you back on `/` with results, without the search box
+needing to know anything about the page it's currently rendered alongside. `NoteList.razor` keeps
+its own Type/Tag filter dropdowns (unrelated to free-text search, still page-local) and shows a
+"Search results for … · Clear" line above them when `Query` is set.
+
+Making search cover **body content**, not just title, meant the index could no longer be
+title/tags-only: `NoteIndexEntry.Body` is a full copy of the note's body, kept in sync by
+`NoteService`'s existing file-first-then-index write path and `NoteIndexReconciler` exactly like
+`Title` already was — no new sync mechanism, just one more field on entries those two already
+build. It inherits the same `ContentOnly`-autosave staleness trade-off documented below: a body
+edit alone doesn't update the indexed `Body` until a `Metadata`-scope save or a reconciliation
+pass, so search-by-content can lag a content-only autosave the same way list ordering already does.
+`EfNoteIndexRepository.SearchAsync`'s `SearchText` matching became `Title LIKE OR Body LIKE OR
+EXISTS a NoteTag LIKE` — one query, no separate search modes to remember. Existing rows get an
+empty string for the new column via the migration's default value; they backfill for free the next
+time each note is edited or reconciled, the same self-healing story this app already relies on
+elsewhere rather than a one-off data backfill script.
+
 **The default notes view groups by relative date, not just sorts.** `NoteGrouping.GroupByRelativeDate`
 (`JNotes.Core/Notes/`) buckets an already-`UpdatedAt`-descending list (`EfNoteIndexRepository.SearchAsync`
 already sorts; grouping never re-sorts) into Today/Yesterday/This week/Last week/This month/Previous,
