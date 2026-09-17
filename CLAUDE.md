@@ -46,21 +46,42 @@ for the user's next navigation.
 
 **Settings and user management share one page, split into two sections by role, not two routes.**
 `Settings.razor` (`/settings`, `[Authorize]` — any signed-in user) has an "App settings" section
-(Appearance/Storage/Index/Account) everyone sees, and an "Administration settings" section
-(Security, the user table, add/edit/delete user) wrapped in `<AuthorizeView Roles="Admin">` — the
-former standalone `/users` page (`[Authorize(Policy = "AdminOnly")]`) folded in here rather than
-staying a separate route, so there's one settings destination instead of two nav entries. Markup
-gating alone isn't enough for `OnInitializedAsync`, though: it only stops the Administration section
-from *rendering*, not from being fetched into a Member's component state, so `Settings.razor` checks
+(Appearance/Account — just dark mode and your own password) everyone sees, and an "Administration
+settings" section (Security, Storage, Index, the user table, add/edit/delete user) wrapped in
+`<AuthorizeView Roles="Admin">` — the former standalone `/users` page
+(`[Authorize(Policy = "AdminOnly")]`) folded in here rather than staying a separate route, so
+there's one settings destination instead of two nav entries. Storage/Index (notes folder path,
+note count, Rescan Now) moved into Administration settings too, even though they technically only
+ever act on *your own* notes (`Reconciler.RescanAsync(CurrentUser.UserId)`) — a deliberate choice
+to keep "App settings" down to the two things every Member actually needs. Markup gating alone
+isn't enough for `OnInitializedAsync`, though: it only stops the Administration section from
+*rendering*, not from being fetched into a Member's component state, so `Settings.razor` checks
 `AuthenticationStateProvider`'s `IsInRole(nameof(UserRole.Admin))` before ever calling
-`UserRepository.GetAllUsersAsync()` — otherwise every account's email/role/auth-method data would
-sit in a Member's circuit state even though the table never renders for them. The user-management
-mutations themselves (create/delete/reset-password) still have no server-side role check in
-`IUserRepository`/`UserManagementService` beyond what `UpdateProfileAsync`/`DeleteUserAsync` already
-do — same as the pre-existing `Security` section's `TogglePasswordAuthAsync` — relying on Blazor
-Server's render-tree-scoped event dispatch (a Member's circuit never receives an event handler id
-for a button `AuthorizeView` didn't render, so there's nothing to invoke) rather than a route guard,
-now that the admin-only page-level `[Authorize(Policy = "AdminOnly")]` guard is gone.
+`UserRepository.GetAllUsersAsync()`, `SettingsService.GetNotesFolderPathAsync()`, or
+`RefreshCountAsync()` — otherwise that data would sit in a Member's circuit state even though it
+never renders for them. The user-management mutations themselves (create/delete/reset-password)
+still have no server-side role check in `IUserRepository`/`UserManagementService` beyond what
+`UpdateProfileAsync`/`DeleteUserAsync` already do — same as the pre-existing `Security` section's
+`TogglePasswordAuthAsync` — relying on Blazor Server's render-tree-scoped event dispatch (a
+Member's circuit never receives an event handler id for a button `AuthorizeView` didn't render, so
+there's nothing to invoke) rather than a route guard, now that the admin-only page-level
+`[Authorize(Policy = "AdminOnly")]` guard is gone.
+
+**`NavMenu`'s account widget is bottom-anchored and self-contained, not a separate "signed in as"
+block.** `NavMenu.razor` renders as a single `d-flex flex-column h-100` wrapper (not two loose
+sibling elements like before) specifically so `mt-auto` on the account section pushes it to the
+bottom of whichever container hosts it — `MainLayout.razor`'s desktop `<aside>` (already
+`d-flex flex-column`, height stretched from its own flex-row parent) and the mobile
+`.offcanvas-body` (height comes from `.offcanvas`'s `flex-grow: 1`) both give the wrapper a
+definite height to fill, so the same markup works in both places with no separate mobile styling.
+The avatar's initials come from `JNotes.Core.Users.UserInitials.Compute` — a pure static class
+(same reasoning as `NoteGrouping`/`ChecklistMarkdownParser`) that prefers
+`FirstName[0] + LastName[0]` when both are set, else the first two letters of whichever single
+name is available (first name, then username), always capped at 2 characters. Clicking the
+avatar/name toggles a Bootstrap `collapse` (`#accountMenu`, the same `data-bs-toggle`/`.collapsed`
+chevron-rotation pattern as `NoteList.razor`'s group headers) revealing "My Profile" and "Sign
+out" — `/profile` no longer has its own top-level nav entry, since it lives here now alongside
+sign-out instead of being a permanently-visible link.
 
 ## Commands
 

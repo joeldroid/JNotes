@@ -1,0 +1,27 @@
+// The sidebar's bottom-anchored account widget (avatar + name, expands to My Profile/Sign out).
+.account-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background-color: var(--bs-primary);
+    color: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.account-menu-toggle {
+    .account-menu-chevron {
+        display: inline-block;
+        transition: transform 0.15s ease;
+    }
+
+    // Bootstrap's collapse JS toggles .collapsed on the trigger element itself — present when the
+    // target is hidden, absent while it's shown. Rotate the chevron to point down while expanded.
+    &:not(.collapsed) .account-menu-chevron {
+        transform: rotate(90deg);
+    }
+}
