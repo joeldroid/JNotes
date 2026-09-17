@@ -25,7 +25,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:8-alpine
+    image: valkey/valkey:9-alpine
     # No volume: the note index is a derived cache, rebuilt from the markdown files under
     # ./data/notes by the reconciliation pass that already runs on every startup — an empty Redis
     # after a restart is a one-time rescan, never data loss. Add a volume + `--appendonly yes` only
