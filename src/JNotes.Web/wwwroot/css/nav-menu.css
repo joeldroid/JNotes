@@ -1,3 +1,11 @@
+/* Monochrome, font-rendered glyphs (not an icon library — none is vendored) before nav labels.
+   inline-block + fixed width keeps labels aligned regardless of each glyph's natural width. */
+.nav-icon {
+    display: inline-block;
+    width: 1.1em;
+    text-align: center;
+}
+
 /* The sidebar's bottom-anchored account widget (avatar + name, expands to My Profile/Sign out). */
 .account-avatar {
     display: inline-flex;

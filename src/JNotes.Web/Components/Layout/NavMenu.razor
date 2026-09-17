@@ -6,35 +6,35 @@
 
 <div class="d-flex flex-column h-100">
     <AuthorizeView>
+        <div class="mb-3">
+            <input type="search" class="form-control form-control-sm" placeholder="Search"
+                   value="@_searchText" @oninput="OnSearchInput" @onkeydown="OnSearchKeyDown" @onclick="ClearSearch" />
+        </div>
         <div class="dropdown mb-3">
             <button class="btn btn-primary dropdown-toggle w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                New note
+                <span class="nav-icon" aria-hidden="true">✎&#xFE0E;</span> New note
             </button>
             <ul class="dropdown-menu">
                 <li><button class="dropdown-item" @onclick='() => CreateNoteAsync(NoteType.Text)'>Text note</button></li>
                 <li><button class="dropdown-item" @onclick='() => CreateNoteAsync(NoteType.Checklist)'>Checklist</button></li>
             </ul>
         </div>
-        <div class="mb-3">
-            <input type="search" class="form-control form-control-sm" placeholder="Search notes…"
-                   @bind="_searchText" @bind:event="oninput" @onkeydown="OnSearchKeyDown" />
-        </div>
     </AuthorizeView>
 
     <ul class="nav nav-pills flex-column gap-1">
         <li class="nav-item">
             <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
-                Notes
+                <span class="nav-icon" aria-hidden="true">▤</span> Notes
             </NavLink>
         </li>
         <li class="nav-item">
             <NavLink class="nav-link" href="/settings">
-                Settings
+                <span class="nav-icon" aria-hidden="true">⚙&#xFE0E;</span> Settings
             </NavLink>
         </li>
         <li class="nav-item">
             <NavLink class="nav-link" href="/trash">
-                Trash
+                <span class="nav-icon" aria-hidden="true">⌫</span> Trash
             </NavLink>
         </li>
     </ul>
@@ -92,6 +92,18 @@
         var defaultBody = type == NoteType.Checklist ? "- [ ] " : "";
         var note = await NoteService.CreateAsync(type, "Untitled note", [], defaultBody);
         NavigationManager.NavigateTo($"/notes/{note.Id}");
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _searchText = e.Value?.ToString() ?? "";
+    }
+
+    private void ClearSearch()
+    {
+        // Clicking into the box always starts a fresh search rather than requiring the user to
+        // manually select-all + delete whatever term they last searched for.
+        _searchText = "";
     }
 
     private void OnSearchKeyDown(KeyboardEventArgs e)

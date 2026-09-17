@@ -100,6 +100,22 @@ chevron-rotation pattern as `NoteList.razor`'s group headers) revealing "My Prof
 out" — `/profile` no longer has its own top-level nav entry, since it lives here now alongside
 sign-out instead of being a permanently-visible link.
 
+**The sidebar's top section is ordered Search, New note, Notes, Settings, Trash, and its icons are
+plain Unicode glyphs, not a vendored icon font.** No icon library is vendored (same reasoning as
+Bootstrap being the only vendored UI dependency, under `wwwroot/lib/`) — instead, each label except
+the search box is preceded by a `<span class="nav-icon">` wrapping a single monochrome dingbat/
+symbol character (✎ new note, ▤ notes, ⚙ settings, ⌫ trash), the same "plain text glyph, no new
+dependency" precedent `NoteList.razor`'s `▸` group-header chevron and `NavMenu`'s own
+`account-menu-chevron` already established. The gear and pencil glyphs append the `︎` text-
+presentation variation selector to force monochrome/text rendering instead of color emoji — the
+other two symbols (▤, ⌫) live in Unicode blocks with no emoji presentation at all, so they render
+monochrome by default with no selector needed. `.nav-icon` (`wwwroot/css/nav-menu.css`) is a fixed-
+width inline-block purely so labels stay left-aligned regardless of each glyph's natural width. The
+search `<input>` is deliberately excluded from icon treatment (the placeholder text "Search" already
+signals its purpose) and clears itself via `@onclick` whenever it's clicked, whether or not it
+currently holds a previous query — so starting a new search never requires manually clearing the
+box first.
+
 **"New note" lives in `NavMenu.razor`, not `NoteList.razor` — it needs to work from any page, not
 just `/`.** The create-and-navigate logic (`INoteService.CreateAsync` then
 `NavigationManager.NavigateTo($"/notes/{note.Id}")`) moved there verbatim; `NoteList.razor` no
