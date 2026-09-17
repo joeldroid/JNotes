@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using StackExchange.Redis;
 
 namespace JNotes.Core;
 
@@ -38,6 +39,7 @@ public static class ServiceCollectionExtensions
             options.NotesFolderPath = configuration["NOTES_PATH"] ?? options.NotesFolderPath;
             options.DbPath = configuration["DB_PATH"] ?? options.DbPath;
             options.TimeZoneId = configuration["TZ"] ?? options.TimeZoneId;
+            options.RedisConnectionString = configuration["REDIS_CONNECTION_STRING"] ?? options.RedisConnectionString;
         });
 
         // Same flat-env-var pattern for OIDC — optional, unset means "not configured" (see
@@ -66,12 +68,30 @@ public static class ServiceCollectionExtensions
             options.UseSqlite($"Data Source={jnotesOptions.DbPath}");
         });
 
+        // A single multiplexer instance is reused for the app's whole lifetime (StackExchange.Redis's
+        // own recommendation — it manages its own connection pool/reconnection internally, so there's
+        // nothing per-request to scope, unlike the SQLite DbContextFactory above). Connecting eagerly
+        // at registration time (rather than lazily on first use) means a missing/unreachable
+        // REDIS_CONNECTION_STRING fails fast at startup instead of surfacing on a user's first note
+        // list load.
+        services.AddSingleton<IConnectionMultiplexer>(sp =>
+        {
+            var jnotesOptions = sp.GetRequiredService<IOptions<JNotesOptions>>().Value;
+            if (string.IsNullOrWhiteSpace(jnotesOptions.RedisConnectionString))
+            {
+                throw new InvalidOperationException(
+                    "REDIS_CONNECTION_STRING is required — the note index has no SQLite fallback.");
+            }
+
+            return ConnectionMultiplexer.Connect(jnotesOptions.RedisConnectionString);
+        });
+
         services.AddSingleton<INoteMarkdownSerializer, NoteMarkdownSerializer>();
         services.AddSingleton<IMarkdownRenderer, MarkdownRenderer>();
         services.AddSingleton<IAppTimeZoneProvider, AppTimeZoneProvider>();
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<INoteFileStore, FileSystemNoteFileStore>();
-        services.AddScoped<INoteIndexRepository, EfNoteIndexRepository>();
+        services.AddSingleton<INoteIndexRepository, RedisNoteIndexRepository>();
         services.AddScoped<INoteService, NoteService>();
         services.AddScoped<INoteIndexReconciler, NoteIndexReconciler>();
         services.AddSingleton<PasswordHasher<UserAccount>>();

@@ -1,7 +1,7 @@
-namespace JNotes.Core.Data;
+namespace JNotes.Core.Indexing;
 
 /// <summary>
-/// The SQLite-indexed metadata for one note — mirrors the note file for fast listing/search. The
+/// The indexed metadata for one note — mirrors the note file for fast listing/search. The
 /// markdown file is still the source of truth: this is a derived cache kept in sync by
 /// <c>NoteService</c> (on write) and <c>INoteIndexReconciler</c> (reconciling against the
 /// filesystem), never edited from anywhere else.

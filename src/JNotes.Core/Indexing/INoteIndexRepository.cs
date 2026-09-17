@@ -1,11 +1,11 @@
-using JNotes.Core.Data;
 using JNotes.Core.Notes;
 
 namespace JNotes.Core.Indexing;
 
 /// <summary>
-/// Thin EF Core CRUD over the SQLite index — no file I/O. <c>NoteService</c> and
-/// <c>NoteIndexReconciler</c> are the only callers; everything else goes through them.
+/// Thin CRUD over the note index (Redis — see <see cref="RedisNoteIndexRepository"/>) — no file
+/// I/O. <c>NoteService</c> and <c>NoteIndexReconciler</c> are the only callers; everything else
+/// goes through them.
 /// </summary>
 /// <remarks>
 /// Every method takes an explicit <c>userId</c> (or, for <see cref="UpsertAsync"/>, reads it off

@@ -17,69 +17,6 @@ namespace JNotes.Core.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
-            modelBuilder.Entity("JNotes.Core.Data.NoteIndexEntry", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Body")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("FilePath")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("IndexedFileWriteTimeUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("NoteType")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId", "UpdatedAt");
-
-                    b.ToTable("Notes");
-                });
-
-            modelBuilder.Entity("JNotes.Core.Data.NoteTag", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<Guid>("NoteId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Tag")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("NoteId");
-
-                    b.HasIndex("Tag");
-
-                    b.ToTable("NoteTags");
-                });
-
             modelBuilder.Entity("JNotes.Core.Data.SettingEntry", b =>
                 {
                     b.Property<string>("Key")
@@ -158,24 +95,6 @@ namespace JNotes.Core.Data.Migrations
                     b.HasKey("UserId", "Key");
 
                     b.ToTable("UserSettings");
-                });
-
-            modelBuilder.Entity("JNotes.Core.Data.NoteIndexEntry", b =>
-                {
-                    b.HasOne("JNotes.Core.Data.UserAccount", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("JNotes.Core.Data.NoteTag", b =>
-                {
-                    b.HasOne("JNotes.Core.Data.NoteIndexEntry", null)
-                        .WithMany()
-                        .HasForeignKey("NoteId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
                 });
 
             modelBuilder.Entity("JNotes.Core.Data.UserSetting", b =>

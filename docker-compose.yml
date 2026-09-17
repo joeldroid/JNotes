@@ -11,6 +11,7 @@ services:
     environment:
       - NOTES_PATH=/data/notes
       - DB_PATH=/data/jnotes.db
+      - REDIS_CONNECTION_STRING=redis:6379
       # Override by exporting TZ before running compose, or adding TZ=... to a .env file.
       - TZ=${TZ:-UTC}
       # Optional OIDC login — uncomment and set via a .env file (or export before running compose)
@@ -19,4 +20,14 @@ services:
       # - OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
       # - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
       # - OIDC_DISPLAY_NAME=${OIDC_DISPLAY_NAME:-OIDC}
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    # No volume: the note index is a derived cache, rebuilt from the markdown files under
+    # ./data/notes by the reconciliation pass that already runs on every startup — an empty Redis
+    # after a restart is a one-time rescan, never data loss. Add a volume + `--appendonly yes` only
+    # if you want to skip that rescan on a large note collection.
     restart: unless-stopped

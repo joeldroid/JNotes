@@ -4,10 +4,6 @@ namespace JNotes.Core.Data;
 
 public sealed class JNotesDbContext(DbContextOptions<JNotesDbContext> options) : DbContext(options)
 {
-    public DbSet<NoteIndexEntry> Notes => Set<NoteIndexEntry>();
-
-    public DbSet<NoteTag> NoteTags => Set<NoteTag>();
-
     public DbSet<SettingEntry> Settings => Set<SettingEntry>();
 
     public DbSet<UserAccount> Users => Set<UserAccount>();
@@ -16,29 +12,6 @@ public sealed class JNotesDbContext(DbContextOptions<JNotesDbContext> options) :
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<NoteIndexEntry>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            // Searches always filter by user first now, so the useful index is the composite, not
-            // UpdatedAt alone.
-            entity.HasIndex(e => new { e.UserId, e.UpdatedAt });
-            entity.HasOne<UserAccount>()
-                .WithMany()
-                .HasForeignKey(e => e.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
-
-        modelBuilder.Entity<NoteTag>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.Tag);
-            entity.HasIndex(e => e.NoteId);
-            entity.HasOne<NoteIndexEntry>()
-                .WithMany()
-                .HasForeignKey(e => e.NoteId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
-
         modelBuilder.Entity<SettingEntry>(entity =>
         {
             entity.HasKey(e => e.Key);

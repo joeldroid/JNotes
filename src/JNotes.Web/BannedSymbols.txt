@@ -2,3 +2,5 @@ T:System.IO.File;Do not touch the filesystem directly in JNotes.Web — go throu
 T:System.IO.Directory;Do not touch the filesystem directly in JNotes.Web — go through INoteFileStore in JNotes.Core.
 T:Microsoft.EntityFrameworkCore.DbContext;Do not use EF Core directly in JNotes.Web — go through INoteService/ISettingsService/INoteIndexReconciler in JNotes.Core.
 T:Microsoft.Data.Sqlite.SqliteConnection;Do not use SQLite directly in JNotes.Web — go through INoteService/ISettingsService/INoteIndexReconciler in JNotes.Core.
+T:StackExchange.Redis.IConnectionMultiplexer;Do not use Redis directly in JNotes.Web — go through INoteService/INoteIndexReconciler in JNotes.Core.
+T:StackExchange.Redis.IDatabase;Do not use Redis directly in JNotes.Web — go through INoteService/INoteIndexReconciler in JNotes.Core.

@@ -8,13 +8,15 @@ using JNotes.Core.Users;
 using JNotes.Tests.TestDoubles;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using StackExchange.Redis;
 
 namespace JNotes.Tests.Integration;
 
 /// <summary>
-/// Wires up the real <c>AddJNotesCore</c> DI graph against a temp folder and a real temp-file
-/// SQLite database (not the in-memory provider), so reconciliation/service tests exercise actual
-/// SQLite and migration behavior rather than a fake. Seeds two users (<see cref="UserAId"/>,
+/// Wires up the real <c>AddJNotesCore</c> DI graph against a temp folder, a real temp-file
+/// SQLite database (not the in-memory provider), and a real Redis instance (see
+/// <see cref="RedisConnectionStringEnvVar"/>), so reconciliation/service tests exercise actual
+/// SQLite/Redis and migration behavior rather than a fake. Seeds two users (<see cref="UserAId"/>,
 /// <see cref="UserBId"/>) so tests can verify per-user scoping; <see cref="ActAsUserA"/>/
 /// <see cref="ActAsUserB"/> switch which one <see cref="NoteService"/> (implicit-current-user)
 /// acts as — <c>INoteFileStore</c>/<c>INoteIndexReconciler</c> take explicit userIds instead, so
@@ -65,11 +67,18 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
 
     public void ActAsUserB() => _currentUserContext.UserId = UserBId;
 
+    /// <summary>
+    /// Overridable so CI/a dev machine can point tests at a Redis instance other than the default
+    /// local one — mirrors how <c>REDIS_CONNECTION_STRING</c> itself works for the app.
+    /// </summary>
+    private const string RedisConnectionStringEnvVar = "JNOTES_TEST_REDIS_CONNECTION_STRING";
+
     public static async Task<CoreServicesFixture> CreateAsync()
     {
         var rootDir = Path.Combine(Path.GetTempPath(), "jnotes-tests-" + Guid.NewGuid());
         var notesFolder = Path.Combine(rootDir, "notes");
         var dbPath = Path.Combine(rootDir, "jnotes.db");
+        var redisConnectionString = Environment.GetEnvironmentVariable(RedisConnectionStringEnvVar) ?? "localhost:6379";
 
         var currentUserContext = new TestCurrentUserContext();
 
@@ -79,6 +88,7 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
         {
             o.NotesFolderPath = notesFolder;
             o.DbPath = dbPath;
+            o.RedisConnectionString = redisConnectionString;
         });
         // AddJNotesCore deliberately doesn't register this (see its doc comment) — normally
         // JNotes.Web does, backed by a cookie; here a simple mutable stub stands in.
@@ -98,12 +108,37 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await CleanUpRedisAsync();
+
         _scope.Dispose();
         await _provider.DisposeAsync();
 
         if (Directory.Exists(_rootDir))
         {
             Directory.Delete(_rootDir, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Unlike the temp SQLite file/notes folder, Redis is a shared instance across test runs — leftover
+    /// keys wouldn't break anything (the index is a rebuildable cache either way), but there's no
+    /// harm in tidying up after ourselves rather than letting a dev's local Redis grow unbounded.
+    /// </summary>
+    private async Task CleanUpRedisAsync()
+    {
+        var redis = _scope.ServiceProvider.GetRequiredService<IConnectionMultiplexer>();
+        var db = redis.GetDatabase();
+
+        foreach (var userId in new[] { UserAId, UserBId })
+        {
+            var setKey = (RedisKey)$"jnotes:user:{userId}:notes";
+            var noteIds = await db.SetMembersAsync(setKey);
+            foreach (var noteId in noteIds)
+            {
+                await db.KeyDeleteAsync((RedisKey)$"jnotes:note:{noteId}");
+            }
+
+            await db.KeyDeleteAsync(setKey);
         }
     }
 }

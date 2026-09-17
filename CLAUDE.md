@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 JNotes is a self-hosted, multi-user note-taking app: Blazor Server (.NET 10) UI, notes stored as
 portable markdown files on disk (each a readable `.md` with YAML front matter, one subfolder per
-user), and a SQLite database that indexes them for fast search — the index is a **derived cache**,
-never the source of truth. See README.md for features, the note file format, and full
-configuration reference.
+user), a Redis index over them for fast search — the index is a **derived cache**, never the
+source of truth — and a SQLite database holding everything else (settings, user accounts). See
+README.md for features, the note file format, and full configuration reference.
 
 **Real authentication.** Every `UserAccount` has a `Role` (`Admin`/`Member`), an optional password
 (`PasswordHash`, hashed with `PasswordHasher<UserAccount>`), an optional `Email`, and an optional
@@ -156,14 +156,15 @@ docker compose up --build
 
 **Three projects**, enforced one-directional dependency:
 `JNotes.Web` (Blazor Server UI + composition root) → `JNotes.Core` (domain, storage, indexing,
-EF Core) ← `JNotes.Tests` (xUnit, tests Core only).
+EF Core, Redis) ← `JNotes.Tests` (xUnit, tests Core only).
 
-**Web never touches the filesystem or EF Core/SQLite directly.** It only consumes interfaces from
-Core: `INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
+**Web never touches the filesystem, EF Core/SQLite, or Redis directly.** It only consumes
+interfaces from Core: `INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
 `IUserManagementService`. This is enforced at *build time*, not just by convention:
-`Microsoft.CodeAnalysis.BannedApiAnalyzers` bans `System.IO.File`/`Directory`, `DbContext`, and
-`SqliteConnection` in `JNotes.Web` (`src/JNotes.Web/BannedSymbols.txt`) — a real build error, not a
-warning, if violated. All of Core's DI wiring lives in one place:
+`Microsoft.CodeAnalysis.BannedApiAnalyzers` bans `System.IO.File`/`Directory`, `DbContext`,
+`SqliteConnection`, and `StackExchange.Redis`'s `IConnectionMultiplexer`/`IDatabase` in `JNotes.Web`
+(`src/JNotes.Web/BannedSymbols.txt`) — a real build error, not a warning, if violated. All of
+Core's DI wiring lives in one place:
 `JNotes.Core/ServiceCollectionExtensions.AddJNotesCore` — **with one deliberate exception**:
 `ICurrentUserContext` is declared in Core (`JNotes.Core/Users/`) but registered by `JNotes.Web`'s
 `Program.cs` itself, because its only implementation needs `IHttpContextAccessor`, an ASP.NET Core
@@ -234,7 +235,7 @@ signs everyone out, which ASP.NET Core would otherwise only warn about in the lo
 loudly on. Verified by restarting the Docker container mid-session and confirming the browser
 stayed signed in.
 
-**Files are the source of truth; SQLite is a derived index.** Notes live at
+**Files are the source of truth; Redis is a derived index.** Notes live at
 `{NotesFolder}/{userId}/{noteId}.md` — one subfolder per user (`FileSystemNoteFileStore`); a
 brand-new install has no users at all until the `/setup` screen creates the first admin (see "Real
 authentication" above). Deleting a user (`IUserManagementService.DeleteUserAsync`) never deletes
@@ -253,7 +254,7 @@ never an index-less orphaned file tree. This shapes `NoteService`
   startup plus on demand from Settings → "Rescan Now". This is what makes hand-edited or
   externally-added/removed `.md` files converge correctly. There's deliberately no
   `FileSystemWatcher` — unreliable across Docker bind-mount backends.
-- `ListAsync`/search reads only the SQLite index (fast, never touches disk); only `GetAsync`
+- `ListAsync`/search reads only the Redis index (fast, never touches disk); only `GetAsync`
   (opening one note) reads the actual file.
 
 **"Delete" moves a note to the trash, never deletes it outright — permanent deletion only happens
@@ -267,7 +268,7 @@ never appears to `NoteIndexReconciler` or a live listing, with zero special-casi
 `NoteService.TrashAsync` deletes the index row immediately (same as the old hard-delete did) rather
 than waiting on reconciliation, since a trashed note disappearing from `ListIdsAsync` would
 otherwise look identical to "removed externally" and only get caught on the next rescan.
-**Deliberately no SQLite index for the trash itself** — `NoteService.ListTrashAsync` reads
+**Deliberately no Redis index for the trash itself** — `NoteService.ListTrashAsync` reads
 straight off the trash folder (parses each file's front matter, tolerating a `NoteNotFoundException`
 race if something's purged mid-listing or a `NoteParseException` on a corrupted one by leaving it
 out rather than failing the whole page) — this app's usual "not worth a schema for a rarely-large,
@@ -291,8 +292,8 @@ built for autosave. The visible trade-off: a note's position in the `UpdatedAt`-
 move while you're only editing its body, until a `Metadata`-scope save (title/tag edit, or leaving
 the page — see below) or a reconciliation pass. `NoteSaveScope.Metadata` (title or tag edits)
 writes the file *and* reindexes immediately — nothing narrower was needed since
-`EfNoteIndexRepository.UpsertAsync` already replaces both the `NoteIndexEntry` row and the note's
-`NoteTag` rows in one call.
+`RedisNoteIndexRepository.UpsertAsync` already replaces the note's whole hash, tags included, in
+one call.
 
 `NoteEditor.razor`'s autosave: two independent debounces (`AutosaveDebouncer`,
 `JNotes.Web/Components/Notes/`) — content and metadata edits shouldn't wait on each other — but
@@ -318,21 +319,20 @@ needing to know anything about the page it's currently rendered alongside. `Note
 its own Type/Tag filter dropdowns (unrelated to free-text search, still page-local) and shows a
 "Search results for … · Clear" line above them when `Query` is set.
 
-Making search cover **body content**, not just title, meant the index could no longer be
-title/tags-only: `NoteIndexEntry.Body` is a full copy of the note's body, kept in sync by
-`NoteService`'s existing file-first-then-index write path and `NoteIndexReconciler` exactly like
-`Title` already was — no new sync mechanism, just one more field on entries those two already
-build. It inherits the same `ContentOnly`-autosave staleness trade-off documented below: a body
-edit alone doesn't update the indexed `Body` until a `Metadata`-scope save or a reconciliation
-pass, so search-by-content can lag a content-only autosave the same way list ordering already does.
-`EfNoteIndexRepository.SearchAsync`'s `SearchText` matching became `Title LIKE OR Body LIKE OR
-EXISTS a NoteTag LIKE` — one query, no separate search modes to remember. Existing rows get an
-empty string for the new column via the migration's default value; they backfill for free the next
-time each note is edited or reconciled, the same self-healing story this app already relies on
-elsewhere rather than a one-off data backfill script.
+Search covers **body content**, not just title: `NoteIndexEntry.Body` is a full copy of the note's
+body, kept in sync by `NoteService`'s existing file-first-then-index write path and
+`NoteIndexReconciler` exactly like `Title` already is — no new sync mechanism, just one more field
+on entries those two already build. It inherits the same `ContentOnly`-autosave staleness
+trade-off documented above: a body edit alone doesn't update the indexed `Body` until a
+`Metadata`-scope save or a reconciliation pass, so search-by-content can lag a content-only
+autosave the same way list ordering already does. `RedisNoteIndexRepository.SearchAsync` loads a
+user's notes (a Redis hash per note, tags inline as a JSON field — no normalized tag table the way
+SQLite had one, since nothing benefits from an indexed join once matching happens in-memory) and
+does one case-insensitive `Contains` check per candidate field (title, body, each tag) rather than
+a SQL `LIKE` — same matching semantics, just evaluated client-side.
 
 **The default notes view groups by relative date, not just sorts.** `NoteGrouping.GroupByRelativeDate`
-(`JNotes.Core/Notes/`) buckets an already-`UpdatedAt`-descending list (`EfNoteIndexRepository.SearchAsync`
+(`JNotes.Core/Notes/`) buckets an already-`UpdatedAt`-descending list (`RedisNoteIndexRepository.SearchAsync`
 already sorts; grouping never re-sorts) into Today/Yesterday/This week/Last week/This month/Previous,
 skipping empty buckets, keeping each bucket's notes in whatever order they arrived. It's a plain
 static class with no DI, like `ChecklistMarkdownParser` — pure bucketing logic with no clock/timezone
@@ -375,9 +375,9 @@ in the Web UI, via the `TZ` env var).
 
 **Tests** (`tests/JNotes.Tests/`) split into pure unit tests (`Serialization/`, `Time/`) and
 integration tests (`Integration/`, `Users/`) that spin up the real `AddJNotesCore` DI graph against
-a real temp-file SQLite database and temp folder — not the EF Core in-memory provider, specifically
-so SQLite-specific behavior (like the `ORDER BY DateTimeOffset` limitation, worked around
-client-side wherever it comes up — `EfNoteIndexRepository.SearchAsync`,
+a real temp-file SQLite database, a real Redis instance (see "Tests need a real Redis" below), and
+a temp folder — not the EF Core in-memory provider, specifically so SQLite-specific behavior (like
+the `ORDER BY DateTimeOffset` limitation, worked around client-side wherever it comes up —
 `EfUserRepository.GetAllUsersAsync`) is actually exercised. `CoreServicesFixture`
 (`Integration/`) seeds two users (each with a password, so it stays usable for any future
 auth-aware test) and registers a mutable `TestCurrentUserContext` (`ActAsUserA()`/`ActAsUserB()`)

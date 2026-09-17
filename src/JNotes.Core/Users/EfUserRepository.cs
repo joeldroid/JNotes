@@ -89,8 +89,8 @@ public sealed class EfUserRepository : IUserRepository
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
         // Ordered client-side after materializing: EF Core's SQLite provider can't translate an
-        // ORDER BY over a DateTimeOffset column into SQL (see EfNoteIndexRepository.SearchAsync
-        // for the same workaround) — fine at this app's scale (a handful of admin-created users).
+        // ORDER BY over a DateTimeOffset column into SQL — fine at this app's scale (a handful of
+        // admin-created users).
         var users = await db.Users.AsNoTracking().ToListAsync(cancellationToken);
         return users.OrderBy(u => u.CreatedAt).ToList();
     }

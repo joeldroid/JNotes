@@ -19,7 +19,7 @@ public static class NoteGrouping
     /// Groups <paramref name="notes"/> into Today/Yesterday/This week/Last week/This month/Previous,
     /// in that order, skipping empty buckets. Each bucket's notes keep whatever relative order they
     /// arrived in — this never re-sorts, so callers already ordering by <c>UpdatedAt</c> descending
-    /// (see <c>EfNoteIndexRepository.SearchAsync</c>) get that order preserved within each bucket.
+    /// (see <c>RedisNoteIndexRepository.SearchAsync</c>) get that order preserved within each bucket.
     /// Weeks start on Monday (ISO 8601) — this app has no per-user locale setting to key off instead.
     /// </summary>
     public static IReadOnlyList<NoteGroup> GroupByRelativeDate(

@@ -2,8 +2,8 @@
 
 A self-hosted, multi-user note-taking app built with Blazor Server (.NET 10). Notes are stored
 as portable markdown files on disk — copy the folder and every note is a readable `.md` file in
-any editor. A SQLite database indexes the notes for fast search/listing and stores app settings;
-it's a derived cache, never the source of truth.
+any editor. A Redis-backed index makes the notes fast to search/list, and a SQLite database
+stores app settings and user accounts; the index is a derived cache, never the source of truth.
 
 The very first time you run JNotes, you'll land on a setup screen to create the admin account —
 see [Authentication](#authentication) below for that flow, adding more users, and OIDC.
@@ -17,7 +17,7 @@ see [Authentication](#authentication) below for that flow, adding more users, an
 - **Portable storage** — every note is `notes/<user-id>/<id>.md` with a small YAML front matter
   header (title, tags, type, timestamps) followed by the markdown body.
 - **Responsive UI** — Bootstrap 5, usable on both desktop and mobile.
-- **Self-healing index** — the SQLite index is reconciled against the notes folder at startup and
+- **Self-healing index** — the Redis index is reconciled against the notes folder at startup and
   on demand (Settings → Rescan Now), so edits made directly to the files (outside the app, or
   while the container was stopped) are picked up automatically.
 
@@ -27,12 +27,12 @@ see [Authentication](#authentication) below for that flow, adding more users, an
 JNotes.slnx
 src/
   JNotes.Web/     Blazor Server UI + composition root (Program.cs)
-  JNotes.Core/     Domain models, markdown/front-matter serialization, file storage, EF Core/SQLite indexing, settings
+  JNotes.Core/     Domain models, markdown/front-matter serialization, file storage, Redis note indexing, EF Core/SQLite settings
 tests/
   JNotes.Tests/    xUnit tests for JNotes.Core
 ```
 
-`JNotes.Web` never touches the filesystem or EF Core/SQLite directly — it only consumes
+`JNotes.Web` never touches the filesystem, EF Core/SQLite, or Redis directly — it only consumes
 `INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`, and
 `IUserManagementService` from `JNotes.Core`. This is enforced at build time via
 `Microsoft.CodeAnalysis.BannedApiAnalyzers` (`src/JNotes.Web/BannedSymbols.txt`).
@@ -60,10 +60,18 @@ dotnet run --project src/JNotes.Web
 dotnet watch --project src/JNotes.Web run
 ```
 
-By default this stores notes and the SQLite database under `src/JNotes.Web/App_Data/` (see the
-`NOTES_PATH`/`DB_PATH` keys in `appsettings.json`) — gitignored, safe to delete to start fresh.
-Override either with an environment variable of the same name (`NOTES_PATH`, `DB_PATH`) — this is
-how `docker-compose.yml` points them at `/data`.
+By default this stores notes and the SQLite database (settings and user accounts, not the note
+index — see below) under `src/JNotes.Web/App_Data/` (see the `NOTES_PATH`/`DB_PATH` keys in
+`appsettings.json`) — gitignored, safe to delete to start fresh. Override either with an
+environment variable of the same name (`NOTES_PATH`, `DB_PATH`) — this is how `docker-compose.yml`
+points them at `/data`.
+
+The note index (everything `NOTES_PATH`'s files are indexed into for listing/search) lives in
+Redis, not SQLite — set `REDIS_CONNECTION_STRING` to a reachable Redis instance (locally, e.g.
+`docker run -p 6379:6379 redis:8-alpine`, then the `appsettings.json` default of `localhost:6379`
+just works). The index is a rebuildable cache: if Redis is empty (fresh container, flushed data),
+the startup reconciliation pass rebuilds it from the markdown files, so it needs no backup of its
+own.
 
 On first run with no users in the database, every request redirects to a setup screen where you
 pick the admin's username and password — see [Authentication](#authentication) below.
@@ -82,7 +90,8 @@ pick the admin's username and password — see [Authentication](#authentication)
 | Env var / config key | Default | Purpose |
 | --- | --- | --- |
 | `NOTES_PATH` | `App_Data/notes` (local) / `/data/notes` (Docker) | Folder note markdown files are read from/written to. |
-| `DB_PATH` | `App_Data/jnotes.db` (local) / `/data/jnotes.db` (Docker) | SQLite index/settings database file. |
+| `DB_PATH` | `App_Data/jnotes.db` (local) / `/data/jnotes.db` (Docker) | SQLite database file (settings and user accounts — not the note index, see `REDIS_CONNECTION_STRING`). |
+| `REDIS_CONNECTION_STRING` | `localhost:6379` (local) / `redis:6379` (Docker) | StackExchange.Redis connection string backing the note index. Required — there's no SQLite fallback. |
 | `TZ` | `UTC` | IANA time zone id (e.g. `America/New_York`, `Europe/London`) note timestamps are *displayed* in. Storage is always UTC regardless — this only affects what you see in the UI. |
 | `OIDC_AUTHORITY` | unset | Your OIDC provider's issuer URL. Leave unset to disable OIDC entirely. |
 | `OIDC_CLIENT_ID` | unset | OIDC client id registered with your provider. |
@@ -95,8 +104,8 @@ All of these take effect at startup only — changing one requires an app/contai
 > it — `jnotes.db-wal` and `jnotes.db-shm`. A plain copy of just `jnotes.db` mid-run can miss data
 > still sitting in the WAL file. Stop the app before copying, or checkpoint first
 > (`sqlite3 jnotes.db "PRAGMA wal_checkpoint(TRUNCATE);"`) and copy all three files together. This
-> only affects the derived index/settings database — your notes themselves are always plain `.md`
-> files, safe to copy anytime.
+> only affects the settings/accounts database — your notes themselves are always plain `.md`
+> files, safe to copy anytime, and the Redis index is rebuildable regardless.
 
 ### Tests
 

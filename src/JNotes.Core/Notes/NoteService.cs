@@ -1,4 +1,3 @@
-using JNotes.Core.Data;
 using JNotes.Core.Indexing;
 using JNotes.Core.Models;
 using JNotes.Core.Serialization;
