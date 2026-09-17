@@ -34,5 +34,16 @@ public interface INoteService
     /// <exception cref="InvalidOperationException">The note is not a <see cref="NoteType.Checklist"/> note, or the line isn't a checklist item.</exception>
     Task<Note> ToggleChecklistItemAsync(Guid noteId, int lineIndex, CancellationToken cancellationToken = default);
 
-    Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+    /// <summary>Moves the note to the trash (file move + index removal) rather than deleting it outright — see <see cref="PurgeAsync"/> for that.</summary>
+    Task TrashAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Every note currently in the trash, newest-trashed first. Reads the trash folder directly — there's no SQLite index for it.</summary>
+    Task<IReadOnlyList<TrashedNoteSummary>> ListTrashAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Moves a trashed note back out of the trash and re-adds it to the index.</summary>
+    /// <exception cref="JNotes.Core.Storage.NoteNotFoundException">The note isn't in the trash.</exception>
+    Task<Note> RestoreAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>Permanently deletes a note from the trash. Only reachable for notes already trashed — there's no way to purge a live note directly.</summary>
+    Task PurgeAsync(Guid id, CancellationToken cancellationToken = default);
 }

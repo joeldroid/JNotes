@@ -42,4 +42,28 @@ public interface INoteFileStore
     /// source doesn't (the user never wrote a note).
     /// </summary>
     Task ArchiveUserFolderAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Moves <paramref name="noteId"/>'s file to <c>{userId}/trash/{noteId}.md</c> and stamps its
+    /// mtime to now — that stamp is what <see cref="GetTrashedAtUtcAsync"/> later reports as "when
+    /// this was deleted", since a same-volume move alone wouldn't otherwise touch mtime. No-ops if
+    /// the file doesn't exist (already trashed, or a retried trash after a partial failure).
+    /// </summary>
+    Task TrashAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default);
+
+    /// <summary>Moves <paramref name="noteId"/>'s file back out of the trash. No-ops if it isn't there.</summary>
+    Task RestoreAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default);
+
+    /// <summary>Permanently deletes <paramref name="noteId"/>'s file from the trash. No-ops if it isn't there.</summary>
+    Task PurgeAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default);
+
+    /// <summary>The ids of every note currently in <paramref name="userId"/>'s trash, in no particular order.</summary>
+    Task<IReadOnlyList<Guid>> ListTrashedIdsAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    /// <exception cref="NoteNotFoundException">No file exists in the trash for <paramref name="noteId"/>.</exception>
+    Task<Note> ReadTrashedAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default);
+
+    /// <summary>When <paramref name="noteId"/> was moved to the trash — see <see cref="TrashAsync"/>.</summary>
+    /// <exception cref="NoteNotFoundException">No file exists in the trash for <paramref name="noteId"/>.</exception>
+    Task<DateTimeOffset> GetTrashedAtUtcAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default);
 }

@@ -13,6 +13,8 @@ public class NoteServiceTests : IAsyncLifetime
 
     private string PathForUserA(Guid noteId) => Path.Combine(_fixture.NotesFolder, _fixture.UserAId.ToString(), $"{noteId}.md");
 
+    private string TrashPathForUserA(Guid noteId) => Path.Combine(_fixture.NotesFolder, _fixture.UserAId.ToString(), "trash", $"{noteId}.md");
+
     [Fact]
     public async Task CreateAsync_writes_the_file_and_index_entry_so_ListAsync_reflects_it_immediately()
     {
@@ -123,15 +125,64 @@ public class NoteServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task DeleteAsync_removes_both_the_file_and_the_index_entry()
+    public async Task TrashAsync_moves_the_file_to_the_trash_folder_and_removes_the_index_entry()
     {
         var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Temporary", [], "body");
 
-        await _fixture.NoteService.DeleteAsync(note.Id);
+        await _fixture.NoteService.TrashAsync(note.Id);
 
         Assert.False(File.Exists(PathForUserA(note.Id)));
+        Assert.True(File.Exists(TrashPathForUserA(note.Id)));
         var listed = await _fixture.NoteService.ListAsync(new NoteSearchQuery());
         Assert.DoesNotContain(listed, n => n.Id == note.Id);
+    }
+
+    [Fact]
+    public async Task ListTrashAsync_reflects_a_trashed_note_newest_first()
+    {
+        var first = await _fixture.NoteService.CreateAsync(NoteType.Text, "First", [], "body");
+        await _fixture.NoteService.TrashAsync(first.Id);
+        await Task.Delay(TimeSpan.FromMilliseconds(10));
+        var second = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Second", ["work"], "- [ ] x");
+        await _fixture.NoteService.TrashAsync(second.Id);
+
+        var trash = await _fixture.NoteService.ListTrashAsync();
+
+        Assert.Equal(2, trash.Count);
+        Assert.Equal(second.Id, trash[0].Id);
+        Assert.Equal(first.Id, trash[1].Id);
+        Assert.Equal(["work"], trash[0].Tags);
+    }
+
+    [Fact]
+    public async Task RestoreAsync_moves_the_note_back_and_reindexes_it()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Comeback", ["home"], "body");
+        await _fixture.NoteService.TrashAsync(note.Id);
+
+        var restored = await _fixture.NoteService.RestoreAsync(note.Id);
+
+        Assert.Equal("Comeback", restored.Title);
+        Assert.True(File.Exists(PathForUserA(note.Id)));
+        Assert.False(File.Exists(TrashPathForUserA(note.Id)));
+        Assert.Empty(await _fixture.NoteService.ListTrashAsync());
+
+        var listed = await _fixture.NoteService.ListAsync(new NoteSearchQuery());
+        var summary = Assert.Single(listed);
+        Assert.Equal(note.Id, summary.Id);
+        Assert.Equal(["home"], summary.Tags);
+    }
+
+    [Fact]
+    public async Task PurgeAsync_permanently_removes_a_trashed_note()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Gone for good", [], "body");
+        await _fixture.NoteService.TrashAsync(note.Id);
+
+        await _fixture.NoteService.PurgeAsync(note.Id);
+
+        Assert.False(File.Exists(TrashPathForUserA(note.Id)));
+        Assert.Empty(await _fixture.NoteService.ListTrashAsync());
     }
 
     [Fact]

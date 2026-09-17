@@ -230,7 +230,7 @@ never an index-less orphaned file tree. This shapes `NoteService`
 (`JNotes.Core/Indexing/NoteIndexReconciler.cs`):
 - Every write goes **file first, then index** (`NoteService`) — a crash mid-operation leaves an
   orphaned file the next reconciliation will discover and index, never an index row pointing at a
-  file that was never written. Delete is file-first too, for the symmetric reason.
+  file that was never written. Trashing is file-first too, for the symmetric reason.
 - `NoteIndexReconciler.RescanAsync()` diffs the notes folder against the index (added / updated —
   by comparing on-disk mtime vs. the last-indexed mtime, so unchanged files aren't re-parsed /
   removed / corrupted-front-matter-errors-recorded-without-deleting-the-row) and runs once at
@@ -239,6 +239,28 @@ never an index-less orphaned file tree. This shapes `NoteService`
   `FileSystemWatcher` — unreliable across Docker bind-mount backends.
 - `ListAsync`/search reads only the SQLite index (fast, never touches disk); only `GetAsync`
   (opening one note) reads the actual file.
+
+**"Delete" moves a note to the trash, never deletes it outright — permanent deletion only happens
+from the Trash page.** `INoteFileStore.TrashAsync` moves a note's file to
+`{NotesFolder}/{userId}/trash/{noteId}.md`, sibling files `RestoreAsync`/`PurgeAsync` move it back
+out / delete it for good, and `ListTrashedIdsAsync` lists what's there — all nested *inside* each
+user's own folder, not a sibling of it like the whole-account `deleted/{userId}/` archive above.
+That nesting is what makes the trash invisible to everything that doesn't know about it for free:
+`ListIdsAsync`'s `Directory.EnumerateFiles(folder, "*.md")` is non-recursive, so a trashed note
+never appears to `NoteIndexReconciler` or a live listing, with zero special-casing needed there.
+`NoteService.TrashAsync` deletes the index row immediately (same as the old hard-delete did) rather
+than waiting on reconciliation, since a trashed note disappearing from `ListIdsAsync` would
+otherwise look identical to "removed externally" and only get caught on the next rescan.
+**Deliberately no SQLite index for the trash itself** — `NoteService.ListTrashAsync` reads
+straight off the trash folder (parses each file's front matter, tolerating a `NoteNotFoundException`
+race if something's purged mid-listing or a `NoteParseException` on a corrupted one by leaving it
+out rather than failing the whole page) — this app's usual "not worth a schema for a rarely-large,
+rarely-viewed list" trade-off. `TrashAsync` doesn't touch mtime, but a same-volume file move alone
+wouldn't either, so it's stamped explicitly with `File.SetLastWriteTimeUtc` right after the move —
+that stamp is what `GetTrashedAtUtcAsync` (and the Trash page's "Deleted …" timestamps) actually
+reports as "when this was deleted". `RestoreAsync` re-adds the index row by reading the note back
+from its new (live) location and reindexing it exactly like any other note — no special "was
+trashed" state carried anywhere once it's back.
 
 **Autosave has two persistence scopes, and the cheaper one is deliberately incomplete.**
 `NoteService.AutosaveAsync(note, NoteSaveScope scope)` (`JNotes.Core/Notes/`) is what

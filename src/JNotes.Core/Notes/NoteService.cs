@@ -84,14 +84,60 @@ public sealed class NoteService : INoteService
         return note;
     }
 
-    public async Task DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task TrashAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        // File first, then index: files are the source of truth, so a crash in between leaves a
-        // stale index row pointing at a missing file — the next reconciliation removes it. The
-        // reverse order could leave a file with no index row that nothing would ever notice.
-        await _fileStore.DeleteAsync(_currentUser.UserId, id, cancellationToken);
+        // File first, then index: mirrors the old hard-delete's reasoning — a crash in between
+        // leaves a stale index row pointing at a file that's now in the trash; the next
+        // reconciliation removes it (ListIdsAsync never sees the trash subfolder, so a trashed
+        // note looks identical to a deleted one from the reconciler's point of view).
+        await _fileStore.TrashAsync(_currentUser.UserId, id, cancellationToken);
         await _indexRepository.DeleteAsync(_currentUser.UserId, id, cancellationToken);
     }
+
+    public async Task<IReadOnlyList<TrashedNoteSummary>> ListTrashAsync(CancellationToken cancellationToken = default)
+    {
+        var userId = _currentUser.UserId;
+        var ids = await _fileStore.ListTrashedIdsAsync(userId, cancellationToken);
+
+        var summaries = new List<TrashedNoteSummary>();
+        foreach (var id in ids)
+        {
+            try
+            {
+                var note = await _fileStore.ReadTrashedAsync(userId, id, cancellationToken);
+                var trashedAt = await _fileStore.GetTrashedAtUtcAsync(userId, id, cancellationToken);
+                summaries.Add(new TrashedNoteSummary(note.Id, note.Title, note.Type, note.Tags, note.UpdatedAt, trashedAt));
+            }
+            catch (NoteNotFoundException)
+            {
+                // Purged (e.g. from another tab) between ListTrashedIdsAsync and here — skip it,
+                // the same race tolerance ListAsync's reconciler already relies on elsewhere.
+            }
+            catch (NoteParseException)
+            {
+                // Corrupted front matter — leave it out of the list rather than fail the whole
+                // page; the file is still sitting in the trash folder for manual recovery.
+            }
+        }
+
+        return summaries.OrderByDescending(s => s.TrashedAt).ToList();
+    }
+
+    public async Task<Note> RestoreAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var userId = _currentUser.UserId;
+
+        // File first, then index — same reasoning as everywhere else: a crash after the move but
+        // before reindexing just leaves a live file the next reconciliation picks up on its own.
+        await _fileStore.RestoreAsync(userId, id, cancellationToken);
+        var note = await _fileStore.ReadAsync(userId, id, cancellationToken);
+        var writeTimeUtc = await _fileStore.GetLastWriteTimeUtcAsync(userId, id, cancellationToken);
+        await IndexAsync(note, writeTimeUtc, cancellationToken);
+        return note;
+    }
+
+    public Task PurgeAsync(Guid id, CancellationToken cancellationToken = default) =>
+        _fileStore.PurgeAsync(_currentUser.UserId, id, cancellationToken);
 
     private async Task WriteAndIndexAsync(Note note, CancellationToken cancellationToken)
     {
@@ -101,6 +147,12 @@ public sealed class NoteService : INoteService
         // discover and index, never an index entry pointing at a file that was never written.
         await _fileStore.WriteAsync(userId, note, cancellationToken);
         var writeTimeUtc = await _fileStore.GetLastWriteTimeUtcAsync(userId, note.Id, cancellationToken);
+        await IndexAsync(note, writeTimeUtc, cancellationToken);
+    }
+
+    private async Task IndexAsync(Note note, DateTimeOffset writeTimeUtc, CancellationToken cancellationToken)
+    {
+        var userId = _currentUser.UserId;
 
         var entry = new NoteIndexEntry
         {

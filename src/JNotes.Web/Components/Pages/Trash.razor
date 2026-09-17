@@ -1,0 +1,93 @@
+@page "/trash"
+@attribute [Authorize]
+@inject INoteService NoteService
+@inject IAppTimeZoneProvider TimeZoneProvider
+
+<PageTitle>Trash</PageTitle>
+
+<h1 class="h3 mb-1">Trash</h1>
+<p class="text-body-secondary small mb-3">Notes here can be restored or permanently deleted.</p>
+
+@if (_trashedNotes is null)
+{
+    <p class="text-body-secondary">Loading…</p>
+}
+else if (_trashedNotes.Count == 0)
+{
+    <p class="text-body-secondary">Trash is empty.</p>
+}
+else
+{
+    <div class="list-group">
+        @foreach (var note in _trashedNotes)
+        {
+            <div class="list-group-item d-flex justify-content-between align-items-start gap-3">
+                <div>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge text-bg-secondary">@(note.Type == NoteType.Checklist ? "Checklist" : "Text")</span>
+                        <strong>@(string.IsNullOrWhiteSpace(note.Title) ? "Untitled note" : note.Title)</strong>
+                    </div>
+                    @if (note.Tags.Count > 0)
+                    {
+                        <div class="mt-1">
+                            @foreach (var tag in note.Tags)
+                            {
+                                <span class="badge text-bg-light border me-1">@tag</span>
+                            }
+                        </div>
+                    }
+                    <div class="text-body-secondary small mt-1">Deleted @TimeZoneProvider.ToAppTimeZone(note.TrashedAt).DateTime.ToString("g")</div>
+                </div>
+                <div class="d-flex gap-2 flex-shrink-0">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => RestoreAsync(note.Id)">Restore</button>
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => BeginPurge(note)">Delete forever</button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (_purgeTarget is not null)
+{
+    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Permanently delete "@(string.IsNullOrWhiteSpace(_purgeTarget.Title) ? "Untitled note" : _purgeTarget.Title)"?</h5>
+                    <button type="button" class="btn-close" @onclick="() => _purgeTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-0">This can't be undone.</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => _purgeTarget = null">Cancel</button>
+                    <button class="btn btn-danger" @onclick="ConfirmPurgeAsync">Delete forever</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<TrashedNoteSummary>? _trashedNotes;
+    private TrashedNoteSummary? _purgeTarget;
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync() => _trashedNotes = await NoteService.ListTrashAsync();
+
+    private async Task RestoreAsync(Guid id)
+    {
+        await NoteService.RestoreAsync(id);
+        await RefreshAsync();
+    }
+
+    private void BeginPurge(TrashedNoteSummary note) => _purgeTarget = note;
+
+    private async Task ConfirmPurgeAsync()
+    {
+        await NoteService.PurgeAsync(_purgeTarget!.Id);
+        _purgeTarget = null;
+        await RefreshAsync();
+    }
+}

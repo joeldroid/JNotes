@@ -142,4 +142,112 @@ public class FileSystemNoteFileStoreTests : IAsyncLifetime
     {
         await Assert.ThrowsAsync<NoteNotFoundException>(() => _store.GetLastWriteTimeUtcAsync(_userId, Guid.NewGuid()));
     }
+
+    [Fact]
+    public async Task TrashAsync_moves_the_file_into_a_trash_subfolder()
+    {
+        var note = NewNote();
+        await _store.WriteAsync(_userId, note);
+
+        await _store.TrashAsync(_userId, note.Id);
+
+        Assert.False(File.Exists(Path.Combine(_tempDir, _userId.ToString(), $"{note.Id}.md")));
+        Assert.True(File.Exists(Path.Combine(_tempDir, _userId.ToString(), "trash", $"{note.Id}.md")));
+    }
+
+    [Fact]
+    public async Task TrashAsync_does_not_throw_when_the_file_does_not_exist()
+    {
+        await _store.TrashAsync(_userId, Guid.NewGuid());
+    }
+
+    [Fact]
+    public async Task ListIdsAsync_ignores_the_trash_subfolder()
+    {
+        var live = NewNote();
+        var trashed = NewNote();
+        await _store.WriteAsync(_userId, live);
+        await _store.WriteAsync(_userId, trashed);
+        await _store.TrashAsync(_userId, trashed.Id);
+
+        var ids = await _store.ListIdsAsync(_userId);
+
+        Assert.Equal([live.Id], ids);
+    }
+
+    [Fact]
+    public async Task ListTrashedIdsAsync_returns_only_trashed_notes()
+    {
+        var live = NewNote();
+        var trashed = NewNote();
+        await _store.WriteAsync(_userId, live);
+        await _store.WriteAsync(_userId, trashed);
+        await _store.TrashAsync(_userId, trashed.Id);
+
+        var ids = await _store.ListTrashedIdsAsync(_userId);
+
+        Assert.Equal([trashed.Id], ids);
+    }
+
+    [Fact]
+    public async Task ReadTrashedAsync_round_trips_a_trashed_note()
+    {
+        var note = NewNote();
+        await _store.WriteAsync(_userId, note);
+        await _store.TrashAsync(_userId, note.Id);
+
+        var result = await _store.ReadTrashedAsync(_userId, note.Id);
+
+        Assert.Equal(note.Title, result.Title);
+        Assert.Equal(note.Body, result.Body);
+    }
+
+    [Fact]
+    public async Task ReadTrashedAsync_throws_NoteNotFoundException_when_not_in_the_trash()
+    {
+        await Assert.ThrowsAsync<NoteNotFoundException>(() => _store.ReadTrashedAsync(_userId, Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task GetTrashedAtUtcAsync_throws_NoteNotFoundException_when_not_in_the_trash()
+    {
+        await Assert.ThrowsAsync<NoteNotFoundException>(() => _store.GetTrashedAtUtcAsync(_userId, Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task RestoreAsync_moves_the_file_back_out_of_the_trash()
+    {
+        var note = NewNote();
+        await _store.WriteAsync(_userId, note);
+        await _store.TrashAsync(_userId, note.Id);
+
+        await _store.RestoreAsync(_userId, note.Id);
+
+        Assert.True(File.Exists(Path.Combine(_tempDir, _userId.ToString(), $"{note.Id}.md")));
+        Assert.False(File.Exists(Path.Combine(_tempDir, _userId.ToString(), "trash", $"{note.Id}.md")));
+    }
+
+    [Fact]
+    public async Task RestoreAsync_does_not_throw_when_the_note_is_not_in_the_trash()
+    {
+        await _store.RestoreAsync(_userId, Guid.NewGuid());
+    }
+
+    [Fact]
+    public async Task PurgeAsync_deletes_a_trashed_file_permanently()
+    {
+        var note = NewNote();
+        await _store.WriteAsync(_userId, note);
+        await _store.TrashAsync(_userId, note.Id);
+
+        await _store.PurgeAsync(_userId, note.Id);
+
+        Assert.False(File.Exists(Path.Combine(_tempDir, _userId.ToString(), "trash", $"{note.Id}.md")));
+    }
+
+    [Fact]
+    public async Task PurgeAsync_does_not_throw_when_the_note_is_not_in_the_trash()
+    {
+        await _store.PurgeAsync(_userId, Guid.NewGuid());
+    }
 }

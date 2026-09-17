@@ -93,6 +93,81 @@ public sealed class FileSystemNoteFileStore : INoteFileStore
         Directory.Move(sourceDir, destDir);
     }
 
+    public async Task TrashAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default)
+    {
+        var sourcePath = await ResolvePathAsync(userId, noteId, cancellationToken);
+        if (!File.Exists(sourcePath))
+        {
+            return; // already trashed, or a retried trash after a partial failure — nothing to move
+        }
+
+        var destPath = await ResolveTrashPathAsync(userId, noteId, cancellationToken);
+        File.Move(sourcePath, destPath, overwrite: true);
+        // Same-volume moves don't touch mtime — stamp it explicitly so it means "when this was
+        // trashed" for GetTrashedAtUtcAsync, the same way a fresh write's mtime means "last edited".
+        File.SetLastWriteTimeUtc(destPath, DateTime.UtcNow);
+    }
+
+    public async Task RestoreAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default)
+    {
+        var sourcePath = await ResolveTrashPathAsync(userId, noteId, cancellationToken);
+        if (!File.Exists(sourcePath))
+        {
+            return; // not in the trash — nothing to restore
+        }
+
+        var destPath = await ResolvePathAsync(userId, noteId, cancellationToken);
+        File.Move(sourcePath, destPath);
+    }
+
+    public async Task PurgeAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default)
+    {
+        var path = await ResolveTrashPathAsync(userId, noteId, cancellationToken);
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+    }
+
+    public async Task<IReadOnlyList<Guid>> ListTrashedIdsAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var folder = await ResolveTrashFolderAsync(userId, cancellationToken);
+
+        var ids = new List<Guid>();
+        foreach (var file in Directory.EnumerateFiles(folder, "*.md"))
+        {
+            if (Guid.TryParse(Path.GetFileNameWithoutExtension(file), out var id))
+            {
+                ids.Add(id);
+            }
+        }
+
+        return ids;
+    }
+
+    public async Task<Note> ReadTrashedAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default)
+    {
+        var path = await ResolveTrashPathAsync(userId, noteId, cancellationToken);
+        if (!File.Exists(path))
+        {
+            throw new NoteNotFoundException(noteId);
+        }
+
+        var content = await File.ReadAllTextAsync(path, cancellationToken);
+        return _serializer.Deserialize(content);
+    }
+
+    public async Task<DateTimeOffset> GetTrashedAtUtcAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default)
+    {
+        var path = await ResolveTrashPathAsync(userId, noteId, cancellationToken);
+        if (!File.Exists(path))
+        {
+            throw new NoteNotFoundException(noteId);
+        }
+
+        return new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero);
+    }
+
     private async Task<string> ResolveFolderAsync(Guid userId, CancellationToken cancellationToken)
     {
         var notesRoot = await _settingsService.GetNotesFolderPathAsync(cancellationToken);
@@ -104,6 +179,20 @@ public sealed class FileSystemNoteFileStore : INoteFileStore
     private async Task<string> ResolvePathAsync(Guid userId, Guid noteId, CancellationToken cancellationToken)
     {
         var folder = await ResolveFolderAsync(userId, cancellationToken);
+        return Path.Combine(folder, $"{noteId}.md");
+    }
+
+    private async Task<string> ResolveTrashFolderAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var folder = await ResolveFolderAsync(userId, cancellationToken);
+        var trashFolder = Path.Combine(folder, "trash");
+        Directory.CreateDirectory(trashFolder);
+        return trashFolder;
+    }
+
+    private async Task<string> ResolveTrashPathAsync(Guid userId, Guid noteId, CancellationToken cancellationToken)
+    {
+        var folder = await ResolveTrashFolderAsync(userId, cancellationToken);
         return Path.Combine(folder, $"{noteId}.md");
     }
 }
