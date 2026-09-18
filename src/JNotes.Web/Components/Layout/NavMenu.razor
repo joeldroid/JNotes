@@ -97,7 +97,7 @@
     {
         var defaultBody = type == NoteType.Checklist ? "- [ ] " : "";
         var note = await NoteService.CreateAsync(type, "Untitled note", [], defaultBody);
-        NavigationManager.NavigateTo($"/notes/{note.Id}");
+        NavigationManager.NavigateTo($"/notes/{note.Id}/edit");
     }
 
     private void OnSearchInput(ChangeEventArgs e)

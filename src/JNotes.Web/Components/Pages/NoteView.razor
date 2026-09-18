@@ -1,0 +1,147 @@
+@page "/notes/{Id:guid}"
+@attribute [Authorize]
+@inject INoteService NoteService
+@inject NavigationManager NavigationManager
+@inject IAppTimeZoneProvider TimeZoneProvider
+
+<PageTitle>@(_note?.Title is { Length: > 0 } title ? title : "Note")</PageTitle>
+
+@if (_notFound)
+{
+    <div class="alert alert-warning">This note couldn't be found — it may have been deleted.</div>
+    <a class="btn btn-secondary" href="/">Back to notes</a>
+}
+else if (_note is null)
+{
+    <p class="text-body-secondary">Loading…</p>
+}
+else
+{
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+        <div class="flex-grow-1" style="min-width: 240px;">
+            <h1 class="h3 mb-1">@(string.IsNullOrWhiteSpace(_note.Title) ? "Untitled note" : _note.Title)</h1>
+            @if (_note.Tags.Count > 0)
+            {
+                <div>
+                    @foreach (var tag in _note.Tags)
+                    {
+                        <span class="badge text-bg-light border me-1">@tag</span>
+                    }
+                </div>
+            }
+        </div>
+        <div class="d-flex gap-2 flex-shrink-0">
+            <a class="btn btn-primary" href="@($"/notes/{_note.Id}/edit")">Edit</a>
+            <button class="btn btn-outline-danger" type="button" title="Move to Trash" disabled="@_isDeleting" @onclick="TrashAsync">Delete</button>
+        </div>
+    </div>
+
+    <p class="text-body-secondary small">
+        <span class="badge text-bg-secondary me-1">@(_note.Type == NoteType.Checklist ? "Checklist" : "Text")</span>
+        Last updated @TimeZoneProvider.ToAppTimeZone(_note.UpdatedAt).DateTime.ToString("g")
+    </p>
+
+    @if (_actionError is not null)
+    {
+        <div class="alert alert-danger">@_actionError</div>
+    }
+
+    @if (_note.Type == NoteType.Checklist)
+    {
+        // Checking items off is the one change allowed from the view — it flips a single line's
+        // bracket via ToggleChecklistItemAsync, never a body edit (that stays in the editor).
+        <ul class="list-group mb-0">
+            @foreach (var item in ChecklistMarkdownParser.Parse(_note.Body))
+            {
+                <li class="list-group-item">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="@($"item-{item.LineIndex}")" checked="@item.IsChecked" disabled="@_isToggling"
+                               @onchange="() => ToggleItemAsync(item.LineIndex)" />
+                        <label class="form-check-label @(item.IsChecked ? "text-decoration-line-through text-body-secondary" : "")"
+                               for="@($"item-{item.LineIndex}")">
+                            @item.Text
+                        </label>
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+    else
+    {
+        <MarkdownPreview Markdown="@_note.Body" />
+    }
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private Note? _note;
+    private bool _notFound;
+    private bool _isDeleting;
+    private bool _isToggling;
+    private string? _actionError;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _notFound = false;
+        _actionError = null;
+        try
+        {
+            _note = await NoteService.GetAsync(Id);
+        }
+        catch (NoteNotFoundException)
+        {
+            _notFound = true;
+        }
+    }
+
+    private async Task ToggleItemAsync(int lineIndex)
+    {
+        if (_note is null || _isToggling)
+        {
+            return;
+        }
+
+        // Boxes are disabled while a toggle is in flight, so two quick clicks can't race each
+        // other's file write (the editor serializes through a gate for the same reason).
+        _isToggling = true;
+        _actionError = null;
+        try
+        {
+            var result = await NoteService.ToggleChecklistItemAsync(_note.Id, lineIndex);
+            _note.Body = result.Body;
+            _note.UpdatedAt = result.UpdatedAt;
+        }
+        catch (Exception ex)
+        {
+            _actionError = $"Couldn't update the checklist: {ex.Message}";
+        }
+        finally
+        {
+            _isToggling = false;
+        }
+    }
+
+    private async Task TrashAsync()
+    {
+        if (_note is null)
+        {
+            return;
+        }
+
+        _isDeleting = true;
+        _actionError = null;
+        try
+        {
+            // Same soft-delete the editor's trash button does — recoverable from the Trash page,
+            // so no confirmation step here either. No autosave to coordinate with on this page.
+            await NoteService.TrashAsync(_note.Id);
+            NavigationManager.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            _actionError = $"Couldn't delete the note: {ex.Message}";
+            _isDeleting = false;
+        }
+    }
+}

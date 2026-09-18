@@ -120,7 +120,8 @@ box first.
 
 **"New note" lives in `NavMenu.razor`, not `NoteList.razor` — it needs to work from any page, not
 just `/`.** The create-and-navigate logic (`INoteService.CreateAsync` then
-`NavigationManager.NavigateTo($"/notes/{note.Id}")`) moved there verbatim; `NoteList.razor` no
+`NavigationManager.NavigateTo($"/notes/{note.Id}/edit")`) moved there — straight to the editor,
+since a brand-new note has nothing to view yet; `NoteList.razor` no
 longer injects `NavigationManager` at all, since nothing else in that page needed it. It's a
 `<li class="nav-item dropdown">` inside the *same* `<ul class="nav nav-pills">` as Notes/Settings/
 Trash below it, not a separate `btn-primary` block — deliberately, so it shares their `.nav-link`
@@ -286,6 +287,15 @@ that stamp is what `GetTrashedAtUtcAsync` (and the Trash page's "Deleted …" ti
 reports as "when this was deleted". `RestoreAsync` re-adds the index row by reading the note back
 from its new (live) location and reindexing it exactly like any other note — no special "was
 trashed" state carried anywhere once it's back.
+
+**Opening a note lands on a read-only view; editing is a separate route.** `NoteView.razor`
+(`/notes/{id}`, what `NoteListItem` links to) renders the title, tags, and body (`MarkdownPreview`
+for text notes, checkboxes off `ChecklistMarkdownParser` for checklists — the one thing the view
+can change is toggling an item, via `INoteService.ToggleChecklistItemAsync`, never a body edit) with
+Edit and Delete buttons; `NoteEditor.razor` moved to `/notes/{id}/edit` and has a "Done" link back to the
+view. Delete on the view page is the same soft-delete-to-trash as the editor's. There's no autosave to
+coordinate with, so a plain `_isToggling` flag (boxes disabled while a toggle is in flight) stands
+in for the editor's save gate.
 
 **Autosave has two persistence scopes, and the cheaper one is deliberately incomplete.**
 `NoteService.AutosaveAsync(note, NoteSaveScope scope)` (`JNotes.Core/Notes/`) is what
