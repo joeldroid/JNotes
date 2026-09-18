@@ -95,7 +95,9 @@
 
     private async Task CreateNoteAsync(NoteType type)
     {
-        var defaultBody = type == NoteType.Checklist ? "- [ ] " : "";
+        // Checklist items are added from the UI now, so a seeded "- [ ] " would just render as a
+        // stray empty checkbox row.
+        var defaultBody = "";
         var note = await NoteService.CreateAsync(type, "Untitled note", [], defaultBody);
         NavigationManager.NavigateTo($"/notes/{note.Id}/edit");
     }

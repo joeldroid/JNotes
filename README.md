@@ -11,7 +11,7 @@ see [Authentication](#authentication) below for that flow, adding more users, an
 ## Features
 
 - **Text notes** — free-form markdown, edited with a live preview.
-- **Checklist notes** — markdown task lists (`- [ ] item`) rendered as interactive checkboxes.
+- **Checklist notes** — markdown task lists (`- [ ] item`) rendered as interactive checkboxes. Add items from the note view or the editor without touching markdown; checking one moves it below the unchecked ones.
 - **Multi-user with real accounts** — admin-created users, each with their own notes and settings;
   sign in with a password, OIDC, or both.
 - **Portable storage** — every note is `notes/<user-id>/<id>.md` with a small YAML front matter
@@ -185,3 +185,6 @@ updated: 2026-09-12T11:02:00Z
 
 `type` is `text` or `checklist`. Timestamps are UTC. The `id` is duplicated from the filename
 inside the front matter so a renamed/copied file can still be recognized correctly on rescan.
+
+JNotes keeps checked items after unchecked ones within each run of adjacent checklist items, but the
+file is still ordinary markdown — you can reorder it by hand.

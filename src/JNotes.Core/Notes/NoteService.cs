@@ -50,7 +50,26 @@ public sealed class NoteService : INoteService
     public Task<Note> UpdateAsync(Note note, CancellationToken cancellationToken = default) =>
         AutosaveAsync(note, NoteSaveScope.Metadata, cancellationToken);
 
-    public async Task<Note> ToggleChecklistItemAsync(Guid noteId, int lineIndex, CancellationToken cancellationToken = default)
+    public async Task<Note> SetChecklistItemCheckedAsync(Guid noteId, int lineIndex, bool isChecked, CancellationToken cancellationToken = default)
+    {
+        var note = await ReadChecklistNoteAsync(noteId, cancellationToken);
+
+        note.Body = ChecklistMarkdownParser.SetItemChecked(note.Body, lineIndex, isChecked);
+        // A checkbox change is a body edit like any other — it doesn't need the index either.
+        return await AutosaveAsync(note, NoteSaveScope.ContentOnly, cancellationToken);
+    }
+
+    public async Task<Note> AddChecklistItemAsync(Guid noteId, string text, CancellationToken cancellationToken = default)
+    {
+        var note = await ReadChecklistNoteAsync(noteId, cancellationToken);
+
+        note.Body = ChecklistMarkdownParser.AppendItems(note.Body, text);
+        // Same reasoning as SetChecklistItemCheckedAsync: body only, so ContentOnly — the new
+        // item's text isn't searchable until the next Metadata save or reconciliation pass.
+        return await AutosaveAsync(note, NoteSaveScope.ContentOnly, cancellationToken);
+    }
+
+    private async Task<Note> ReadChecklistNoteAsync(Guid noteId, CancellationToken cancellationToken)
     {
         var note = await _fileStore.ReadAsync(_currentUser.UserId, noteId, cancellationToken);
         if (note.Type != NoteType.Checklist)
@@ -58,9 +77,7 @@ public sealed class NoteService : INoteService
             throw new InvalidOperationException($"Note '{noteId}' is not a checklist note.");
         }
 
-        note.Body = ChecklistMarkdownParser.ToggleItem(note.Body, lineIndex);
-        // A checkbox toggle is a body edit like any other — it doesn't need the index either.
-        return await AutosaveAsync(note, NoteSaveScope.ContentOnly, cancellationToken);
+        return note;
     }
 
     public async Task<Note> AutosaveAsync(Note note, NoteSaveScope scope, CancellationToken cancellationToken = default)

@@ -13,12 +13,15 @@
         <ul class="list-group mb-0">
             @foreach (var item in Items)
             {
-                <li class="list-group-item">
+                // @key/id carry _listVersion so a reorder rebuilds these rows from the model — see
+                // OnItemCheckedAsync for why (Blazor's diff would otherwise leave the clicked
+                // checkbox visually ticked at whatever row it landed on).
+                <li class="list-group-item" @key="(_listVersion, item.LineIndex)">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="@($"item-{item.LineIndex}")"
-                               checked="@item.IsChecked" @onchange="() => ItemToggled.InvokeAsync(item.LineIndex)" />
+                        <input class="form-check-input" type="checkbox" id="@($"item-{_listVersion}-{item.LineIndex}")"
+                               checked="@item.IsChecked" @onchange="e => OnItemCheckedAsync(item.LineIndex, e)" />
                         <label class="form-check-label @(item.IsChecked ? "text-decoration-line-through text-body-secondary" : "")"
-                               for="@($"item-{item.LineIndex}")">
+                               for="@($"item-{_listVersion}-{item.LineIndex}")">
                             @item.Text
                         </label>
                     </div>
@@ -26,9 +29,15 @@
             }
             @if (Items.Count == 0)
             {
-                <li class="list-group-item text-body-secondary">No checklist items yet — add some in the raw markdown.</li>
+                <li class="list-group-item text-body-secondary">No items yet — add one below.</li>
             }
         </ul>
+        <div class="input-group mt-3">
+            <input class="form-control" placeholder="Add an item" aria-label="Add a checklist item"
+                   value="@_newItemText" @oninput="OnNewItemInput" @onkeydown="OnNewItemKeyDownAsync" @ref="_newItemInput" />
+            <button class="btn btn-outline-primary" type="button"
+                    disabled="@string.IsNullOrWhiteSpace(_newItemText)" @onclick="AddItemAsync">Add</button>
+        </div>
     </div>
     @if (_showRawMarkdown)
     {
@@ -43,12 +52,53 @@
 @code {
     [Parameter, EditorRequired] public string Body { get; set; } = "";
     [Parameter] public EventCallback<string> BodyChanged { get; set; }
-    [Parameter] public EventCallback<int> ItemToggled { get; set; }
 
     private bool _showRawMarkdown;
     private ElementReference _textareaRef;
+    private ElementReference _newItemInput;
+    private string _newItemText = "";
+    private int _listVersion;
 
     private IReadOnlyList<ChecklistItem> Items => ChecklistMarkdownParser.Parse(Body);
 
     private Task OnInput(ChangeEventArgs e) => BodyChanged.InvokeAsync(e.Value?.ToString() ?? "");
+
+    // Mutates the body in memory and hands it back through BodyChanged, so it rides NoteEditor's
+    // ordinary content debounce/_saveGate instead of a disk read-modify-write that would discard
+    // body edits still waiting on that debounce. The raw-markdown panel renders the same Body, so
+    // it stays in sync for free.
+    private Task OnItemCheckedAsync(int lineIndex, ChangeEventArgs e)
+    {
+        // Checking an item moves it, so the row that takes its old slot can render identically to
+        // what the browser already toggled — Blazor's diff would then skip patching it and leave
+        // the DOM checkbox ticked. Bumping the version changes every row's key and id, forcing a
+        // rebuild from the model.
+        _listVersion++;
+        return BodyChanged.InvokeAsync(
+            ChecklistMarkdownParser.SetItemChecked(Body, lineIndex, e.Value is bool isChecked && isChecked));
+    }
+
+    private void OnNewItemInput(ChangeEventArgs e) => _newItemText = e.Value?.ToString() ?? "";
+
+    private async Task OnNewItemKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await AddItemAsync();
+        }
+    }
+
+    private async Task AddItemAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newItemText))
+        {
+            return;
+        }
+
+        var newBody = ChecklistMarkdownParser.AppendItems(Body, _newItemText);
+        _newItemText = "";
+        _listVersion++;
+        await BodyChanged.InvokeAsync(newBody);
+        await _newItemInput.FocusAsync();
+    }
 }

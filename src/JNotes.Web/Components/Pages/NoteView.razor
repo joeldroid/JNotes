@@ -48,23 +48,39 @@ else
 
     @if (_note.Type == NoteType.Checklist)
     {
-        // Checking items off is the one change allowed from the view — it flips a single line's
-        // bracket via ToggleChecklistItemAsync, never a body edit (that stays in the editor).
+        // Checking items off and adding new ones are the changes allowed from the view — each goes
+        // through NoteService (SetChecklistItemCheckedAsync / AddChecklistItemAsync), never a free
+        // body edit (that stays in the editor).
+        // @key/id carry _listVersion so a reorder rebuilds these rows from the model — see
+        // SetItemCheckedAsync for why.
+        var items = ChecklistMarkdownParser.Parse(_note.Body);
         <ul class="list-group mb-0">
-            @foreach (var item in ChecklistMarkdownParser.Parse(_note.Body))
+            @foreach (var item in items)
             {
-                <li class="list-group-item">
+                <li class="list-group-item" @key="(_listVersion, item.LineIndex)">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="@($"item-{item.LineIndex}")" checked="@item.IsChecked" disabled="@_isToggling"
-                               @onchange="() => ToggleItemAsync(item.LineIndex)" />
+                        <input class="form-check-input" type="checkbox" id="@($"item-{_listVersion}-{item.LineIndex}")" checked="@item.IsChecked" disabled="@_isMutating"
+                               @onchange="e => SetItemCheckedAsync(item.LineIndex, e.Value is bool isChecked && isChecked)" />
                         <label class="form-check-label @(item.IsChecked ? "text-decoration-line-through text-body-secondary" : "")"
-                               for="@($"item-{item.LineIndex}")">
+                               for="@($"item-{_listVersion}-{item.LineIndex}")">
                             @item.Text
                         </label>
                     </div>
                 </li>
             }
+            @if (items.Count == 0)
+            {
+                <li class="list-group-item text-body-secondary">No items yet — add one below.</li>
+            }
         </ul>
+        <div class="input-group mt-3">
+            <input class="form-control" placeholder="Add an item" aria-label="Add a checklist item"
+                   value="@_newItemText" @oninput="OnNewItemInput" @onkeydown="OnNewItemKeyDownAsync"
+                   disabled="@_isMutating" @ref="_newItemInput" />
+            <button class="btn btn-outline-primary" type="button"
+                    disabled="@(_isMutating || string.IsNullOrWhiteSpace(_newItemText))"
+                    @onclick="AddItemAsync">Add</button>
+        </div>
     }
     else
     {
@@ -78,7 +94,10 @@ else
     private Note? _note;
     private bool _notFound;
     private bool _isDeleting;
-    private bool _isToggling;
+    private bool _isMutating;
+    private int _listVersion;
+    private string _newItemText = "";
+    private ElementReference _newItemInput;
     private string? _actionError;
 
     protected override async Task OnParametersSetAsync()
@@ -95,22 +114,28 @@ else
         }
     }
 
-    private async Task ToggleItemAsync(int lineIndex)
+    private async Task SetItemCheckedAsync(int lineIndex, bool isChecked)
     {
-        if (_note is null || _isToggling)
+        if (_note is null || _isMutating)
         {
             return;
         }
 
-        // Boxes are disabled while a toggle is in flight, so two quick clicks can't race each
+        // Inputs are disabled while a mutation is in flight, so two quick clicks can't race each
         // other's file write (the editor serializes through a gate for the same reason).
-        _isToggling = true;
+        _isMutating = true;
         _actionError = null;
         try
         {
-            var result = await NoteService.ToggleChecklistItemAsync(_note.Id, lineIndex);
+            var result = await NoteService.SetChecklistItemCheckedAsync(_note.Id, lineIndex, isChecked);
             _note.Body = result.Body;
             _note.UpdatedAt = result.UpdatedAt;
+
+            // Checking an item moves it, so the row that takes its old slot can render identically
+            // to what the browser already toggled — Blazor's diff would then skip patching it and
+            // leave the DOM checkbox ticked. Bumping the version changes every row's key and id,
+            // forcing a rebuild from the model.
+            _listVersion++;
         }
         catch (Exception ex)
         {
@@ -118,7 +143,54 @@ else
         }
         finally
         {
-            _isToggling = false;
+            _isMutating = false;
+        }
+    }
+
+    private void OnNewItemInput(ChangeEventArgs e) => _newItemText = e.Value?.ToString() ?? "";
+
+    private async Task OnNewItemKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await AddItemAsync();
+        }
+    }
+
+    private async Task AddItemAsync()
+    {
+        if (_note is null || _isMutating || string.IsNullOrWhiteSpace(_newItemText))
+        {
+            return;
+        }
+
+        _isMutating = true;
+        _actionError = null;
+        var added = false;
+        try
+        {
+            var result = await NoteService.AddChecklistItemAsync(_note.Id, _newItemText);
+            _note.Body = result.Body;
+            _note.UpdatedAt = result.UpdatedAt;
+            _newItemText = "";
+            _listVersion++;
+            added = true;
+        }
+        catch (Exception ex)
+        {
+            _actionError = $"Couldn't add the item: {ex.Message}";
+        }
+        finally
+        {
+            _isMutating = false;
+        }
+
+        if (added)
+        {
+            // The input was disabled during the add, which drops focus — put it back so several
+            // items can be typed in a row. Needs a render first so the input is enabled again.
+            await InvokeAsync(StateHasChanged);
+            await _newItemInput.FocusAsync();
         }
     }
 

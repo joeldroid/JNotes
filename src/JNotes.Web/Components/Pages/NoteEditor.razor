@@ -44,7 +44,7 @@ else
 
     @if (_note.Type == NoteType.Checklist)
     {
-        <ChecklistNoteEditor @bind-Body="_note.Body" @bind-Body:after="OnContentEdited" ItemToggled="ToggleItemAsync" />
+        <ChecklistNoteEditor @bind-Body="_note.Body" @bind-Body:after="OnContentEdited" />
     }
     else
     {
@@ -149,34 +149,6 @@ else
         }
 
         await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task ToggleItemAsync(int lineIndex)
-    {
-        if (_note is null)
-        {
-            return;
-        }
-
-        // Goes through the same save gate as content/metadata autosaves — toggling writes the same
-        // file, so it must not race an in-flight autosave write to that file.
-        // Only Body/UpdatedAt come from the result — Title/Tags stay whatever's currently in the
-        // inputs, so an unsaved edit there isn't clobbered by a toggle's disk-truth response.
-        _isSaving = true;
-        Note result;
-        await _saveGate.WaitAsync();
-        try
-        {
-            result = await NoteService.ToggleChecklistItemAsync(_note.Id, lineIndex);
-        }
-        finally
-        {
-            _saveGate.Release();
-            _isSaving = false;
-        }
-
-        _note.Body = result.Body;
-        _note.UpdatedAt = result.UpdatedAt;
     }
 
     private async Task TrashAsync()

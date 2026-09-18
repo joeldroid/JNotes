@@ -31,8 +31,20 @@ public interface INoteService
     /// </summary>
     Task<Note> AutosaveAsync(Note note, NoteSaveScope scope, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Sets one checklist item's checked state and re-sorts its block so checked items sit after
+    /// unchecked ones. Idempotent: setting an item to the state it is already in only re-sorts.
+    /// </summary>
     /// <exception cref="InvalidOperationException">The note is not a <see cref="NoteType.Checklist"/> note, or the line isn't a checklist item.</exception>
-    Task<Note> ToggleChecklistItemAsync(Guid noteId, int lineIndex, CancellationToken cancellationToken = default);
+    Task<Note> SetChecklistItemCheckedAsync(Guid noteId, int lineIndex, bool isChecked, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Appends one unchecked item per non-blank line of <paramref name="text"/> to the note's last
+    /// checklist block, above any checked items in it.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The note is not a <see cref="NoteType.Checklist"/> note.</exception>
+    /// <exception cref="ArgumentException"><paramref name="text"/> has no non-blank content.</exception>
+    Task<Note> AddChecklistItemAsync(Guid noteId, string text, CancellationToken cancellationToken = default);
 
     /// <summary>Moves the note to the trash (file move + index removal) rather than deleting it outright — see <see cref="PurgeAsync"/> for that.</summary>
     Task TrashAsync(Guid id, CancellationToken cancellationToken = default);

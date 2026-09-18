@@ -1,5 +1,6 @@
 using JNotes.Core.Models;
 using JNotes.Core.Notes;
+using JNotes.Core.Serialization;
 
 namespace JNotes.Tests.Integration;
 
@@ -51,40 +52,132 @@ public class NoteServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ToggleChecklistItemAsync_flips_the_item_and_persists_it()
+    public async Task SetChecklistItemCheckedAsync_checks_the_item_and_moves_it_to_the_bottom_on_disk()
     {
         var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Groceries", [], "- [ ] milk\n- [ ] eggs");
 
-        var toggled = await _fixture.NoteService.ToggleChecklistItemAsync(note.Id, lineIndex: 0);
+        var result = await _fixture.NoteService.SetChecklistItemCheckedAsync(note.Id, lineIndex: 0, isChecked: true);
 
-        Assert.StartsWith("- [x] milk", toggled.Body);
+        Assert.Equal("- [ ] eggs\n- [x] milk", result.Body);
 
         var reloaded = await _fixture.NoteService.GetAsync(note.Id);
-        Assert.StartsWith("- [x] milk", reloaded.Body);
+        Assert.Equal("- [ ] eggs\n- [x] milk", reloaded.Body);
     }
 
     [Fact]
-    public async Task ToggleChecklistItemAsync_throws_for_a_non_checklist_note()
+    public async Task SetChecklistItemCheckedAsync_unchecking_moves_the_item_back_above_the_checked_ones()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Groceries", [], "- [ ] milk\n- [x] eggs\n- [x] bread");
+
+        await _fixture.NoteService.SetChecklistItemCheckedAsync(note.Id, lineIndex: 2, isChecked: false);
+
+        var reloaded = await _fixture.NoteService.GetAsync(note.Id);
+        Assert.Equal("- [ ] milk\n- [ ] bread\n- [x] eggs", reloaded.Body);
+    }
+
+    [Fact]
+    public async Task SetChecklistItemCheckedAsync_throws_for_a_non_checklist_note()
     {
         var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Plain", [], "not a checklist");
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _fixture.NoteService.ToggleChecklistItemAsync(note.Id, 0));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _fixture.NoteService.SetChecklistItemCheckedAsync(note.Id, 0, true));
     }
 
     [Fact]
-    public async Task ToggleChecklistItemAsync_does_not_update_the_index_immediately()
+    public async Task SetChecklistItemCheckedAsync_does_not_update_the_index_immediately()
     {
-        // Same self-healing trade-off as a ContentOnly autosave: toggling is a body edit, so the
-        // index (and therefore list ordering) only catches up on the next thing that touches it —
+        // Same self-healing trade-off as a ContentOnly autosave: checking an item is a body edit, so
+        // the index (and therefore list ordering) only catches up on the next thing that touches it —
         // a title/tag edit, explicit Save, or reconciliation.
         var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Groceries", [], "- [ ] milk");
         var indexedBefore = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
         await Task.Delay(TimeSpan.FromMilliseconds(10));
 
-        await _fixture.NoteService.ToggleChecklistItemAsync(note.Id, lineIndex: 0);
+        await _fixture.NoteService.SetChecklistItemCheckedAsync(note.Id, lineIndex: 0, isChecked: true);
 
         var indexedAfter = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
         Assert.Equal(indexedBefore.UpdatedAt, indexedAfter.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task AddChecklistItemAsync_appends_the_item_and_persists_it_to_disk()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Groceries", [], "- [ ] milk");
+
+        var result = await _fixture.NoteService.AddChecklistItemAsync(note.Id, "eggs");
+
+        Assert.Equal("- [ ] milk\n- [ ] eggs", result.Body);
+
+        var reloaded = await _fixture.NoteService.GetAsync(note.Id);
+        Assert.Equal("- [ ] milk\n- [ ] eggs", reloaded.Body);
+    }
+
+    [Fact]
+    public async Task AddChecklistItemAsync_places_a_new_item_above_already_checked_items()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Groceries", [], "- [ ] milk\n- [x] eggs");
+
+        await _fixture.NoteService.AddChecklistItemAsync(note.Id, "bread");
+
+        var reloaded = await _fixture.NoteService.GetAsync(note.Id);
+        Assert.Equal("- [ ] milk\n- [ ] bread\n- [x] eggs", reloaded.Body);
+    }
+
+    [Fact]
+    public async Task AddChecklistItemAsync_adds_one_item_per_line_for_multiline_text()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Groceries", [], "");
+
+        await _fixture.NoteService.AddChecklistItemAsync(note.Id, "milk\neggs\n\nbread");
+
+        var reloaded = await _fixture.NoteService.GetAsync(note.Id);
+        Assert.Equal(["milk", "eggs", "bread"], ChecklistMarkdownParser.Parse(reloaded.Body).Select(i => i.Text));
+    }
+
+    [Fact]
+    public async Task AddChecklistItemAsync_throws_for_a_non_checklist_note()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Plain", [], "not a checklist");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _fixture.NoteService.AddChecklistItemAsync(note.Id, "item"));
+    }
+
+    [Fact]
+    public async Task AddChecklistItemAsync_throws_for_whitespace_only_text()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Groceries", [], "- [ ] milk");
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _fixture.NoteService.AddChecklistItemAsync(note.Id, "  \n "));
+    }
+
+    [Fact]
+    public async Task AddChecklistItemAsync_does_not_update_the_index_immediately()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Groceries", [], "- [ ] milk");
+        var indexedBefore = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
+        await Task.Delay(TimeSpan.FromMilliseconds(10));
+
+        await _fixture.NoteService.AddChecklistItemAsync(note.Id, "eggs");
+
+        var indexedAfter = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
+        Assert.Equal(indexedBefore.UpdatedAt, indexedAfter.UpdatedAt);
+    }
+
+    [Fact]
+    public async Task AddChecklistItemAsync_then_a_rescan_makes_the_new_item_searchable()
+    {
+        // Pins the documented ContentOnly staleness contract: the new item's text isn't indexed
+        // until reconciliation catches the file up, and then it is.
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Groceries", [], "- [ ] milk");
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+
+        await _fixture.NoteService.AddChecklistItemAsync(note.Id, "zucchini");
+        Assert.Empty(await _fixture.NoteService.ListAsync(new NoteSearchQuery(SearchText: "zucchini")));
+
+        await _fixture.Reconciler.RescanAsync(_fixture.UserAId);
+
+        var found = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery(SearchText: "zucchini")));
+        Assert.Equal(note.Id, found.Id);
     }
 
     [Fact]
