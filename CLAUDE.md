@@ -241,12 +241,15 @@ Boundaries are checked in strict priority order (today → … → previous), no
 because `monthStart` can fall *after* `lastWeekStart` early in a month. Sections collapse with
 Bootstrap's native `data-bs-toggle="collapse"`; `note-list.css` rotates the chevron off `.collapsed`.
 
-**`ChecklistNoteEditor` and `TextNoteEditor` share a toggleable side-panel layout.** A plain `bool`
-(`_showRawMarkdown`/`_showPreview`) and a `row g-3` / `col-12 col-lg-6` split: the always-visible
-editable view (checkboxes / body `<textarea>`) on the left, the optional secondary view (raw
-markdown / `MarkdownPreview`) on the right, left going full-width when it's hidden. A Bootstrap
-`.collapse` can't be used because it keeps state in the DOM and can't drive Blazor's `col-*` class
-switch. `MarkdownToolbar` only renders while the raw-markdown panel is open.
+**`ChecklistNoteEditor` and `TextNoteEditor` deliberately look the same.** Toolbar plus a
+hide/show button on top, then a `row g-3` / `col-12 col-lg-6` split: the always-visible markdown
+`<textarea>` on the left, and a togglable, **visible-by-default** right pane (`MarkdownPreview` /
+the interactive checklist with its add-item box) driven by a plain `bool`
+(`_showPreview`/`_showChecklist`), the left going full-width when it's hidden. `MarkdownToolbar` is
+always shown since the textarea always is. Both right panes share `.note-editor-preview`'s fixed
+height (see `note-editor.css`); the checklist pane is a flex column so its list scrolls while the
+add box stays pinned. A Bootstrap `.collapse` can't be used because it keeps state in the DOM and
+can't drive Blazor's `col-*` class switch. Keep the two editors' layout in step.
 
 ## Checklists
 
@@ -264,7 +267,7 @@ Only `- [ ]`/`- [x]` bullets are recognised.
 
 **Checked items sink to the bottom of the *file*, not just the screen.** A display-only sort would
 make the app and any other editor (Obsidian, vim, GitHub) disagree about order, and would desync
-`ChecklistNoteEditor`'s checkbox pane from its raw-markdown pane.
+`ChecklistNoteEditor`'s markdown pane from its checklist pane.
 - A **block** is a maximal run of consecutive task lines with the same indent; prose, headings,
   blank lines, and other indents end it. Items therefore never cross a heading, and a nested
   parent never moves away from its children.
@@ -285,7 +288,7 @@ skips it and the DOM stays ticked while the model disagrees.
 
 **The editor mutates in memory; the view goes through the service.** `ChecklistNoteEditor` calls
 the parser directly and raises `BodyChanged`, which rides `NoteEditor`'s ordinary content debounce
-and save gate; the raw-markdown panel renders the same `Body`, so it stays in sync for free. It must
+and save gate; the markdown textarea renders the same `Body`, so it stays in sync for free. It must
 not read-modify-write the file through `INoteService` — that would discard body edits still in the
 debounce. Consequence: an editor checkbox persists on the debounce (≤800 ms, plus the dispose
 flush), not instantly. `NoteView` has no autosave, so it uses the service methods.

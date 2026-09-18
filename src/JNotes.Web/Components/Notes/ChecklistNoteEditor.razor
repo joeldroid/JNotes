@@ -1,50 +1,51 @@
-<div class="d-flex align-items-center mb-2 flex-wrap gap-2">
-    @if (_showRawMarkdown)
-    {
-        <MarkdownToolbar TargetTextarea="_textareaRef" />
-    }
-    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => _showRawMarkdown = !_showRawMarkdown">
-        @(_showRawMarkdown ? "Hide raw markdown" : "Edit raw markdown")
+<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+    <MarkdownToolbar TargetTextarea="_textareaRef" />
+    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => _showChecklist = !_showChecklist">
+        @(_showChecklist ? "Hide checklist" : "Show checklist")
     </button>
 </div>
 
 <div class="row g-3">
-    <div class="@(_showRawMarkdown ? "col-12 col-lg-6" : "col-12")">
-        <ul class="list-group mb-0">
-            @foreach (var item in Items)
-            {
-                // @key/id carry _listVersion so a reorder rebuilds these rows from the model — see
-                // OnItemCheckedAsync for why (Blazor's diff would otherwise leave the clicked
-                // checkbox visually ticked at whatever row it landed on).
-                <li class="list-group-item" @key="(_listVersion, item.LineIndex)">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="@($"item-{_listVersion}-{item.LineIndex}")"
-                               checked="@item.IsChecked" @onchange="e => OnItemCheckedAsync(item.LineIndex, e)" />
-                        <label class="form-check-label @(item.IsChecked ? "text-decoration-line-through text-body-secondary" : "")"
-                               for="@($"item-{_listVersion}-{item.LineIndex}")">
-                            @item.Text
-                        </label>
-                    </div>
-                </li>
-            }
-            @if (Items.Count == 0)
-            {
-                <li class="list-group-item text-body-secondary">No items yet — add one below.</li>
-            }
-        </ul>
-        <div class="input-group mt-3">
-            <input class="form-control" placeholder="Add an item" aria-label="Add a checklist item"
-                   value="@_newItemText" @oninput="OnNewItemInput" @onkeydown="OnNewItemKeyDownAsync" @ref="_newItemInput" />
-            <button class="btn btn-outline-primary" type="button"
-                    disabled="@string.IsNullOrWhiteSpace(_newItemText)" @onclick="AddItemAsync">Add</button>
-        </div>
+    <div class="@(_showChecklist ? "col-12 col-lg-6" : "col-12")">
+        <textarea @ref="_textareaRef" class="form-control note-editor-textarea" aria-label="Checklist markdown"
+                  value="@Body" @oninput="OnInput"></textarea>
     </div>
-    @if (_showRawMarkdown)
+    @if (_showChecklist)
     {
         <div class="col-12 col-lg-6">
-            <textarea @ref="_textareaRef" class="form-control note-editor-textarea" aria-label="Raw checklist markdown"
-                      value="@Body" @oninput="OnInput"></textarea>
-            <div class="form-text">Add, remove, or reorder items here — new task-list lines (<code>- [ ] …</code>) become checkboxes on the left once saved.</div>
+            @* Same fixed height as the textarea beside it; the list scrolls, the add box stays pinned. *@
+            <div class="border rounded p-3 d-flex flex-column note-editor-preview">
+                <div class="flex-grow-1 overflow-auto">
+                    <ul class="list-group list-group-flush mb-0">
+                        @foreach (var item in Items)
+                        {
+                            // @key/id carry _listVersion so a reorder rebuilds these rows from the model — see
+                            // OnItemCheckedAsync for why (Blazor's diff would otherwise leave the clicked
+                            // checkbox visually ticked at whatever row it landed on).
+                            <li class="list-group-item" @key="(_listVersion, item.LineIndex)">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="@($"item-{_listVersion}-{item.LineIndex}")"
+                                           checked="@item.IsChecked" @onchange="e => OnItemCheckedAsync(item.LineIndex, e)" />
+                                    <label class="form-check-label @(item.IsChecked ? "text-decoration-line-through text-body-secondary" : "")"
+                                           for="@($"item-{_listVersion}-{item.LineIndex}")">
+                                        @item.Text
+                                    </label>
+                                </div>
+                            </li>
+                        }
+                        @if (Items.Count == 0)
+                        {
+                            <li class="list-group-item text-body-secondary">No items yet — add one below.</li>
+                        }
+                    </ul>
+                </div>
+                <div class="input-group mt-3 flex-shrink-0">
+                    <input class="form-control" placeholder="Add an item" aria-label="Add a checklist item"
+                           value="@_newItemText" @oninput="OnNewItemInput" @onkeydown="OnNewItemKeyDownAsync" @ref="_newItemInput" />
+                    <button class="btn btn-outline-primary" type="button"
+                            disabled="@string.IsNullOrWhiteSpace(_newItemText)" @onclick="AddItemAsync">Add</button>
+                </div>
+            </div>
         </div>
     }
 </div>
@@ -53,7 +54,7 @@
     [Parameter, EditorRequired] public string Body { get; set; } = "";
     [Parameter] public EventCallback<string> BodyChanged { get; set; }
 
-    private bool _showRawMarkdown;
+    private bool _showChecklist = true;
     private ElementReference _textareaRef;
     private ElementReference _newItemInput;
     private string _newItemText = "";
