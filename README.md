@@ -71,7 +71,8 @@ Redis, not SQLite — set `REDIS_CONNECTION_STRING` to a reachable Redis instanc
 `docker run -p 6379:6379 redis:8-alpine`, then the `appsettings.json` default of `localhost:6379`
 just works). The index is a rebuildable cache: if Redis is empty (fresh container, flushed data),
 the startup reconciliation pass rebuilds it from the markdown files, so it needs no backup of its
-own.
+own. Reconciliation also runs on a timer (`AUTO_INDEX_INTERVAL_MINUTES`, see below), so
+externally edited/added/removed `.md` files are picked up without a restart.
 
 On first run with no users in the database, every request redirects to a setup screen where you
 pick the admin's username and password — see [Authentication](#authentication) below.
@@ -97,6 +98,7 @@ pick the admin's username and password — see [Authentication](#authentication)
 | `OIDC_CLIENT_ID` | unset | OIDC client id registered with your provider. |
 | `OIDC_CLIENT_SECRET` | unset | OIDC client secret. All three `OIDC_*` values must be set for OIDC to be offered. |
 | `OIDC_DISPLAY_NAME` | `OIDC` | Label on the "Sign in with …" button on the login page. |
+| `AUTO_INDEX_INTERVAL_MINUTES` | `5` | How often the background pass reconciles every user's note index against the files on disk. `0` disables it (the startup pass and Settings → "Rescan Now" still work). |
 
 All of these take effect at startup only — changing one requires an app/container restart.
 

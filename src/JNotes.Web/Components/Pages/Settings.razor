@@ -1,6 +1,7 @@
 @page "/settings"
 @attribute [Authorize]
 @using System.ComponentModel.DataAnnotations
+@using JNotes.Core
 @using Microsoft.Extensions.Options
 @inject ISettingsService SettingsService
 @inject INoteIndexReconciler Reconciler
@@ -9,6 +10,7 @@
 @inject IUserManagementService UserManagementService
 @inject ICurrentUserContext CurrentUser
 @inject IOptions<OidcOptions> OidcOptionsAccessor
+@inject IOptions<JNotesOptions> JNotesOptionsAccessor
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -83,7 +85,7 @@
         <section class="mb-4">
             <h3 class="h5">Index</h3>
             <p class="text-body-secondary small">
-                The index is rebuilt automatically at startup. Use this if you've added, edited, or removed
+                The index is rebuilt automatically at startup@(JNotesOptionsAccessor.Value.AutoIndexIntervalMinutes > 0 ? $" and every {JNotesOptionsAccessor.Value.AutoIndexIntervalMinutes} minute(s)" : ""). Use this if you've added, edited, or removed
                 note files directly on disk while the app is running.
             </p>
             <button class="btn btn-outline-primary" @onclick="RescanAsync" disabled="@_isRescanning">

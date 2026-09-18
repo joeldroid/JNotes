@@ -40,6 +40,8 @@ public static class ServiceCollectionExtensions
             options.DbPath = configuration["DB_PATH"] ?? options.DbPath;
             options.TimeZoneId = configuration["TZ"] ?? options.TimeZoneId;
             options.RedisConnectionString = configuration["REDIS_CONNECTION_STRING"] ?? options.RedisConnectionString;
+            // Parsed (not just "?? default") because the raw string needs validating/clamping — see AutoIndexInterval.
+            options.AutoIndexIntervalMinutes = AutoIndexInterval.ParseMinutes(configuration["AUTO_INDEX_INTERVAL_MINUTES"]);
         });
 
         // Same flat-env-var pattern for OIDC — optional, unset means "not configured" (see
@@ -94,6 +96,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<INoteIndexRepository, RedisNoteIndexRepository>();
         services.AddScoped<INoteService, NoteService>();
         services.AddScoped<INoteIndexReconciler, NoteIndexReconciler>();
+        // Scoped, matching INoteIndexReconciler/IUserRepository — the singleton background service
+        // that drives this must never capture it directly; it creates a scope per tick instead.
+        services.AddScoped<IAllUsersIndexReconciler, AllUsersIndexReconciler>();
         services.AddSingleton<PasswordHasher<UserAccount>>();
         services.AddScoped<IUserRepository, EfUserRepository>();
         services.AddScoped<IUserManagementService, UserManagementService>();

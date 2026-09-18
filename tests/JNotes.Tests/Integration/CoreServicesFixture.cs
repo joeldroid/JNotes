@@ -57,6 +57,8 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
 
     public INoteIndexReconciler Reconciler => _scope.ServiceProvider.GetRequiredService<INoteIndexReconciler>();
 
+    public IAllUsersIndexReconciler AllUsersReconciler => _scope.ServiceProvider.GetRequiredService<IAllUsersIndexReconciler>();
+
     public INoteFileStore FileStore => _scope.ServiceProvider.GetRequiredService<INoteFileStore>();
 
     public INoteMarkdownSerializer Serializer => _scope.ServiceProvider.GetRequiredService<INoteMarkdownSerializer>();
@@ -83,6 +85,10 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
         var currentUserContext = new TestCurrentUserContext();
 
         var services = new ServiceCollection();
+        // AddJNotesCore resolves ILogger<T> for a couple of services (e.g. AppTimeZoneProvider,
+        // AllUsersIndexReconciler) — a plain ServiceCollection has no logging provider registered
+        // by default the way a real host (Program.cs) does, so this is needed for those to resolve.
+        services.AddLogging();
         services.AddJNotesCore(new ConfigurationBuilder().Build());
         services.Configure<JNotesOptions>(o =>
         {

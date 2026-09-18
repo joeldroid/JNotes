@@ -28,6 +28,9 @@ ENV DB_PATH=/data/jnotes.db
 # IANA time zone id (e.g. America/New_York) used to display note timestamps — storage stays UTC
 # regardless. tzdata is already present in this base image, so any IANA id resolves correctly.
 ENV TZ=UTC
+# How often the background pass reconciles every user's note index against the files on disk, in
+# minutes. 0 disables it (the startup pass and Settings -> "Rescan Now" still work).
+ENV AUTO_INDEX_INTERVAL_MINUTES=5
 
 # The base image's default non-root user needs to own the mounted volume's mount point;
 # actual ownership of bind-mounted host content still depends on the host directory's

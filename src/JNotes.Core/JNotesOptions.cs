@@ -21,4 +21,12 @@ public sealed class JNotesOptions
     /// loudly instead of silently falling back to something that isn't there.
     /// </summary>
     public string? RedisConnectionString { get; set; }
+
+    /// <summary>
+    /// How often the background auto-indexing pass reconciles every user's index against their note
+    /// files, in minutes. 0 disables it entirely (startup reconciliation and Settings -&gt; "Rescan
+    /// Now" are unaffected). Populated from AUTO_INDEX_INTERVAL_MINUTES — see
+    /// <see cref="Indexing.AutoIndexInterval.ParseMinutes"/>.
+    /// </summary>
+    public int AutoIndexIntervalMinutes { get; set; } = Indexing.AutoIndexInterval.DefaultMinutes;
 }

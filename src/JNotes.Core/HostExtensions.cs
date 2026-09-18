@@ -50,18 +50,16 @@ public static class HostExtensions
 
     /// <summary>
     /// Runs an index reconciliation pass for every user, picking up any note files
-    /// added/edited/removed while the app wasn't running. See <see cref="INoteIndexReconciler"/>.
+    /// added/edited/removed while the app wasn't running. See <see cref="INoteIndexReconciler"/>
+    /// and <see cref="IAllUsersIndexReconciler"/> (the shared "loop over everyone" logic, also used
+    /// by <c>JNotes.Web.Indexing.AutoIndexBackgroundService</c>'s periodic pass). Behavior change:
+    /// one user's reconciliation failure is now logged and skipped rather than aborting startup for
+    /// everyone else — see <see cref="AllUsersIndexReconciler"/>.
     /// </summary>
     public static async Task RunStartupReconciliationAsync(this IServiceProvider services)
     {
         using var scope = services.CreateScope();
-        var userRepository = scope.ServiceProvider.GetRequiredService<IUserRepository>();
-        var reconciler = scope.ServiceProvider.GetRequiredService<INoteIndexReconciler>();
-
-        var users = await userRepository.GetAllUsersAsync();
-        foreach (var user in users)
-        {
-            await reconciler.RescanAsync(user.Id);
-        }
+        var reconciler = scope.ServiceProvider.GetRequiredService<IAllUsersIndexReconciler>();
+        await reconciler.ReconcileAllAsync();
     }
 }

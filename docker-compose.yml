@@ -14,6 +14,8 @@ services:
       - REDIS_CONNECTION_STRING=redis:6379
       # Override by exporting TZ before running compose, or adding TZ=... to a .env file.
       - TZ=${TZ:-UTC}
+      # Set to 0 to disable background index reconciliation.
+      - AUTO_INDEX_INTERVAL_MINUTES=${AUTO_INDEX_INTERVAL_MINUTES:-5}
       # Optional OIDC login — uncomment and set via a .env file (or export before running compose)
       # to enable. All three must be set, or OIDC stays disabled. See README.md's Authentication section.
       # - OIDC_AUTHORITY=${OIDC_AUTHORITY}

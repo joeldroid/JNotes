@@ -4,6 +4,7 @@ using JNotes.Core.Users;
 using JNotes.Web;
 using JNotes.Web.Auth;
 using JNotes.Web.Components;
+using JNotes.Web.Indexing;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -15,6 +16,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddJNotesCore(builder.Configuration);
+// Periodic index reconciliation — interval controlled by AUTO_INDEX_INTERVAL_MINUTES (0 disables).
+builder.Services.AddHostedService<AutoIndexBackgroundService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserContext, AuthenticatedCurrentUserContext>();
 
