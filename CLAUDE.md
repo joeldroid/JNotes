@@ -210,6 +210,8 @@ never edits free-form body text, but for checklists it can **toggle items, add i
 categories** via `INoteService.SetChecklistItemCheckedAsync`/`AddChecklistItemAsync`/
 `AddChecklistCategoryAsync`. A single `_isMutating` flag (passed to the panel as `Disabled`, which
 disables every control while a call is in flight) stands in for the editor's save gate. `NoteEditor.razor` is at `/notes/{id}/edit` with a "Done" link back.
+The view's whole content (header, meta, body) sits in a centered `.note-view` column capped by
+`--note-view-max-width` (56rem, `note-view.css`); the editor's two-pane split deliberately stays full width.
 
 **Autosave has two scopes, and the cheaper one is deliberately incomplete.**
 `NoteService.AutosaveAsync(note, NoteSaveScope)` is what the editor's debounced autosave,

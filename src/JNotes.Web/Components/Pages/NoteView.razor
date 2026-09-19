@@ -17,48 +17,50 @@ else if (_note is null)
 }
 else
 {
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
-        <div class="flex-grow-1" style="min-width: 240px;">
-            <h1 class="h3 mb-1">@(string.IsNullOrWhiteSpace(_note.Title) ? "Untitled note" : _note.Title)</h1>
-            @if (_note.Tags.Count > 0)
-            {
-                <div>
-                    @foreach (var tag in _note.Tags)
-                    {
-                        <span class="badge text-bg-light border me-1">@tag</span>
-                    }
-                </div>
-            }
+    <div class="note-view">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+            <div class="flex-grow-1" style="min-width: 240px;">
+                <h1 class="h3 mb-1">@(string.IsNullOrWhiteSpace(_note.Title) ? "Untitled note" : _note.Title)</h1>
+                @if (_note.Tags.Count > 0)
+                {
+                    <div>
+                        @foreach (var tag in _note.Tags)
+                        {
+                            <span class="badge text-bg-light border me-1">@tag</span>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="d-flex gap-2 flex-shrink-0">
+                <a class="btn btn-primary" href="@($"/notes/{_note.Id}/edit")">Edit</a>
+                <button class="btn btn-outline-danger" type="button" title="Move to Trash" disabled="@_isDeleting" @onclick="TrashAsync">Delete</button>
+            </div>
         </div>
-        <div class="d-flex gap-2 flex-shrink-0">
-            <a class="btn btn-primary" href="@($"/notes/{_note.Id}/edit")">Edit</a>
-            <button class="btn btn-outline-danger" type="button" title="Move to Trash" disabled="@_isDeleting" @onclick="TrashAsync">Delete</button>
-        </div>
+
+        <p class="text-body-secondary small">
+            <span class="badge text-bg-secondary me-1">@(_note.Type == NoteType.Checklist ? "Checklist" : "Text")</span>
+            Last updated @TimeZoneProvider.ToAppTimeZone(_note.UpdatedAt).DateTime.ToString("g")
+        </p>
+
+        @if (_actionError is not null)
+        {
+            <div class="alert alert-danger">@_actionError</div>
+        }
+
+        @if (_note.Type == NoteType.Checklist)
+        {
+            // Checking items, adding items, and adding categories are the changes allowed from the view —
+            // each goes through NoteService, never a free body edit (that stays in the editor).
+            <div class="border rounded p-3">
+                <ChecklistPanel Body="@_note.Body" Disabled="_isMutating"
+                                OnItemChecked="SetItemCheckedAsync" OnAddItem="AddItemAsync" OnAddCategory="AddCategoryAsync" />
+            </div>
+        }
+        else
+        {
+            <MarkdownPreview Markdown="@_note.Body" />
+        }
     </div>
-
-    <p class="text-body-secondary small">
-        <span class="badge text-bg-secondary me-1">@(_note.Type == NoteType.Checklist ? "Checklist" : "Text")</span>
-        Last updated @TimeZoneProvider.ToAppTimeZone(_note.UpdatedAt).DateTime.ToString("g")
-    </p>
-
-    @if (_actionError is not null)
-    {
-        <div class="alert alert-danger">@_actionError</div>
-    }
-
-    @if (_note.Type == NoteType.Checklist)
-    {
-        // Checking items, adding items, and adding categories are the changes allowed from the view —
-        // each goes through NoteService, never a free body edit (that stays in the editor).
-        <div class="border rounded p-3">
-            <ChecklistPanel Body="@_note.Body" Disabled="_isMutating"
-                            OnItemChecked="SetItemCheckedAsync" OnAddItem="AddItemAsync" OnAddCategory="AddCategoryAsync" />
-        </div>
-    }
-    else
-    {
-        <MarkdownPreview Markdown="@_note.Body" />
-    }
 }
 
 @code {

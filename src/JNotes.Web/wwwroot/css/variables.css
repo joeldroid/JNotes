@@ -4,6 +4,9 @@
     /* Fixed (not min) so the textarea and its preview pane always match — see note-editor.css. */
     --note-editor-height: 60vh;
 
+    /* Read-only note view only; the editor's two-pane split stays full width. */
+    --note-view-max-width: 56rem;
+
     --error-boundary-bg: #b32121;
     --error-boundary-fg: #ffffff;
 

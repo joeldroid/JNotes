@@ -1,0 +1,6 @@
+/* Caps the read-only note view (NoteView.razor) to a centered column. No media query: a max-width
+   is inert below the cap, so narrow viewports are unaffected. */
+.note-view {
+    max-width: var(--note-view-max-width);
+    margin-inline: auto;
+}
