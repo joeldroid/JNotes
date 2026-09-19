@@ -203,12 +203,12 @@ restart regenerates them and silently signs everyone out.
 ## Notes UI
 
 **Opening a note lands on a read-only view; editing is a separate route.** `NoteView.razor`
-(`/notes/{id}`) renders title, tags, and body (`MarkdownPreview` for text notes; checkboxes off
-`ChecklistMarkdownParser` for checklists) with Edit and Delete (same soft-delete as the editor).
-The view never edits free-form body text, but for checklists it can **toggle and add items** via
-`INoteService.SetChecklistItemCheckedAsync`/`AddChecklistItemAsync`. A single `_isMutating` flag
-(disables checkboxes, add input, and Add button while a call is in flight) stands in for the
-editor's save gate. `NoteEditor.razor` is at `/notes/{id}/edit` with a "Done" link back.
+(`/notes/{id}`) renders title, tags, and body (`MarkdownPreview` for text notes; the shared
+`ChecklistPanel` for checklists) with Edit and Delete (same soft-delete as the editor). The view
+never edits free-form body text, but for checklists it can **toggle items, add items, and add
+categories** via `INoteService.SetChecklistItemCheckedAsync`/`AddChecklistItemAsync`/
+`AddChecklistCategoryAsync`. A single `_isMutating` flag (passed to the panel as `Disabled`, which
+disables every control while a call is in flight) stands in for the editor's save gate. `NoteEditor.razor` is at `/notes/{id}/edit` with a "Done" link back.
 
 **Autosave has two scopes, and the cheaper one is deliberately incomplete.**
 `NoteService.AutosaveAsync(note, NoteSaveScope)` is what the editor's debounced autosave,
@@ -241,15 +241,16 @@ Boundaries are checked in strict priority order (today → … → previous), no
 because `monthStart` can fall *after* `lastWeekStart` early in a month. Sections collapse with
 Bootstrap's native `data-bs-toggle="collapse"`; `note-list.css` rotates the chevron off `.collapsed`.
 
-**`ChecklistNoteEditor` and `TextNoteEditor` deliberately look the same.** Toolbar plus a
-hide/show button on top, then a `row g-3` / `col-12 col-lg-6` split: the always-visible markdown
-`<textarea>` on the left, and a togglable, **visible-by-default** right pane (`MarkdownPreview` /
-the interactive checklist with its add-item box) driven by a plain `bool`
-(`_showPreview`/`_showChecklist`), the left going full-width when it's hidden. `MarkdownToolbar` is
-always shown since the textarea always is. Both right panes share `.note-editor-preview`'s fixed
-height (see `note-editor.css`); the checklist pane is a flex column so its list scrolls while the
-add box stays pinned. A Bootstrap `.collapse` can't be used because it keeps state in the DOM and
-can't drive Blazor's `col-*` class switch. Keep the two editors' layout in step.
+**`ChecklistNoteEditor` and `TextNoteEditor` deliberately share one layout.** A hide/show button on
+top, then a `row g-3` / `col-12 col-lg-6` split: the always-visible markdown `<textarea>` on the
+left, and a togglable, **visible-by-default** right pane (`MarkdownPreview` / the interactive
+checklist) driven by a plain `bool` (`_showPreview`/`_showChecklist`), the left going full-width when
+it's hidden. Both right panes share `.note-editor-preview`'s fixed height (see `note-editor.css`);
+the checklist pane is a flex column so its list scrolls while the add boxes stay pinned (the
+`ChecklistPanel` inside it supplies the scrolling list and the pinned boxes). The one
+difference: `TextNoteEditor` has the `MarkdownToolbar` (bold etc.); `ChecklistNoteEditor`
+deliberately doesn't — the UI is the way to edit a checklist. A Bootstrap `.collapse` can't be used
+because it keeps state in the DOM and can't drive Blazor's `col-*` class switch.
 
 ## Checklists
 
@@ -260,9 +261,10 @@ mutation preserves each line's own bytes (and CRLF/LF style) and changes only th
 character and, for checking, line *order*. Don't route checklist edits through Markdig's AST.
 Only `- [ ]`/`- [x]` bullets are recognised.
 
-**API:** `SetItemChecked(body, lineIndex, isChecked)` and `AppendItems(body, text)` on the parser;
-`SetChecklistItemCheckedAsync` and `AddChecklistItemAsync` on `INoteService` (read the file, guard
-`NoteType.Checklist`, mutate, `ContentOnly` save). It's **set, not toggle**: reordering makes
+**API:** `SetItemChecked`, `AppendItemsToCategory`, and `AddCategory` on the parser;
+`SetChecklistItemCheckedAsync`, `AddChecklistItemAsync` (optional category), and
+`AddChecklistCategoryAsync` on `INoteService` (read the file, guard `NoteType.Checklist`, mutate,
+`ContentOnly` save). It's **set, not toggle**: reordering makes
 `LineIndex` volatile, and a replayed "set checked" is idempotent while a replayed flip is not.
 
 **Checked items sink to the bottom of the *file*, not just the screen.** A display-only sort would
@@ -275,19 +277,39 @@ make the app and any other editor (Obsidian, vim, GitHub) disagree about order, 
   line last in its destination group: checking sends it to the very bottom; **unchecking returns
   it to the end of the unchecked run, not its old slot** (remembering that would need state outside
   the file). Partitioning the whole block also repairs hand-edited files.
-- `AppendItems` adds one unchecked item per non-blank line of the text (trimmed) to the **last**
-  block, above its checked items; with no task lines at all it appends before any trailing blank
-  lines. No escaping is needed: `Text` is greedy to end of line and front matter is only detected at
-  the file's start.
+- Adding items (`AppendItemsToCategory`) puts one unchecked item per non-blank line of the text
+  (trimmed) at the end of the target category's last block's unchecked run, above its checked items;
+  with no task lines in the range it inserts before any trailing blank lines. No escaping is needed:
+  `Text` is greedy to end of line and front matter is only detected at the file's start.
 
-**`@key` + `_listVersion` is required on checklist rows** (`NoteView.razor`,
-`ChecklistNoteEditor.razor`): the `<li>` `@key` and the checkbox `id`/`for` all include
-`_listVersion`, bumped after every mutation. Without it, the browser has already ticked the clicked
+**Categories are markdown headings — no extra storage.** Any ATX heading (`#`–`######`, text after
+a space) starts a category holding the task lines beneath it up to the next heading; items before
+the first heading are the uncategorized section. `ChecklistSection`/`ParseSections` is a read-only
+projection like `ChecklistItem`. This rides on the block rule above: headings already end blocks,
+so a checked item sinks within its own category and never crosses one. On the parser,
+`AddCategory(body, name)` appends `## name` after the last content (blank line before it; the name is
+trimmed and line breaks flattened) and `AppendItemsToCategory(body, text, headingLineIndex)` inserts
+into one section (`null` = uncategorized) using the same end-of-unchecked-run rule, or directly under
+the heading if the category is empty.
+
+**`ChecklistPanel` is the one checklist UI, used by both the editor and the view**
+(`Components/Notes/`). It groups items by section, has a category `<select>` (shown only once
+headings exist; defaults to the last category, and a new category is auto-selected) beside the
+add-item box, and a separate "New category" box. It owns no persistence: it renders the `Body` it's
+given and reports actions through `OnItemChecked`/`OnAddItem`/`OnAddCategory` callbacks, so the
+editor and the view can each save the way they must (below) without duplicating the UI. The category
+choice is remembered by heading *line index*, which raw edits can shift, so a stale one falls back to
+the last category. Renaming, deleting, or reordering categories is done in the editor's markdown
+textarea. After an add, the panel refocuses its item input on the next render where it's enabled
+(the view disables it during a save, which drops focus).
+
+**`@key` + `_listVersion` is required on checklist rows** (`ChecklistPanel.razor`): the `<li>`
+`@key` and the checkbox `id`/`for` all include `_listVersion`, bumped after every mutation. Without it, the browser has already ticked the clicked
 box, the item moves, and the row taking its slot renders the same as the old one, so Blazor's diff
 skips it and the DOM stays ticked while the model disagrees.
 
-**The editor mutates in memory; the view goes through the service.** `ChecklistNoteEditor` calls
-the parser directly and raises `BodyChanged`, which rides `NoteEditor`'s ordinary content debounce
+**The editor mutates in memory; the view goes through the service.** `ChecklistNoteEditor`'s panel
+callbacks call the parser directly and raise `BodyChanged`, which rides `NoteEditor`'s ordinary content debounce
 and save gate; the markdown textarea renders the same `Body`, so it stays in sync for free. It must
 not read-modify-write the file through `INoteService` — that would discard body edits still in the
 debounce. Consequence: an editor checkbox persists on the debounce (≤800 ms, plus the dispose

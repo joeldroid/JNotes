@@ -11,7 +11,7 @@ see [Authentication](#authentication) below for that flow, adding more users, an
 ## Features
 
 - **Text notes** — free-form markdown, edited with a live preview.
-- **Checklist notes** — markdown task lists (`- [ ] item`) rendered as interactive checkboxes. Add items from the note view or the editor without touching markdown; checking one moves it below the unchecked ones.
+- **Checklist notes** — markdown task lists (`- [ ] item`) rendered as interactive checkboxes. Add items and group them into categories (markdown `##` headings) from the note view or the editor without touching markdown; checking an item moves it below the unchecked ones in its category.
 - **Multi-user with real accounts** — admin-created users, each with their own notes and settings;
   sign in with a password, OIDC, or both.
 - **Portable storage** — every note is `notes/<user-id>/<id>.md` with a small YAML front matter

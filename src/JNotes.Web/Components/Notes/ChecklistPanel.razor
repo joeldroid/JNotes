@@ -1,0 +1,178 @@
+@* The interactive checklist — items grouped by category, plus the add-item and add-category boxes.
+   Shared by ChecklistNoteEditor (mutates the body in memory) and NoteView (goes through NoteService);
+   this component only reports what the user did through its callbacks and renders whatever Body it's
+   handed. Its two root elements are meant to sit in a flex-column parent: the list scrolls
+   (flex-grow-1 overflow-auto) and the boxes stay pinned (flex-shrink-0); in a plain block parent
+   those classes are harmless. *@
+@{
+    var sections = ChecklistMarkdownParser.ParseSections(Body);
+    var target = ResolveTarget(sections);
+    var hasCategories = sections.Any(s => s.Title is not null);
+}
+
+<div class="flex-grow-1 overflow-auto">
+    @foreach (var section in sections)
+    {
+        @if (section.Title is not null)
+        {
+            <h6 class="text-uppercase text-body-secondary small fw-semibold mt-3 mb-1">@section.Title</h6>
+        }
+        <ul class="list-group list-group-flush mb-0">
+            @foreach (var item in section.Items)
+            {
+                // @key/id carry _listVersion so a reorder rebuilds these rows from the model — see
+                // OnItemCheckedAsync for why (Blazor's diff would otherwise leave the clicked
+                // checkbox visually ticked at whatever row it landed on).
+                <li class="list-group-item" @key="(_listVersion, item.LineIndex)">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="@($"item-{_listVersion}-{item.LineIndex}")"
+                               checked="@item.IsChecked" disabled="@Disabled"
+                               @onchange="e => OnItemCheckedAsync(item.LineIndex, e)" />
+                        <label class="form-check-label @(item.IsChecked ? "text-decoration-line-through text-body-secondary" : "")"
+                               for="@($"item-{_listVersion}-{item.LineIndex}")">
+                            @item.Text
+                        </label>
+                    </div>
+                </li>
+            }
+            @if (section.Items.Count == 0)
+            {
+                <li class="list-group-item text-body-secondary">
+                    @(section.Title is null ? "No items yet — add one below." : "Nothing here yet.")
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+<div class="flex-shrink-0">
+    <div class="input-group mt-3">
+        @if (hasCategories)
+        {
+            <select class="form-select w-auto flex-grow-0" style="max-width: 40%" aria-label="Category for the new item"
+                    disabled="@Disabled" @onchange="OnTargetChanged">
+                @foreach (var section in sections)
+                {
+                    <option value="@(section.HeadingLineIndex ?? UncategorizedTarget)" selected="@(section == target)">@(section.Title ?? "No category")</option>
+                }
+            </select>
+        }
+        <input class="form-control" placeholder="Add an item" aria-label="Add a checklist item"
+               value="@_newItemText" @oninput="OnNewItemInput" @onkeydown="OnNewItemKeyDownAsync"
+               disabled="@Disabled" @ref="_newItemInput" />
+        <button class="btn btn-outline-primary" type="button"
+                disabled="@(Disabled || string.IsNullOrWhiteSpace(_newItemText))" @onclick="AddItemAsync">Add</button>
+    </div>
+    <div class="input-group mt-2">
+        <input class="form-control" placeholder="New category" aria-label="New category name"
+               value="@_newCategoryText" @oninput="OnNewCategoryInput" @onkeydown="OnNewCategoryKeyDownAsync"
+               disabled="@Disabled" />
+        <button class="btn btn-outline-secondary" type="button"
+                disabled="@(Disabled || string.IsNullOrWhiteSpace(_newCategoryText))" @onclick="AddCategoryAsync">Add category</button>
+    </div>
+</div>
+
+@code {
+    // <option value> for the uncategorized section, which has no heading line to identify it by.
+    private const int UncategorizedTarget = -1;
+    // "Nothing chosen yet" — falls back to the last category, which is where a fresh one lands.
+    private const int NoTarget = -2;
+
+    [Parameter, EditorRequired] public string Body { get; set; } = "";
+
+    /// <summary>Disables every control — the view sets it while a save is in flight so clicks can't race.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    [Parameter] public EventCallback<(int LineIndex, bool IsChecked)> OnItemChecked { get; set; }
+    [Parameter] public EventCallback<(string Text, int? CategoryHeadingLine)> OnAddItem { get; set; }
+    [Parameter] public EventCallback<string> OnAddCategory { get; set; }
+
+    private ElementReference _newItemInput;
+    private string _newItemText = "";
+    private string _newCategoryText = "";
+    private int _target = NoTarget;
+    private int _listVersion;
+    private bool _focusNewItemInput;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Wait for a render where the input is enabled again (the view disables it during a save,
+        // which drops focus) so several items can be typed in a row.
+        if (_focusNewItemInput && !Disabled)
+        {
+            _focusNewItemInput = false;
+            await _newItemInput.FocusAsync();
+        }
+    }
+
+    // The category new items go to. Identified by heading line, which raw-markdown edits can shift or
+    // remove, so a stale choice quietly falls back to the last category rather than erroring.
+    private ChecklistSection ResolveTarget(IReadOnlyList<ChecklistSection> sections) =>
+        sections.FirstOrDefault(s => (s.HeadingLineIndex ?? UncategorizedTarget) == _target) ?? sections[^1];
+
+    private void OnTargetChanged(ChangeEventArgs e) =>
+        _target = int.TryParse(e.Value?.ToString(), out var value) ? value : NoTarget;
+
+    private async Task OnItemCheckedAsync(int lineIndex, ChangeEventArgs e)
+    {
+        await OnItemChecked.InvokeAsync((lineIndex, e.Value is bool isChecked && isChecked));
+
+        // Checking an item moves it, so the row that takes its old slot can render identically to
+        // what the browser already toggled — Blazor's diff would then skip patching it and leave
+        // the DOM checkbox ticked. Bumping the version changes every row's key and id, forcing a
+        // rebuild from the model. (Also snaps the box back if the save failed.)
+        _listVersion++;
+    }
+
+    private void OnNewItemInput(ChangeEventArgs e) => _newItemText = e.Value?.ToString() ?? "";
+
+    private async Task OnNewItemKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await AddItemAsync();
+        }
+    }
+
+    private async Task AddItemAsync()
+    {
+        if (Disabled || string.IsNullOrWhiteSpace(_newItemText))
+        {
+            return;
+        }
+
+        var heading = ResolveTarget(ChecklistMarkdownParser.ParseSections(Body)).HeadingLineIndex;
+        await OnAddItem.InvokeAsync((_newItemText, heading));
+
+        _newItemText = "";
+        _listVersion++;
+        _focusNewItemInput = true;
+    }
+
+    private void OnNewCategoryInput(ChangeEventArgs e) => _newCategoryText = e.Value?.ToString() ?? "";
+
+    private async Task OnNewCategoryKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await AddCategoryAsync();
+        }
+    }
+
+    private async Task AddCategoryAsync()
+    {
+        if (Disabled || string.IsNullOrWhiteSpace(_newCategoryText))
+        {
+            return;
+        }
+
+        await OnAddCategory.InvokeAsync(_newCategoryText);
+
+        // A new category is always the last section, so dropping the explicit choice selects it and
+        // the next item typed lands there.
+        _target = NoTarget;
+        _newCategoryText = "";
+        _listVersion++;
+        _focusNewItemInput = true;
+    }
+}

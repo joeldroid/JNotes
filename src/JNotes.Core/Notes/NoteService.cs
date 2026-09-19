@@ -59,13 +59,21 @@ public sealed class NoteService : INoteService
         return await AutosaveAsync(note, NoteSaveScope.ContentOnly, cancellationToken);
     }
 
-    public async Task<Note> AddChecklistItemAsync(Guid noteId, string text, CancellationToken cancellationToken = default)
+    public async Task<Note> AddChecklistItemAsync(Guid noteId, string text, int? categoryHeadingLine = null, CancellationToken cancellationToken = default)
     {
         var note = await ReadChecklistNoteAsync(noteId, cancellationToken);
 
-        note.Body = ChecklistMarkdownParser.AppendItems(note.Body, text);
+        note.Body = ChecklistMarkdownParser.AppendItemsToCategory(note.Body, text, categoryHeadingLine);
         // Same reasoning as SetChecklistItemCheckedAsync: body only, so ContentOnly — the new
         // item's text isn't searchable until the next Metadata save or reconciliation pass.
+        return await AutosaveAsync(note, NoteSaveScope.ContentOnly, cancellationToken);
+    }
+
+    public async Task<Note> AddChecklistCategoryAsync(Guid noteId, string name, CancellationToken cancellationToken = default)
+    {
+        var note = await ReadChecklistNoteAsync(noteId, cancellationToken);
+
+        note.Body = ChecklistMarkdownParser.AddCategory(note.Body, name);
         return await AutosaveAsync(note, NoteSaveScope.ContentOnly, cancellationToken);
     }
 

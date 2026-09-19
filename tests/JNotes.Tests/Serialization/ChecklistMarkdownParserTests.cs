@@ -15,6 +15,10 @@ public class ChecklistMarkdownParserTests
 
     private const string NestedBody = "- [ ] a\n  - [ ] a1\n  - [ ] a2\n- [ ] b";
 
+    // The uncategorized section: the whole body when it has no headings, which is what most of these cover.
+    private static string AppendItems(string body, string text) =>
+        ChecklistMarkdownParser.AppendItemsToCategory(body, text, null);
+
     [Fact]
     public void Parse_finds_only_task_list_lines_with_correct_indices_text_and_state()
     {
@@ -178,69 +182,69 @@ public class ChecklistMarkdownParserTests
     }
 
     [Fact]
-    public void AppendItems_adds_a_task_line_to_an_empty_body()
+    public void AppendItemsToCategory_adds_a_task_line_to_an_empty_body()
     {
-        Assert.Equal("- [ ] a\n", ChecklistMarkdownParser.AppendItems("", "a"));
+        Assert.Equal("- [ ] a\n", AppendItems("", "a"));
     }
 
     [Fact]
-    public void AppendItems_appends_after_the_last_unchecked_item_and_above_checked_ones()
+    public void AppendItemsToCategory_appends_after_the_last_unchecked_item_and_above_checked_ones()
     {
-        Assert.Equal("- [ ] a\n- [ ] b", ChecklistMarkdownParser.AppendItems("- [ ] a", "b"));
-        Assert.Equal("- [ ] a\n- [ ] c\n- [x] b\n", ChecklistMarkdownParser.AppendItems("- [ ] a\n- [x] b\n", "c"));
+        Assert.Equal("- [ ] a\n- [ ] b", AppendItems("- [ ] a", "b"));
+        Assert.Equal("- [ ] a\n- [ ] c\n- [x] b\n", AppendItems("- [ ] a\n- [x] b\n", "c"));
     }
 
     [Fact]
-    public void AppendItems_appends_to_the_last_block_when_the_body_has_several_blocks()
+    public void AppendItemsToCategory_appends_to_the_targeted_block_when_the_body_has_several_blocks()
     {
-        var result = ChecklistMarkdownParser.AppendItems(MultiBlockBody, "screws");
+        var result = ChecklistMarkdownParser.AppendItemsToCategory(MultiBlockBody, "screws", 4);
 
         Assert.Equal("## Groceries\n- [ ] milk\n- [ ] eggs\n\n## Hardware\n- [ ] nails\n- [ ] screws", result);
     }
 
     [Fact]
-    public void AppendItems_appends_at_the_end_of_a_body_with_no_checklist_lines()
+    public void AppendItemsToCategory_appends_at_the_end_of_a_body_with_no_checklist_lines()
     {
-        Assert.Equal("some prose\n- [ ] a", ChecklistMarkdownParser.AppendItems("some prose", "a"));
+        Assert.Equal("some prose\n- [ ] a", AppendItems("some prose", "a"));
     }
 
     [Fact]
-    public void AppendItems_preserves_a_trailing_newline()
+    public void AppendItemsToCategory_preserves_a_trailing_newline()
     {
-        Assert.Equal("some prose\n- [ ] a\n", ChecklistMarkdownParser.AppendItems("some prose\n", "a"));
-        Assert.Equal("- [ ] a\n- [ ] b\n", ChecklistMarkdownParser.AppendItems("- [ ] a\n", "b"));
+        Assert.Equal("some prose\n- [ ] a\n", AppendItems("some prose\n", "a"));
+        Assert.Equal("- [ ] a\n- [ ] b\n", AppendItems("- [ ] a\n", "b"));
     }
 
     [Fact]
-    public void AppendItems_trims_surrounding_whitespace_from_the_text()
+    public void AppendItemsToCategory_trims_surrounding_whitespace_from_the_text()
     {
-        Assert.Equal("- [ ] a\n- [ ] b", ChecklistMarkdownParser.AppendItems("- [ ] a", "   b \t"));
+        Assert.Equal("- [ ] a\n- [ ] b", AppendItems("- [ ] a", "   b \t"));
     }
 
     [Fact]
-    public void AppendItems_creates_one_item_per_non_blank_line_of_multiline_text()
+    public void AppendItemsToCategory_creates_one_item_per_non_blank_line_of_multiline_text()
     {
-        var result = ChecklistMarkdownParser.AppendItems("- [ ] a", "b\r\n\n  c  \nd");
+        var result = AppendItems("- [ ] a", "b\r\n\n  c  \nd");
 
         Assert.Equal("- [ ] a\n- [ ] b\n- [ ] c\n- [ ] d", result);
     }
 
     [Fact]
-    public void AppendItems_matches_the_indent_of_the_block_it_appends_to()
+    public void AppendItemsToCategory_matches_the_indent_of_the_block_it_appends_to()
     {
-        var result = ChecklistMarkdownParser.AppendItems(NestedBody, "a3");
+        var result = AppendItems(NestedBody, "a3");
 
         // The last task line is "- [ ] b" (indent ""), so that block gets the new item.
         Assert.Equal("- [ ] a\n  - [ ] a1\n  - [ ] a2\n- [ ] b\n- [ ] a3", result);
 
-        var indented = ChecklistMarkdownParser.AppendItems("- [ ] a\n  - [ ] a1", "a2");
+        var indented = AppendItems("- [ ] a\n  - [ ] a1", "a2");
         Assert.Equal("- [ ] a\n  - [ ] a1\n  - [ ] a2", indented);
     }
 
     [Fact]
-    public void AppendItems_preserves_CRLF_line_endings_when_present()
+    public void AppendItemsToCategory_preserves_CRLF_line_endings_when_present()
     {
-        var result = ChecklistMarkdownParser.AppendItems("- [ ] one\r\n- [x] two", "three\nfour");
+        var result = AppendItems("- [ ] one\r\n- [x] two", "three\nfour");
 
         Assert.Equal("- [ ] one\r\n- [ ] three\r\n- [ ] four\r\n- [x] two", result);
     }
@@ -250,9 +254,9 @@ public class ChecklistMarkdownParserTests
     [InlineData("---")]
     [InlineData("# heading")]
     [InlineData("[x]")]
-    public void AppendItems_keeps_markdown_looking_text_on_a_single_line(string text)
+    public void AppendItemsToCategory_keeps_markdown_looking_text_on_a_single_line(string text)
     {
-        var result = ChecklistMarkdownParser.AppendItems("- [ ] first", text);
+        var result = AppendItems("- [ ] first", text);
 
         var items = ChecklistMarkdownParser.Parse(result);
         Assert.Equal(2, items.Count);
@@ -261,11 +265,11 @@ public class ChecklistMarkdownParserTests
     }
 
     [Fact]
-    public void AppendItems_stores_very_long_text_as_one_line()
+    public void AppendItemsToCategory_stores_very_long_text_as_one_line()
     {
         var longText = new string('x', 10_000);
 
-        var result = ChecklistMarkdownParser.AppendItems("- [ ] first", longText);
+        var result = AppendItems("- [ ] first", longText);
 
         var lines = result.Split('\n');
         Assert.Equal(2, lines.Length);
@@ -277,8 +281,232 @@ public class ChecklistMarkdownParserTests
     [InlineData("   ")]
     [InlineData("\n\n")]
     [InlineData("\r\n")]
-    public void AppendItems_throws_for_text_with_no_non_blank_content(string text)
+    public void AppendItemsToCategory_throws_for_text_with_no_non_blank_content(string text)
     {
-        Assert.Throws<ArgumentException>(() => ChecklistMarkdownParser.AppendItems("- [ ] a", text));
+        Assert.Throws<ArgumentException>(() => AppendItems("- [ ] a", text));
+    }
+
+    [Fact]
+    public void ParseSections_returns_one_uncategorized_section_when_there_are_no_headings()
+    {
+        var sections = ChecklistMarkdownParser.ParseSections("- [ ] a\n- [x] b");
+
+        var section = Assert.Single(sections);
+        Assert.Null(section.HeadingLineIndex);
+        Assert.Null(section.Title);
+        Assert.Equal(2, section.Items.Count);
+    }
+
+    [Fact]
+    public void ParseSections_returns_one_empty_uncategorized_section_for_an_empty_body()
+    {
+        var section = Assert.Single(ChecklistMarkdownParser.ParseSections(""));
+
+        Assert.Null(section.Title);
+        Assert.Empty(section.Items);
+    }
+
+    [Fact]
+    public void ParseSections_groups_items_under_their_headings_with_line_indices()
+    {
+        var sections = ChecklistMarkdownParser.ParseSections(MultiBlockBody);
+
+        Assert.Equal(2, sections.Count);
+        Assert.Equal(0, sections[0].HeadingLineIndex);
+        Assert.Equal("Groceries", sections[0].Title);
+        Assert.Equal(["milk", "eggs"], sections[0].Items.Select(i => i.Text));
+        Assert.Equal(4, sections[1].HeadingLineIndex);
+        Assert.Equal("Hardware", sections[1].Title);
+        Assert.Equal(5, sections[1].Items.Single().LineIndex);
+    }
+
+    [Fact]
+    public void ParseSections_keeps_items_before_the_first_heading_as_an_uncategorized_section()
+    {
+        var sections = ChecklistMarkdownParser.ParseSections("- [ ] loose\n## Later\n- [ ] a");
+
+        Assert.Equal(2, sections.Count);
+        Assert.Null(sections[0].Title);
+        Assert.Equal("loose", sections[0].Items.Single().Text);
+        Assert.Equal("Later", sections[1].Title);
+    }
+
+    [Fact]
+    public void ParseSections_omits_an_empty_uncategorized_section_when_headings_exist()
+    {
+        var sections = ChecklistMarkdownParser.ParseSections("## Only\n- [ ] a");
+
+        Assert.Equal("Only", Assert.Single(sections).Title);
+    }
+
+    [Fact]
+    public void ParseSections_keeps_a_category_with_no_items()
+    {
+        var sections = ChecklistMarkdownParser.ParseSections("## Empty\n\n## Full\n- [ ] a");
+
+        Assert.Equal(2, sections.Count);
+        Assert.Empty(sections[0].Items);
+        Assert.Single(sections[1].Items);
+    }
+
+    [Theory]
+    [InlineData("# One", "One")]
+    [InlineData("###### Six", "Six")]
+    [InlineData("##   Padded   ", "Padded")]
+    public void ParseSections_treats_atx_headings_of_any_level_as_categories(string heading, string title)
+    {
+        var sections = ChecklistMarkdownParser.ParseSections($"{heading}\n- [ ] a");
+
+        Assert.Equal(title, Assert.Single(sections).Title);
+    }
+
+    [Theory]
+    [InlineData("#tag")]
+    [InlineData("####### seven")]
+    [InlineData("#")]
+    public void ParseSections_does_not_treat_non_headings_as_categories(string line)
+    {
+        var section = Assert.Single(ChecklistMarkdownParser.ParseSections($"{line}\n- [ ] a"));
+
+        Assert.Null(section.Title);
+    }
+
+    [Fact]
+    public void AppendItemsToCategory_adds_under_the_chosen_category_above_its_checked_items()
+    {
+        var body = "## A\n- [ ] a1\n- [x] a2\n\n## B\n- [ ] b1";
+
+        var result = ChecklistMarkdownParser.AppendItemsToCategory(body, "new", 0);
+
+        Assert.Equal("## A\n- [ ] a1\n- [ ] new\n- [x] a2\n\n## B\n- [ ] b1", result);
+    }
+
+    [Fact]
+    public void AppendItemsToCategory_leaves_other_categories_untouched()
+    {
+        var body = "## A\n- [ ] a1\n\n## B\n- [ ] b1";
+
+        var result = ChecklistMarkdownParser.AppendItemsToCategory(body, "b2", 3);
+
+        Assert.Equal("## A\n- [ ] a1\n\n## B\n- [ ] b1\n- [ ] b2", result);
+    }
+
+    [Fact]
+    public void AppendItemsToCategory_puts_items_directly_under_an_empty_categorys_heading()
+    {
+        var result = ChecklistMarkdownParser.AppendItemsToCategory("## A\n\n## B\n- [ ] b1", "a1", 0);
+
+        Assert.Equal("## A\n- [ ] a1\n\n## B\n- [ ] b1", result);
+    }
+
+    [Fact]
+    public void AppendItemsToCategory_adds_to_a_trailing_empty_category_and_keeps_the_trailing_newline()
+    {
+        Assert.Equal("## A\n- [ ] a1", ChecklistMarkdownParser.AppendItemsToCategory("## A", "a1", 0));
+        Assert.Equal("## A\n- [ ] a1\n", ChecklistMarkdownParser.AppendItemsToCategory("## A\n", "a1", 0));
+    }
+
+    [Fact]
+    public void AppendItemsToCategory_with_null_targets_the_items_before_the_first_heading()
+    {
+        var result = ChecklistMarkdownParser.AppendItemsToCategory("- [ ] loose\n\n## A\n- [ ] a1", "more", null);
+
+        Assert.Equal("- [ ] loose\n- [ ] more\n\n## A\n- [ ] a1", result);
+    }
+
+    [Fact]
+    public void AppendItemsToCategory_with_null_and_a_heading_on_the_first_line_inserts_nothing_above_it()
+    {
+        // The uncategorized range is empty here; the UI never offers it, but the API must not throw.
+        var result = ChecklistMarkdownParser.AppendItemsToCategory("## A\n- [ ] a1", "x", null);
+
+        Assert.Equal("- [ ] x\n## A\n- [ ] a1", result);
+    }
+
+    [Fact]
+    public void AppendItemsToCategory_adds_one_item_per_line_in_order()
+    {
+        var result = ChecklistMarkdownParser.AppendItemsToCategory("## A\n- [ ] a1\n\n## B", "x\ny", 0);
+
+        Assert.Equal("## A\n- [ ] a1\n- [ ] x\n- [ ] y\n\n## B", result);
+    }
+
+    [Fact]
+    public void AppendItemsToCategory_preserves_CRLF_line_endings()
+    {
+        var result = ChecklistMarkdownParser.AppendItemsToCategory("## A\r\n- [ ] a1\r\n\r\n## B", "x", 0);
+
+        Assert.Equal("## A\r\n- [ ] a1\r\n- [ ] x\r\n\r\n## B", result);
+    }
+
+    [Fact]
+    public void AppendItemsToCategory_throws_when_the_target_line_is_not_a_heading()
+    {
+        Assert.Throws<InvalidOperationException>(() => ChecklistMarkdownParser.AppendItemsToCategory("## A\n- [ ] a1", "x", 1));
+    }
+
+    [Fact]
+    public void AppendItemsToCategory_throws_when_the_heading_index_is_out_of_range()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => ChecklistMarkdownParser.AppendItemsToCategory("## A", "x", 5));
+    }
+
+    [Fact]
+    public void AppendItemsToCategory_throws_for_blank_text()
+    {
+        Assert.Throws<ArgumentException>(() => ChecklistMarkdownParser.AppendItemsToCategory("## A", "  ", 0));
+    }
+
+    [Fact]
+    public void AppendItemsToCategory_then_SetItemChecked_keeps_checked_items_inside_their_category()
+    {
+        var body = ChecklistMarkdownParser.AppendItemsToCategory("## A\n- [ ] a1\n\n## B\n- [ ] b1", "a2", 0);
+
+        var result = ChecklistMarkdownParser.SetItemChecked(body, 1, true);
+
+        Assert.Equal("## A\n- [ ] a2\n- [x] a1\n\n## B\n- [ ] b1", result);
+    }
+
+    [Theory]
+    [InlineData("", "Home", "## Home\n")]
+    [InlineData("- [ ] a", "Home", "- [ ] a\n\n## Home")]
+    [InlineData("- [ ] a\n", "Home", "- [ ] a\n\n## Home\n")]
+    [InlineData("- [ ] a\n\n\n", "Home", "- [ ] a\n\n## Home\n\n\n")]
+    [InlineData("- [ ] a", "  Home  ", "- [ ] a\n\n## Home")]
+    public void AddCategory_appends_a_heading_after_the_last_content(string body, string name, string expected)
+    {
+        Assert.Equal(expected, ChecklistMarkdownParser.AddCategory(body, name));
+    }
+
+    [Fact]
+    public void AddCategory_flattens_line_breaks_in_the_name_into_one_heading_line()
+    {
+        Assert.Equal("## Home Garden", ChecklistMarkdownParser.AddCategory("", "Home\r\nGarden").TrimEnd());
+    }
+
+    [Fact]
+    public void AddCategory_preserves_CRLF_line_endings()
+    {
+        Assert.Equal("- [ ] a\r\n\r\n## Home\r\n", ChecklistMarkdownParser.AddCategory("- [ ] a\r\n", "Home"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("\r\n")]
+    public void AddCategory_throws_for_a_blank_name(string name)
+    {
+        Assert.Throws<ArgumentException>(() => ChecklistMarkdownParser.AddCategory("- [ ] a", name));
+    }
+
+    [Fact]
+    public void AddCategory_makes_a_new_empty_category_that_ParseSections_reports()
+    {
+        var sections = ChecklistMarkdownParser.ParseSections(ChecklistMarkdownParser.AddCategory("- [ ] a", "Home"));
+
+        Assert.Equal(2, sections.Count);
+        Assert.Null(sections[0].Title);
+        Assert.Equal("Home", sections[1].Title);
+        Assert.Empty(sections[1].Items);
     }
 }

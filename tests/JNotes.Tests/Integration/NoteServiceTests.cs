@@ -135,6 +135,55 @@ public class NoteServiceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AddChecklistItemAsync_adds_to_the_chosen_category()
+    {
+        var note = await _fixture.NoteService.CreateAsync(
+            NoteType.Checklist, "Shopping", [], "## Groceries\n- [ ] milk\n\n## Hardware\n- [ ] nails");
+
+        await _fixture.NoteService.AddChecklistItemAsync(note.Id, "bread", categoryHeadingLine: 0);
+
+        var reloaded = await _fixture.NoteService.GetAsync(note.Id);
+        Assert.Equal("## Groceries\n- [ ] milk\n- [ ] bread\n\n## Hardware\n- [ ] nails", reloaded.Body);
+    }
+
+    [Fact]
+    public async Task AddChecklistItemAsync_throws_when_the_category_line_is_not_a_heading()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Shopping", [], "## Groceries\n- [ ] milk");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => _fixture.NoteService.AddChecklistItemAsync(note.Id, "bread", categoryHeadingLine: 1));
+    }
+
+    [Fact]
+    public async Task AddChecklistCategoryAsync_appends_a_heading_and_persists_it_to_disk()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Shopping", [], "- [ ] milk");
+
+        var result = await _fixture.NoteService.AddChecklistCategoryAsync(note.Id, "Hardware");
+
+        Assert.Equal("- [ ] milk\n\n## Hardware", result.Body);
+        var reloaded = await _fixture.NoteService.GetAsync(note.Id);
+        Assert.Equal("- [ ] milk\n\n## Hardware", reloaded.Body);
+    }
+
+    [Fact]
+    public async Task AddChecklistCategoryAsync_throws_for_a_non_checklist_note()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Plain", [], "not a checklist");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => _fixture.NoteService.AddChecklistCategoryAsync(note.Id, "Hardware"));
+    }
+
+    [Fact]
+    public async Task AddChecklistCategoryAsync_throws_for_a_blank_name()
+    {
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Shopping", [], "- [ ] milk");
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _fixture.NoteService.AddChecklistCategoryAsync(note.Id, "   "));
+    }
+
+    [Fact]
     public async Task AddChecklistItemAsync_throws_for_a_non_checklist_note()
     {
         var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Plain", [], "not a checklist");

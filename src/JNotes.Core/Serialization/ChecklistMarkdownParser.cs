@@ -25,6 +25,10 @@ public static partial class ChecklistMarkdownParser
     [GeneratedRegex(@"^(?<indent>\s*)-\s\[(?<mark>[ xX])\]\s(?<text>.*)$")]
     private static partial Regex TaskListLineRegex();
 
+    // A category is an ATX heading (# .. ######) — the text must follow at least one space, so "#tag" isn't one.
+    [GeneratedRegex(@"^#{1,6}\s+(?<title>.*\S)\s*$")]
+    private static partial Regex HeadingLineRegex();
+
     public static IReadOnlyList<ChecklistItem> Parse(string body)
     {
         var lines = SplitLines(body);
@@ -43,6 +47,44 @@ public static partial class ChecklistMarkdownParser
         }
 
         return items;
+    }
+
+    /// <summary>
+    /// Groups the checklist items into categories: each markdown heading starts a section holding the
+    /// items beneath it. Items before the first heading form an uncategorized section (<c>null</c>
+    /// heading), which is omitted when empty unless it's the only section, so a body with no headings
+    /// always yields exactly one section for the UI to add items to.
+    /// </summary>
+    public static IReadOnlyList<ChecklistSection> ParseSections(string body)
+    {
+        var lines = SplitLines(body);
+        var sections = new List<(int? HeadingLineIndex, string? Title, List<ChecklistItem> Items)> { (null, null, []) };
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var heading = HeadingLineRegex().Match(lines[i]);
+            if (heading.Success)
+            {
+                sections.Add((i, heading.Groups["title"].Value, []));
+                continue;
+            }
+
+            var match = TaskListLineRegex().Match(lines[i]);
+            if (match.Success)
+            {
+                sections[^1].Items.Add(new ChecklistItem(
+                    LineIndex: i,
+                    Text: match.Groups["text"].Value,
+                    IsChecked: IsCheckedMark(match.Groups["mark"].Value)));
+            }
+        }
+
+        if (sections.Count > 1 && sections[0].Items.Count == 0)
+        {
+            sections.RemoveAt(0);
+        }
+
+        return sections.Select(s => new ChecklistSection(s.HeadingLineIndex, s.Title, s.Items)).ToList();
     }
 
     /// <summary>
@@ -102,13 +144,86 @@ public static partial class ChecklistMarkdownParser
     }
 
     /// <summary>
-    /// Appends one unchecked task-list line per non-blank line of <paramref name="text"/> to the last
-    /// checklist block in <paramref name="body"/> (above any checked items in it), or to the end of
-    /// the body if it has no checklist lines. Each line is trimmed; no escaping is needed because the
-    /// task-list regex reads everything after the marker to end-of-line as the item's text.
+    /// Appends one unchecked task-list line per non-blank line of <paramref name="text"/> to one category:
+    /// the section under the heading at <paramref name="headingLineIndex"/>, or the uncategorized section
+    /// before the first heading (the whole body when it has no headings) when <c>null</c>. Within it they
+    /// go at the end of the last block's unchecked run, above any checked items; an empty category gets
+    /// them directly under its heading. Each line is trimmed; no escaping is needed because the task-list
+    /// regex reads everything after the marker to end-of-line as the item's text.
     /// </summary>
-    /// <exception cref="ArgumentException"><paramref name="text"/> is null, empty, or only whitespace/blank lines.</exception>
-    public static string AppendItems(string body, string text)
+    /// <exception cref="ArgumentException"><paramref name="text"/> has no non-blank content.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="headingLineIndex"/> is outside the body.</exception>
+    /// <exception cref="InvalidOperationException">The targeted line is not a heading.</exception>
+    public static string AppendItemsToCategory(string body, string text, int? headingLineIndex)
+    {
+        var texts = SplitItemTexts(text);
+        var usesCrLf = body.Contains("\r\n", StringComparison.Ordinal);
+        var lines = SplitLines(body).ToList();
+
+        if (headingLineIndex is { } heading)
+        {
+            if (heading < 0 || heading >= lines.Count)
+            {
+                throw new ArgumentOutOfRangeException(nameof(headingLineIndex), heading, "Line index is outside the note body.");
+            }
+
+            if (!HeadingLineRegex().IsMatch(lines[heading]))
+            {
+                throw new InvalidOperationException($"Line {heading} is not a category heading.");
+            }
+        }
+
+        // Inserts land after the heading, so its index stays valid; only the section's end moves.
+        foreach (var itemText in texts)
+        {
+            var start = headingLineIndex + 1 ?? 0;
+            var end = start;
+            while (end < lines.Count && !HeadingLineRegex().IsMatch(lines[end]))
+            {
+                end++;
+            }
+
+            var (insertAt, indent) = AppendPoint(lines, start, end);
+            lines.Insert(insertAt, $"{indent}- [ ] {itemText}");
+        }
+
+        return Join(lines, usesCrLf);
+    }
+
+    /// <summary>
+    /// Appends a new category — a <c>## name</c> heading — after the last content in the body, separated
+    /// by a blank line (or as the first line of an empty body). Any trailing blank lines are kept after it.
+    /// The name is trimmed, and line breaks in it are flattened to spaces so it stays a single heading line.
+    /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="name"/> is null, empty, or whitespace.</exception>
+    public static string AddCategory(string body, string name)
+    {
+        var title = string.Join(' ', (name ?? string.Empty)
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.Trim())
+            .Where(part => part.Length > 0));
+
+        if (title.Length == 0)
+        {
+            throw new ArgumentException("Category name must not be blank.", nameof(name));
+        }
+
+        var usesCrLf = body.Contains("\r\n", StringComparison.Ordinal);
+        var lines = SplitLines(body).ToList();
+
+        var insertAt = lines.Count;
+        while (insertAt > 0 && lines[insertAt - 1].Length == 0)
+        {
+            insertAt--;
+        }
+
+        var newLines = insertAt > 0 ? new[] { string.Empty, $"## {title}" } : new[] { $"## {title}" };
+        lines.InsertRange(insertAt, newLines);
+
+        return Join(lines, usesCrLf);
+    }
+
+    private static List<string> SplitItemTexts(string? text)
     {
         var texts = (text ?? string.Empty)
             .Replace("\r\n", "\n")
@@ -122,16 +237,7 @@ public static partial class ChecklistMarkdownParser
             throw new ArgumentException("Item text must contain at least one non-blank line.", nameof(text));
         }
 
-        var usesCrLf = body.Contains("\r\n", StringComparison.Ordinal);
-        var lines = SplitLines(body).ToList();
-
-        foreach (var itemText in texts)
-        {
-            var (insertAt, indent) = AppendPoint(lines);
-            lines.Insert(insertAt, $"{indent}- [ ] {itemText}");
-        }
-
-        return Join(lines, usesCrLf);
+        return texts;
     }
 
     /// <summary>
@@ -168,17 +274,22 @@ public static partial class ChecklistMarkdownParser
     }
 
     /// <summary>
-    /// Where the next new item goes: the end of the last block's unchecked run, or — when there are
-    /// no task lines at all — the end of the body, ahead of any trailing blank lines so an existing
-    /// trailing newline survives.
+    /// Where the next new item goes within <c>[start, end)</c>: the end of the last block's unchecked
+    /// run, or — when the range has no task lines — its end, ahead of any trailing blank lines so an
+    /// existing trailing newline survives (and an empty category's item lands right under its heading).
     /// </summary>
-    private static (int InsertAt, string Indent) AppendPoint(List<string> lines)
+    private static (int InsertAt, string Indent) AppendPoint(List<string> lines, int start, int end)
     {
-        var last = lines.FindLastIndex(l => TaskListLineRegex().IsMatch(l));
-        if (last < 0)
+        var last = end - 1;
+        while (last >= start && !TaskListLineRegex().IsMatch(lines[last]))
         {
-            var index = lines.Count;
-            while (index > 0 && lines[index - 1].Length == 0)
+            last--;
+        }
+
+        if (last < start)
+        {
+            var index = end;
+            while (index > start && lines[index - 1].Length == 0)
             {
                 index--;
             }
@@ -187,9 +298,9 @@ public static partial class ChecklistMarkdownParser
         }
 
         var indent = TaskListLineRegex().Match(lines[last]).Groups["indent"].Value;
-        var (start, endExclusive) = BlockBounds(lines, last, indent);
+        var (blockStart, endExclusive) = BlockBounds(lines, last, indent);
 
-        var insertAt = start;
+        var insertAt = blockStart;
         while (insertAt < endExclusive && !IsLineChecked(lines[insertAt]))
         {
             insertAt++;

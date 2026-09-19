@@ -39,12 +39,21 @@ public interface INoteService
     Task<Note> SetChecklistItemCheckedAsync(Guid noteId, int lineIndex, bool isChecked, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Appends one unchecked item per non-blank line of <paramref name="text"/> to the note's last
-    /// checklist block, above any checked items in it.
+    /// Appends one unchecked item per non-blank line of <paramref name="text"/> to one category of the
+    /// note's checklist — the section under the heading at <paramref name="categoryHeadingLine"/>, or
+    /// the uncategorized section (items before the first heading; the whole list when there are no
+    /// headings) when <c>null</c> — above any checked items in it.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The note is not a <see cref="NoteType.Checklist"/> note, or the line isn't a heading.</exception>
+    /// <exception cref="ArgumentException"><paramref name="text"/> has no non-blank content.</exception>
+    Task<Note> AddChecklistItemAsync(Guid noteId, string text, int? categoryHeadingLine = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Adds a new, empty category (a <c>## name</c> heading) at the end of the note's checklist.
     /// </summary>
     /// <exception cref="InvalidOperationException">The note is not a <see cref="NoteType.Checklist"/> note.</exception>
-    /// <exception cref="ArgumentException"><paramref name="text"/> has no non-blank content.</exception>
-    Task<Note> AddChecklistItemAsync(Guid noteId, string text, CancellationToken cancellationToken = default);
+    /// <exception cref="ArgumentException"><paramref name="name"/> is blank.</exception>
+    Task<Note> AddChecklistCategoryAsync(Guid noteId, string name, CancellationToken cancellationToken = default);
 
     /// <summary>Moves the note to the trash (file move + index removal) rather than deleting it outright — see <see cref="PurgeAsync"/> for that.</summary>
     Task TrashAsync(Guid id, CancellationToken cancellationToken = default);
