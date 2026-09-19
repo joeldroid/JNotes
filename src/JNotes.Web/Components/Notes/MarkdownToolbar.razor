@@ -56,7 +56,11 @@
 
         """;
 
-    [Parameter, EditorRequired] public ElementReference TargetTextarea { get; set; }
+    // A getter, not an ElementReference: the parent's @ref is only assigned after the render that
+    // passes it down, so a plain ElementReference parameter is still empty until the parent happens
+    // to re-render (JS then receives an unresolved object and every button throws). Reading it at
+    // click time always sees the captured element.
+    [Parameter, EditorRequired] public Func<ElementReference> GetTargetTextarea { get; set; } = default!;
 
     private IJSObjectReference? _module;
 
@@ -66,43 +70,43 @@
     private async Task BoldAsync()
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("wrapSelection", TargetTextarea, "**", "**", "bold text");
+        await module.InvokeVoidAsync("wrapSelection", GetTargetTextarea(), "**", "**", "bold text");
     }
 
     private async Task ItalicAsync()
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("wrapSelection", TargetTextarea, "*", "*", "italic text");
+        await module.InvokeVoidAsync("wrapSelection", GetTargetTextarea(), "*", "*", "italic text");
     }
 
     private async Task BulletListAsync()
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("toggleBulletList", TargetTextarea);
+        await module.InvokeVoidAsync("toggleBulletList", GetTargetTextarea());
     }
 
     private async Task OrderedListAsync()
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("toggleOrderedList", TargetTextarea);
+        await module.InvokeVoidAsync("toggleOrderedList", GetTargetTextarea());
     }
 
     private async Task TableAsync()
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("insertAtCursor", TargetTextarea, SampleTable);
+        await module.InvokeVoidAsync("insertAtCursor", GetTargetTextarea(), SampleTable);
     }
 
     private async Task FlowchartLeftToRightAsync()
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("insertAtCursor", TargetTextarea, FlowchartLeftToRight);
+        await module.InvokeVoidAsync("insertAtCursor", GetTargetTextarea(), FlowchartLeftToRight);
     }
 
     private async Task FlowchartTopToBottomAsync()
     {
         var module = await GetModuleAsync();
-        await module.InvokeVoidAsync("insertAtCursor", TargetTextarea, FlowchartTopToBottom);
+        await module.InvokeVoidAsync("insertAtCursor", GetTargetTextarea(), FlowchartTopToBottom);
     }
 
     public async ValueTask DisposeAsync()

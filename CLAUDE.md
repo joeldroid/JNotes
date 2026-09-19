@@ -146,8 +146,9 @@ restart regenerates them and silently signs everyone out.
   `NoteList.razor`) with "My Profile" and "Sign out"; `/profile` has no top-level nav entry.
 - **Order:** Search, New note, Notes, Settings, Trash. Icons are plain Unicode glyphs in
   `<span class="nav-icon">` (✎ ▤ ⚙ ♻), not a vendored icon font (Bootstrap and mermaid are the only
-  vendored UI dependencies, under `wwwroot/lib/`). ✎, ⚙, ♻ append U+FE0E to force monochrome; ▤ has no emoji
-  presentation. 🗑 was rejected because it ignores U+FE0E and renders as color emoji in Chrome.
+  vendored UI dependencies, under `wwwroot/lib/`). ✎, ⚙, ♻ append U+FE0E to force monochrome; ▤ has
+  no emoji presentation. 🗑 was rejected because it ignores U+FE0E and renders as color emoji in
+  Chrome.
   `.nav-icon` is a fixed-width inline-block so labels align. The search input has no icon, and
   clears itself on every `@onclick`.
 - **"New note" lives here, not in `NoteList.razor`, so it works from any page.** It calls
@@ -259,9 +260,12 @@ ordinary fenced code block in the file, so the `.md` stays portable. Markdig's d
 `MermaidMarkdownExtension`, in the pipeline in `MarkdownRenderer`) instead emits
 `<pre class="mermaid">` with the source **HTML-escaped** — that escaping is what keeps
 `DisableHtml()` from being bypassed by a `</pre><script>` inside a fence (regression-tested in
-`MarkdownRendererTests`). Gotcha: in that file's namespace, `IMarkdownExtension.Setup`'s parameter
-must be written `Markdig.Renderers.IMarkdownRenderer`, since an unqualified name binds to JNotes's own
-`IMarkdownRenderer` and the class silently fails to implement the interface.
+`MarkdownRendererTests`). Mermaid's own `securityLevel: 'strict'` sanitizing is the second layer:
+hostile HTML in a node label is stripped (`onerror` removed, `<script>` dropped), so such a label
+renders **blank**, not as literal text — expected, not a bug. Gotcha: in that file's namespace,
+`IMarkdownExtension.Setup`'s parameter must be written `Markdig.Renderers.IMarkdownRenderer`, since
+an unqualified name binds to JNotes's own `IMarkdownRenderer` and the class silently fails to
+implement the interface.
 - **Mermaid is vendored** at `wwwroot/lib/mermaid/dist/mermaid.min.js` (11.17.2, the single-file UMD
   bundle, committed byte-for-byte with no `.map`; the ESM build needs ~100 chunk files). It's
   injected on first use by `wwwroot/js/mermaid-preview.js`, and `MarkdownPreview` only imports that
@@ -274,7 +278,9 @@ must be written `Markdig.Renderers.IMarkdownRenderer`, since an unqualified name
   capped SVG cache (a rebuilt element is repainted synchronously, no flash), and a 250 ms debounce so
   only genuinely new source reaches mermaid. `MarkdownPreview` calls the module from
   `OnAfterRenderAsync` on every render, not just the first. A bad diagram falls back to its source
-  with `.mermaid-error` and is stamped so it retries only when source or theme changes.
+  with `.mermaid-error` and is stamped so it retries only when source or theme changes. For a parse
+  failure its hover `title` is always the generic "Invalid mermaid syntax." (`parse` runs with
+  `suppressErrors`, so mermaid's own message isn't available).
 - **Theme is read from `data-bs-theme` in JS**, not passed from C#, with a `MutationObserver` on
   `<html>`: `Settings.razor` flips that attribute live with no reload, so a server-side parameter
   would go stale. The theme is part of the cache key, so both variants coexist.
@@ -282,6 +288,14 @@ must be written `Markdig.Renderers.IMarkdownRenderer`, since an unqualified name
   `flowchart LR` / `flowchart TD` starters. The snippet text lives as C# raw-string consts in the
   component (non-interpolated: the `{Decision}` braces are literal) and goes through the existing
   `insertAtCursor`, which dispatches a real `input` event, so autosave needs no new plumbing.
+- **The toolbar gets the textarea as a getter, not an `ElementReference`.** `TextNoteEditor` passes
+  `GetTargetTextarea="() => _textareaRef"` (a `Func<ElementReference>`), and each handler calls it
+  at click time. A parent's `@ref` is only assigned *after* the render that passes it down, so a plain
+  `ElementReference` parameter stays empty until the parent happens to re-render (e.g. after the
+  first keystroke); JS then receives an unresolved object, `insertAtCursor` throws `Cannot read
+  properties of undefined (reading 'slice')`, and the circuit dies with "An unhandled error has
+  occurred". Every toolbar button failed this way on a freshly opened editor until the getter.
+  Same rule for any child that needs a parent's element ref.
 
 ## Checklists
 
