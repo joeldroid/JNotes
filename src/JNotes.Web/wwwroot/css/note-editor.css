@@ -19,6 +19,11 @@
     pointer-events: none;
 }
 
+/* The toolbar's Image button is a <label> around a visually-hidden file input, so show keyboard focus on the label. */
+.image-upload-button:has(input:focus-visible) {
+    box-shadow: var(--bs-btn-focus-box-shadow);
+}
+
 .markdown-preview img {
     max-width: 100%;
 }

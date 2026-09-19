@@ -15,6 +15,8 @@ public sealed class MarkdownRenderer : IMarkdownRenderer
         // ```mermaid fences become <pre class="mermaid"> for the browser-side renderer to pick up;
         // the source is HTML-escaped, so this is not a hole in DisableHtml().
         .Use<MermaidMarkdownExtension>()
+        // Uploaded images' note-relative links (images/<file>) become the served /images/<file> route.
+        .Use<ImageLinkMarkdownExtension>()
         .Build();
 
     public string RenderToHtml(string markdown) => Markdown.ToHtml(markdown, Pipeline);

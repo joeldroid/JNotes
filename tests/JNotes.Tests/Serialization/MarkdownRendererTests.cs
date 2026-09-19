@@ -104,4 +104,33 @@ public class MarkdownRendererTests
 
         Assert.Contains("<pre class=\"mermaid\"></pre>", html);
     }
+
+    private const string StoredImage = "0123456789abcdef0123456789abcdef.png";
+
+    [Fact]
+    public void RenderToHtml_serves_an_uploaded_image_from_the_images_route()
+    {
+        var html = _renderer.RenderToHtml($"![shot](images/{StoredImage})");
+
+        Assert.Contains($"<img src=\"/images/{StoredImage}\" alt=\"shot\" />", html);
+    }
+
+    [Theory]
+    [InlineData("images/../0123456789abcdef0123456789abcdef.png")]
+    [InlineData("images/other.png")]
+    [InlineData("https://example.com/0123456789abcdef0123456789abcdef.png")]
+    public void RenderToHtml_leaves_other_image_urls_alone(string url)
+    {
+        var html = _renderer.RenderToHtml($"![x]({url})");
+
+        Assert.Contains($"src=\"{url}\"", html);
+    }
+
+    [Fact]
+    public void RenderToHtml_does_not_rewrite_a_plain_link_to_an_image_name()
+    {
+        var html = _renderer.RenderToHtml($"[download](images/{StoredImage})");
+
+        Assert.Contains($"href=\"images/{StoredImage}\"", html);
+    }
 }

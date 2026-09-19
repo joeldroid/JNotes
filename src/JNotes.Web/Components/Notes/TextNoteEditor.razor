@@ -1,5 +1,18 @@
+@implements IAsyncDisposable
+@inject IImageService ImageService
+@inject IJSRuntime JSRuntime
+@inject ILogger<TextNoteEditor> Logger
+
+@if (_imageError is not null)
+{
+    <div class="alert alert-danger alert-dismissible py-2" role="alert">
+        @_imageError
+        <button type="button" class="btn-close" aria-label="Dismiss" @onclick="() => _imageError = null"></button>
+    </div>
+}
+
 <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
-    <MarkdownToolbar GetTargetTextarea="() => _textareaRef" />
+    <MarkdownToolbar GetTargetTextarea="() => _textareaRef" ImageBusy="_uploading" OnImageSelected="OnImageSelectedAsync" />
     <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => _showPreview = !_showPreview">
         @(_showPreview ? "Hide preview" : "Show preview")
     </button>
@@ -27,5 +40,101 @@
     private bool _showPreview = true;
     private ElementReference _textareaRef;
 
+    private bool _uploading;
+    private string? _imageError;
+    private DotNetObjectReference<TextNoteEditor>? _selfReference;
+    private IJSObjectReference? _toolbarModule;
+    private IJSObjectReference? _pasteModule;
+
     private Task OnInput(ChangeEventArgs e) => BodyChanged.InvokeAsync(e.Value?.ToString() ?? "");
+
+    // Uses this component's own _textareaRef rather than one handed down from a parent: a parent's
+    // @ref is only assigned after the render that passes it down, but by the time this child's first
+    // OnAfterRenderAsync runs its own ref is set.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _selfReference = DotNetObjectReference.Create(this);
+        _pasteModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/image-paste.js");
+        await _pasteModule.InvokeVoidAsync("attach", _textareaRef, _selfReference);
+    }
+
+    private async Task OnImageSelectedAsync(IBrowserFile file) =>
+        await UploadAndInsertAsync(file.Size, file.Name, () => ValueTask.FromResult(file.OpenReadStream(ImageFormat.MaxBytes)));
+
+    [JSInvokable]
+    public async Task OnImagePastedAsync(IJSStreamReference stream, string fileName, long length) =>
+        await UploadAndInsertAsync(length, fileName, () => stream.OpenReadStreamAsync(ImageFormat.MaxBytes));
+
+    // The one path for both the Image button and paste: upload, then drop the link in at the cursor
+    // through markdown-toolbar.js's insertAtCursor, which fires a real input event — so Body and the
+    // autosave debounce pick it up exactly like typing, with no extra plumbing.
+    private async Task UploadAndInsertAsync(long length, string fileName, Func<ValueTask<Stream>> openStream)
+    {
+        if (_uploading)
+        {
+            return;
+        }
+
+        // Checked up front so an oversized file is refused without opening (and streaming) it.
+        if (length > ImageFormat.MaxBytes)
+        {
+            _imageError = new ImageTooLargeException().Message;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _uploading = true;
+        _imageError = null;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            await using var stream = await openStream();
+            var storedFileName = await ImageService.SaveAsync(stream);
+
+            _toolbarModule ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/markdown-toolbar.js");
+            await _toolbarModule.InvokeVoidAsync("insertAtCursor", _textareaRef, ImageLinks.ToMarkdown(fileName, storedFileName));
+        }
+        catch (Exception ex) when (ex is UnsupportedImageException or ImageTooLargeException)
+        {
+            _imageError = ex.Message;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Logger.LogError(ex, "Saving an uploaded image failed.");
+            _imageError = "The image couldn't be saved. Please try again.";
+        }
+        finally
+        {
+            _uploading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _selfReference?.Dispose();
+
+        // The circuit may already be gone (tab closed/navigated away) — nothing to release then.
+        foreach (var module in new[] { _pasteModule, _toolbarModule })
+        {
+            if (module is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                await module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+    }
 }

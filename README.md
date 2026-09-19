@@ -10,7 +10,7 @@ see [Authentication](#authentication) below for that flow, adding more users, an
 
 ## Features
 
-- **Text notes** — free-form markdown, edited with a live preview, with `mermaid` code blocks rendered as diagrams (toolbar buttons insert a starter flow chart).
+- **Text notes** — free-form markdown, edited with a live preview, with `mermaid` code blocks rendered as diagrams (toolbar buttons insert a starter flow chart), and images inserted with the **Image** button or by pasting one (PNG, JPEG, GIF or WebP, up to 10 MB).
 - **Checklist notes** — markdown task lists (`- [ ] item`) rendered as interactive checkboxes. Add items and group them into categories (markdown `##` headings) from the note view or the editor without touching markdown; checking an item moves it below the unchecked ones in its category.
 - **Multi-user with real accounts** — admin-created users, each with their own notes and settings;
   sign in with a password, OIDC, or both.
@@ -33,8 +33,8 @@ tests/
 ```
 
 `JNotes.Web` never touches the filesystem, EF Core/SQLite, or Redis directly — it only consumes
-`INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`, and
-`IUserManagementService` from `JNotes.Core`. This is enforced at build time via
+`INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
+`IUserManagementService`, and `IImageService` from `JNotes.Core`. This is enforced at build time via
 `Microsoft.CodeAnalysis.BannedApiAnalyzers` (`src/JNotes.Web/BannedSymbols.txt`).
 
 ### Styling
@@ -192,6 +192,10 @@ inside the front matter so a renamed/copied file can still be recognized correct
 
 A diagram in a text note is just a ` ```mermaid ` fenced code block in the body, so the file stays
 ordinary markdown that GitHub, Obsidian, and similar tools also render.
+
+An image inserted into a text note is saved as `notes/<user-id>/images/<random-id>.<ext>` and linked
+from the body as `![name](images/<random-id>.<ext>)` — relative to the note, so it resolves in any
+editor pointed at the folder. Deleting a note (or the link) doesn't delete its image file.
 
 JNotes keeps checked items after unchecked ones within each run of adjacent checklist items, but the
 file is still ordinary markdown — you can reorder it by hand.

@@ -1,5 +1,6 @@
 using JNotes.Core;
 using JNotes.Core.Data;
+using JNotes.Core.Images;
 using JNotes.Core.Users;
 using JNotes.Web;
 using JNotes.Web.Auth;
@@ -134,6 +135,22 @@ app.MapGet("/login/oidc", (string? returnUrl) =>
         new AuthenticationProperties { RedirectUri = string.IsNullOrEmpty(returnUrl) ? "/" : returnUrl },
         [OpenIdConnectDefaults.AuthenticationScheme]))
     .AllowAnonymous();
+
+// Serves an uploaded image from the *caller's own* images folder, so another user's file name is
+// just a 404 — no user id in the URL to spoof. Names are generated GUIDs and never reused, hence
+// the long immutable cache; nosniff so a browser never second-guesses the image content type.
+app.MapGet("/images/{fileName}", async (string fileName, IImageService images, HttpContext context, CancellationToken cancellationToken) =>
+{
+    var image = await images.OpenAsync(fileName, cancellationToken);
+    if (image is null)
+    {
+        return Results.NotFound();
+    }
+
+    context.Response.Headers.CacheControl = "private, max-age=31536000, immutable";
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    return Results.Stream(image.Stream, image.ContentType);
+}).RequireAuthorization();
 
 app.MapPost("/logout", async (HttpContext context) =>
 {

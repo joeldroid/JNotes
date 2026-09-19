@@ -1,4 +1,5 @@
 using JNotes.Core.Data;
+using JNotes.Core.Images;
 using JNotes.Core.Indexing;
 using JNotes.Core.Notes;
 using JNotes.Core.Serialization;
@@ -20,7 +21,7 @@ namespace JNotes.Core;
 /// this (plus <see cref="HostExtensions"/>) — it never registers a <see cref="DbContext"/> or
 /// file-store implementation itself, which is what keeps Web from having a reason to reach past
 /// <c>INoteService</c>/<c>ISettingsService</c>/<c>INoteIndexReconciler</c>/<c>IUserRepository</c>/
-/// <c>IUserManagementService</c> into Core's internals. One deliberate exception:
+/// <c>IUserManagementService</c>/<c>IImageService</c> into Core's internals. One deliberate exception:
 /// <c>ICurrentUserContext</c> is declared in Core but registered by <c>JNotes.Web</c> itself, not
 /// here — its only implementation needs <c>IHttpContextAccessor</c>, an ASP.NET Core hosting type
 /// Core has never depended on. Web's own auth wiring (cookie/OIDC handlers, sign-in/out) lives
@@ -93,6 +94,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAppTimeZoneProvider, AppTimeZoneProvider>();
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<INoteFileStore, FileSystemNoteFileStore>();
+        services.AddScoped<IImageStore, FileSystemImageStore>();
+        services.AddScoped<IImageService, ImageService>();
         services.AddSingleton<INoteIndexRepository, RedisNoteIndexRepository>();
         services.AddScoped<INoteService, NoteService>();
         services.AddScoped<INoteIndexReconciler, NoteIndexReconciler>();

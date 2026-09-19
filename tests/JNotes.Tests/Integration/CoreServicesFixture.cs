@@ -49,6 +49,9 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
 
     public string NotesFolder { get; }
 
+    /// <summary>The scope every service above resolves from — for tests that need one the fixture doesn't expose directly.</summary>
+    public IServiceScope Scope => _scope;
+
     public Guid UserAId { get; }
 
     public Guid UserBId { get; }

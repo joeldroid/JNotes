@@ -39,7 +39,7 @@ docker compose up --build   # production-shaped: what Docker actually runs, not 
 
 **Web never touches the filesystem, EF Core/SQLite, or Redis directly** — only Core's interfaces
 (`INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
-`IUserManagementService`). Enforced at build time: `Microsoft.CodeAnalysis.BannedApiAnalyzers`
+`IUserManagementService`, `IImageService`). Enforced at build time: `Microsoft.CodeAnalysis.BannedApiAnalyzers`
 (`src/JNotes.Web/BannedSymbols.txt`) bans `System.IO.File`/`Directory`, `DbContext`,
 `SqliteConnection`, and Redis's `IConnectionMultiplexer`/`IDatabase` in Web. Pure static Core
 helpers (`ChecklistMarkdownParser`, `NoteGrouping`, `UserInitials`, `UserValidation`) are fine to
@@ -256,6 +256,37 @@ add-item/add-category boxes (`ChecklistPanel ReadOnly="true"`): once the user is
 markdown, a second way to edit it just duplicates and crowds the UI. Checking, adding items, and
 adding categories happen in `NoteView` only. A Bootstrap `.collapse` can't be used
 because it keeps state in the DOM and can't drive Blazor's `col-*` class switch.
+
+**Images: text notes only, button + paste, no drag-and-drop.** `TextNoteEditor` owns the upload;
+`MarkdownToolbar`'s Image button (a `<label>` around a visually-hidden `InputFile`, `@key` bumped
+per pick so the same file can be chosen twice) just raises `OnImageSelected`, and
+`wwwroot/js/image-paste.js` calls `OnImagePastedAsync` on a paste. Both funnel into one
+`UploadAndInsertAsync` → `IImageService.SaveAsync` → `insertAtCursor` with
+`ImageLinks.ToMarkdown` (that fires a real `input` event, so Body/autosave need no plumbing).
+- **Uploads ride the circuit, not an HTTP endpoint** (`InputFile`; a paste passes the clipboard file
+  as a `DotNet.createJSStreamReference`, because a screenshot exceeds SignalR's 32 KB interop
+  message limit) — so there is no upload route and no antiforgery/CSRF surface. `paste` only takes
+  over an *image-only* clipboard (`text/plain` empty); text copied from Word/a web page often carries
+  a rendered image too and must paste as text.
+- **Files:** `{NotesFolder}/{userId}/images/{guid:N}.{png|jpg|gif|webp}` (`IImageStore`, explicit
+  `userId`; `IImageService` is the implicit-current-user front, like `NoteService`). Nesting under
+  the user folder means `ListIdsAsync` (non-recursive `*.md`) ignores it and
+  `ArchiveUserFolderAsync` takes images along with a deleted user's notes.
+- **The `.md` link is note-relative** — `![name](images/<file>)` — so the raw folder still renders in
+  Obsidian/VS Code/GitHub. `ImageLinkMarkdownExtension` (a `DocumentProcessed` walk in the
+  `MarkdownRenderer` pipeline) rewrites *only* an exact `images/<valid stored name>` image URL to
+  `/images/<file>`; external URLs and anything odd pass through. `ImageLinks` holds the prefixes so
+  inserter and renderer can't drift.
+- **`GET /images/{fileName}`** (`Program.cs`, `RequireAuthorization`) serves from the *caller's own*
+  folder, so another user's name is a 404 with no user id in the URL. Names are GUIDs, never reused,
+  hence `Cache-Control: private, max-age=31536000, immutable`; `nosniff`.
+- **Validation is by magic bytes, not the client's name/MIME** (`ImageFormat.Detect`), and
+  `ImageFormat.IsStoredFileName` (`\z`-anchored regex) is also the path-traversal guard for every
+  name that reaches the disk. SVG is excluded on purpose: opened directly it can run script in the
+  app's origin. 10 MB cap (`ImageFormat.MaxBytes`), enforced while streaming to disk, with the
+  partial file deleted on failure; the editor also refuses an oversized file up front.
+- **Known limitation:** orphans — nothing tracks references, so deleting a note or a link never
+  deletes the image (the same image may be pasted into several notes).
 
 **Mermaid diagrams render in text-note previews only** (`MarkdownPreview`, so the editor's right
 pane and `NoteView`; never checklists, the list, or the trash). A ```` ```mermaid ```` fence is an

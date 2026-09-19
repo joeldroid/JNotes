@@ -17,6 +17,15 @@
                 title="Insert a top-to-bottom flow chart" aria-label="Insert a top-to-bottom flow chart"
                 @onclick="FlowchartTopToBottomAsync">Flow ↓</button>
     </div>
+    <div class="btn-group" role="group" aria-label="Images">
+        @* A label wrapping a visually-hidden file input (not display:none, so it stays keyboard-focusable). *@
+        <label class="btn btn-sm btn-outline-secondary mb-0 image-upload-button @(ImageBusy ? "disabled" : "")"
+               title="Insert an image (you can also paste one into the note)">
+            @(ImageBusy ? "Uploading…" : "Image")
+            <InputFile @key="_imageInputVersion" class="visually-hidden" accept="image/png,image/jpeg,image/gif,image/webp"
+                       disabled="@ImageBusy" OnChange="OnImageChosenAsync" aria-label="Insert an image" />
+        </label>
+    </div>
 </div>
 
 @code {
@@ -62,7 +71,21 @@
     // click time always sees the captured element.
     [Parameter, EditorRequired] public Func<ElementReference> GetTargetTextarea { get; set; } = default!;
 
+    /// <summary>Raised with the file the user picked. The toolbar does no uploading itself — the editor owns that (paste shares the same path).</summary>
+    [Parameter] public EventCallback<IBrowserFile> OnImageSelected { get; set; }
+
+    /// <summary>True while an upload is in flight; disables the Image button.</summary>
+    [Parameter] public bool ImageBusy { get; set; }
+
     private IJSObjectReference? _module;
+    private int _imageInputVersion;
+
+    private async Task OnImageChosenAsync(InputFileChangeEventArgs e)
+    {
+        await OnImageSelected.InvokeAsync(e.File);
+        // A fresh <input> per pick, so choosing the same file again still raises OnChange.
+        _imageInputVersion++;
+    }
 
     private async Task<IJSObjectReference> GetModuleAsync() =>
         _module ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/markdown-toolbar.js");
