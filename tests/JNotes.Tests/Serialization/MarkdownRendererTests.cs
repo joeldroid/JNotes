@@ -29,4 +29,79 @@ public class MarkdownRendererTests
 
         Assert.DoesNotContain("<script>", html);
     }
+
+    [Fact]
+    public void RenderToHtml_renders_a_mermaid_fence_as_a_mermaid_pre_block()
+    {
+        const string markdown = "```mermaid\nflowchart LR\n  A --> B\n```";
+
+        var html = _renderer.RenderToHtml(markdown);
+
+        Assert.Contains("<pre class=\"mermaid\">", html);
+        Assert.DoesNotContain("language-mermaid", html);
+    }
+
+    [Fact]
+    public void RenderToHtml_preserves_the_mermaid_source_lines()
+    {
+        const string markdown = "```mermaid\nflowchart LR\n  A --> B\n```";
+
+        var html = _renderer.RenderToHtml(markdown);
+
+        // The JS reads the source back via textContent, which decodes "--&gt;" to "-->".
+        Assert.Contains("flowchart LR\n  A --&gt; B\n", html);
+    }
+
+    [Fact]
+    public void RenderToHtml_escapes_html_inside_a_mermaid_block()
+    {
+        const string markdown = "```mermaid\nflowchart LR\n  A[\"</pre><script>alert('x')</script>\"]\n```";
+
+        var html = _renderer.RenderToHtml(markdown);
+
+        Assert.DoesNotContain("<script>", html);
+        Assert.Contains("&lt;/pre&gt;", html);
+    }
+
+    [Fact]
+    public void RenderToHtml_matches_the_mermaid_info_string_case_insensitively()
+    {
+        var html = _renderer.RenderToHtml("```MERMAID\nflowchart LR\n  A --> B\n```");
+
+        Assert.Contains("<pre class=\"mermaid\">", html);
+    }
+
+    [Fact]
+    public void RenderToHtml_treats_a_mermaid_fence_with_extra_info_arguments_as_mermaid()
+    {
+        var html = _renderer.RenderToHtml("```mermaid theme=dark\nflowchart LR\n  A --> B\n```");
+
+        Assert.Contains("<pre class=\"mermaid\">", html);
+    }
+
+    [Fact]
+    public void RenderToHtml_leaves_other_fenced_code_blocks_alone()
+    {
+        var html = _renderer.RenderToHtml("```csharp\nvar x = 1;\n```");
+
+        Assert.Contains("language-csharp", html);
+        Assert.DoesNotContain("class=\"mermaid\"", html);
+    }
+
+    [Fact]
+    public void RenderToHtml_leaves_an_indented_code_block_alone()
+    {
+        var html = _renderer.RenderToHtml("    flowchart LR\n      A --> B\n");
+
+        Assert.Contains("<pre><code>", html);
+        Assert.DoesNotContain("mermaid", html);
+    }
+
+    [Fact]
+    public void RenderToHtml_renders_an_empty_mermaid_fence_as_an_empty_block()
+    {
+        var html = _renderer.RenderToHtml("```mermaid\n```");
+
+        Assert.Contains("<pre class=\"mermaid\"></pre>", html);
+    }
 }

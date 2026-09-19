@@ -10,7 +10,7 @@ see [Authentication](#authentication) below for that flow, adding more users, an
 
 ## Features
 
-- **Text notes** — free-form markdown, edited with a live preview.
+- **Text notes** — free-form markdown, edited with a live preview, with `mermaid` code blocks rendered as diagrams (toolbar buttons insert a starter flow chart).
 - **Checklist notes** — markdown task lists (`- [ ] item`) rendered as interactive checkboxes. Add items and group them into categories (markdown `##` headings) from the note view or the editor without touching markdown; checking an item moves it below the unchecked ones in its category.
 - **Multi-user with real accounts** — admin-created users, each with their own notes and settings;
   sign in with a password, OIDC, or both.
@@ -49,6 +49,10 @@ its own `.css` file and `@import` it from `app.css`.
 Bootstrap itself stays as the vendored precompiled CSS/JS in `wwwroot/lib/bootstrap` — it isn't
 part of JNotes's own CSS. Compiling Bootstrap from its own Sass source (to override its variables
 for a custom theme) is possible later but is a separate, larger change.
+
+[mermaid](https://mermaid.js.org) (diagram rendering) is vendored the same way under
+`wwwroot/lib/mermaid` (pinned to 11.17.2, MIT). The browser only loads it when a note actually
+contains a diagram, so JNotes still works with no internet access.
 
 ## Running locally
 
@@ -185,6 +189,9 @@ updated: 2026-09-12T11:02:00Z
 
 `type` is `text` or `checklist`. Timestamps are UTC. The `id` is duplicated from the filename
 inside the front matter so a renamed/copied file can still be recognized correctly on rescan.
+
+A diagram in a text note is just a ` ```mermaid ` fenced code block in the body, so the file stays
+ordinary markdown that GitHub, Obsidian, and similar tools also render.
 
 JNotes keeps checked items after unchecked ones within each run of adjacent checklist items, but the
 file is still ordinary markdown — you can reorder it by hand.

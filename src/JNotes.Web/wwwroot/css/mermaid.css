@@ -1,0 +1,38 @@
+/* Mermaid diagram blocks inside rendered markdown. Markdig emits <pre class="mermaid">SOURCE</pre>
+   (see MermaidCodeBlockRenderer); wwwroot/js/mermaid-preview.js swaps the source for an SVG and
+   stamps data-mermaid-key on the element once it has. Anything without that stamp hasn't been
+   rendered yet (prerender, debounce, or mermaid failed to load) and shows its source instead of
+   disappearing. */
+.markdown-preview pre.mermaid {
+    margin-bottom: 1rem;
+    padding: 0;
+    background-color: transparent;
+    text-align: center;
+
+    &:not([data-mermaid-key]),
+    &.mermaid-error {
+        text-align: left;
+        white-space: pre-wrap;
+        font-family: var(--bs-font-monospace, monospace);
+        font-size: 0.875em;
+        color: var(--bs-secondary-color);
+    }
+
+    &.mermaid-error {
+        padding-left: 0.75rem;
+        border-left: 3px solid var(--bs-warning);
+
+        &::before {
+            content: "Diagram error — showing the source.";
+            display: block;
+            margin-bottom: 0.25rem;
+            font-family: var(--bs-body-font-family);
+            color: var(--bs-warning-text-emphasis, var(--bs-secondary-color));
+        }
+    }
+
+    & svg {
+        max-width: 100%;
+        height: auto;
+    }
+}

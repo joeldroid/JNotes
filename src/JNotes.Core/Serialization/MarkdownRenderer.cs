@@ -12,6 +12,9 @@ public sealed class MarkdownRenderer : IMarkdownRenderer
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .UsePipeTables()
         .DisableHtml()
+        // ```mermaid fences become <pre class="mermaid"> for the browser-side renderer to pick up;
+        // the source is HTML-escaped, so this is not a hole in DisableHtml().
+        .Use<MermaidMarkdownExtension>()
         .Build();
 
     public string RenderToHtml(string markdown) => Markdown.ToHtml(markdown, Pipeline);
