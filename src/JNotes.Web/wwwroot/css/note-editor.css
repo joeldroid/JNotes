@@ -13,6 +13,12 @@
        of sync with the textarea (kept in app.css's imported Bootstrap: .overflow-auto). */
 }
 
+/* The editor's checklist preview: checkboxes look normal but can't be clicked (not `disabled`,
+   which would grey them out). ChecklistPanel also drops their tabindex and the label's `for`. */
+.checklist-readonly .form-check-input {
+    pointer-events: none;
+}
+
 .markdown-preview img {
     max-width: 100%;
 }

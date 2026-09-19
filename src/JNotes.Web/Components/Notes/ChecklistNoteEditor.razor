@@ -12,9 +12,9 @@
     @if (_showChecklist)
     {
         <div class="col-12 col-lg-6">
-            @* Same fixed height as the textarea beside it; the panel's list scrolls, its add boxes stay pinned. *@
+            @* Same fixed height as the textarea beside it; the panel's list scrolls internally. *@
             <div class="border rounded p-3 d-flex flex-column note-editor-preview">
-                <ChecklistPanel Body="@Body" OnItemChecked="OnItemCheckedAsync" OnAddItem="OnAddItemAsync" OnAddCategory="OnAddCategoryAsync" />
+                <ChecklistPanel Body="@Body" ReadOnly="true" />
             </div>
         </div>
     }
@@ -27,17 +27,4 @@
     private bool _showChecklist = true;
 
     private Task OnInput(ChangeEventArgs e) => BodyChanged.InvokeAsync(e.Value?.ToString() ?? "");
-
-    // The panel's actions mutate the body in memory and hand it back through BodyChanged, so they
-    // ride NoteEditor's ordinary content debounce/_saveGate instead of a disk read-modify-write that
-    // would discard body edits still waiting on that debounce. The textarea renders the same Body,
-    // so it stays in sync for free.
-    private Task OnItemCheckedAsync((int LineIndex, bool IsChecked) change) =>
-        BodyChanged.InvokeAsync(ChecklistMarkdownParser.SetItemChecked(Body, change.LineIndex, change.IsChecked));
-
-    private Task OnAddItemAsync((string Text, int? CategoryHeadingLine) add) =>
-        BodyChanged.InvokeAsync(ChecklistMarkdownParser.AppendItemsToCategory(Body, add.Text, add.CategoryHeadingLine));
-
-    private Task OnAddCategoryAsync(string name) =>
-        BodyChanged.InvokeAsync(ChecklistMarkdownParser.AddCategory(Body, name));
 }

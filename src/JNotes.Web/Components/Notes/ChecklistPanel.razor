@@ -1,9 +1,10 @@
-@* The interactive checklist — items grouped by category, plus the add-item and add-category boxes.
-   Shared by ChecklistNoteEditor (mutates the body in memory) and NoteView (goes through NoteService);
-   this component only reports what the user did through its callbacks and renders whatever Body it's
-   handed. Its two root elements are meant to sit in a flex-column parent: the list scrolls
-   (flex-grow-1 overflow-auto) and the boxes stay pinned (flex-shrink-0); in a plain block parent
-   those classes are harmless. *@
+@* The checklist — items grouped by category, plus the add-item and add-category boxes.
+   Interactive in NoteView (goes through NoteService); ChecklistNoteEditor sets ReadOnly, so it's just
+   a live preview of the markdown being edited (inert checkboxes, no add boxes). This component
+   only reports what the user did through its callbacks and renders whatever Body it's handed. Its
+   two root elements are meant to sit in a flex-column parent: the list scrolls (flex-grow-1
+   overflow-auto) and the boxes stay pinned (flex-shrink-0); in a plain block parent those classes
+   are harmless. *@
 @{
     var sections = ChecklistMarkdownParser.ParseSections(Body);
     var target = ResolveTarget(sections);
@@ -24,12 +25,16 @@
                 // OnItemCheckedAsync for why (Blazor's diff would otherwise leave the clicked
                 // checkbox visually ticked at whatever row it landed on).
                 <li class="list-group-item" @key="(_listVersion, item.LineIndex)">
-                    <div class="form-check">
+                    <div class="form-check @(ReadOnly ? "checklist-readonly" : "")">
+                        @* ReadOnly deliberately isn't `disabled` (that greys the box out): the input is made inert by
+                           CSS (pointer-events), tabindex, and dropping the label's `for` so clicking the text can't
+                           toggle it either. *@
                         <input class="form-check-input" type="checkbox" id="@($"item-{_listVersion}-{item.LineIndex}")"
                                checked="@item.IsChecked" disabled="@Disabled"
+                               tabindex="@(ReadOnly ? -1 : null)" aria-readonly="@(ReadOnly ? "true" : null)"
                                @onchange="e => OnItemCheckedAsync(item.LineIndex, e)" />
                         <label class="form-check-label @(item.IsChecked ? "text-decoration-line-through text-body-secondary" : "")"
-                               for="@($"item-{_listVersion}-{item.LineIndex}")">
+                               for="@(ReadOnly ? null : $"item-{_listVersion}-{item.LineIndex}")">
                             @item.Text
                         </label>
                     </div>
@@ -38,39 +43,42 @@
             @if (section.Items.Count == 0)
             {
                 <li class="list-group-item text-body-secondary">
-                    @(section.Title is null ? "No items yet — add one below." : "Nothing here yet.")
+                    @(section.Title is null && !ReadOnly ? "No items yet — add one below." : "Nothing here yet.")
                 </li>
             }
         </ul>
     }
 </div>
 
-<div class="flex-shrink-0">
-    <div class="input-group mt-3">
-        @if (hasCategories)
-        {
-            <select class="form-select w-auto flex-grow-0" style="max-width: 40%" aria-label="Category for the new item"
-                    disabled="@Disabled" @onchange="OnTargetChanged">
-                @foreach (var section in sections)
-                {
-                    <option value="@(section.HeadingLineIndex ?? UncategorizedTarget)" selected="@(section == target)">@(section.Title ?? "No category")</option>
-                }
-            </select>
-        }
-        <input class="form-control" placeholder="Add an item" aria-label="Add a checklist item"
-               value="@_newItemText" @oninput="OnNewItemInput" @onkeydown="OnNewItemKeyDownAsync"
-               disabled="@Disabled" @ref="_newItemInput" />
-        <button class="btn btn-outline-primary" type="button"
-                disabled="@(Disabled || string.IsNullOrWhiteSpace(_newItemText))" @onclick="AddItemAsync">Add</button>
+@if (!ReadOnly)
+{
+    <div class="flex-shrink-0">
+        <div class="input-group mt-3">
+            @if (hasCategories)
+            {
+                <select class="form-select w-auto flex-grow-0" style="max-width: 40%" aria-label="Category for the new item"
+                        disabled="@Disabled" @onchange="OnTargetChanged">
+                    @foreach (var section in sections)
+                    {
+                        <option value="@(section.HeadingLineIndex ?? UncategorizedTarget)" selected="@(section == target)">@(section.Title ?? "No category")</option>
+                    }
+                </select>
+            }
+            <input class="form-control" placeholder="Add an item" aria-label="Add a checklist item"
+                   value="@_newItemText" @oninput="OnNewItemInput" @onkeydown="OnNewItemKeyDownAsync"
+                   disabled="@Disabled" @ref="_newItemInput" />
+            <button class="btn btn-outline-primary" type="button"
+                    disabled="@(Disabled || string.IsNullOrWhiteSpace(_newItemText))" @onclick="AddItemAsync">Add</button>
+        </div>
+        <div class="input-group mt-2">
+            <input class="form-control" placeholder="New category" aria-label="New category name"
+                   value="@_newCategoryText" @oninput="OnNewCategoryInput" @onkeydown="OnNewCategoryKeyDownAsync"
+                   disabled="@Disabled" />
+            <button class="btn btn-outline-secondary" type="button"
+                    disabled="@(Disabled || string.IsNullOrWhiteSpace(_newCategoryText))" @onclick="AddCategoryAsync">Add category</button>
+        </div>
     </div>
-    <div class="input-group mt-2">
-        <input class="form-control" placeholder="New category" aria-label="New category name"
-               value="@_newCategoryText" @oninput="OnNewCategoryInput" @onkeydown="OnNewCategoryKeyDownAsync"
-               disabled="@Disabled" />
-        <button class="btn btn-outline-secondary" type="button"
-                disabled="@(Disabled || string.IsNullOrWhiteSpace(_newCategoryText))" @onclick="AddCategoryAsync">Add category</button>
-    </div>
-</div>
+}
 
 @code {
     // <option value> for the uncategorized section, which has no heading line to identify it by.
@@ -82,6 +90,9 @@
 
     /// <summary>Disables every control — the view sets it while a save is in flight so clicks can't race.</summary>
     [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Renders the list only — checkboxes inert but styled normally, no add-item/add-category boxes. The editor uses this: once the user is editing the raw markdown, a second way to edit it just crowds the UI.</summary>
+    [Parameter] public bool ReadOnly { get; set; }
 
     [Parameter] public EventCallback<(int LineIndex, bool IsChecked)> OnItemChecked { get; set; }
     [Parameter] public EventCallback<(string Text, int? CategoryHeadingLine)> OnAddItem { get; set; }
@@ -115,6 +126,11 @@
 
     private async Task OnItemCheckedAsync(int lineIndex, ChangeEventArgs e)
     {
+        if (ReadOnly)
+        {
+            return;
+        }
+
         await OnItemChecked.InvokeAsync((lineIndex, e.Value is bool isChecked && isChecked));
 
         // Checking an item moves it, so the row that takes its old slot can render identically to
