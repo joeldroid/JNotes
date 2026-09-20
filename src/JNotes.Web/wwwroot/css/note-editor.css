@@ -1,48 +1,164 @@
-/* JNotes's own note-editor/preview styles — the module that will grow as the editor UI grows. */
+/* JNotes's own note-editor styles: the two-pane split, the raw-markdown textarea, the preview
+   pane, the toolbar row, and the checklist rows. The preview's *content* styling is in
+   markdown-preview.css. */
+.jn-editor-toolbar-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+
+    &.jn-editor-toolbar-end {
+        justify-content: flex-end;
+    }
+}
+
+.jn-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.jn-editor-fields {
+    min-width: min(15rem, 100%);
+}
+
+.jn-editor-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.25rem;
+    flex-shrink: 0;
+}
+
+/* One column by default; two equal panes from MudBlazor's md breakpoint up. min-width: 0 on the
+   children stops a wide code block or table from stretching its pane. */
+.jn-editor-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+
+    &.jn-editor-split-two {
+        @media (min-width: 960px) {
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        }
+    }
+}
+
+/* The raw markdown editor: a real <textarea> (markdown-toolbar.js and image-paste.js drive it directly),
+   dressed to match MudBlazor's outlined inputs. */
 .note-editor-textarea {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
     height: var(--note-editor-height);
-    font-family: var(--bs-font-monospace, monospace);
+    padding: 0.75rem;
+    border: 1px solid var(--mud-palette-lines-inputs);
+    border-radius: var(--mud-default-borderradius);
+    background: transparent;
+    color: var(--mud-palette-text-primary);
+    font-family: var(--jnotes-font-mono);
+    font-size: 0.9rem;
+    line-height: 1.5;
     /* No manual resize: the textarea and preview pane must stay the same height, and a
        user-resized textarea would drift out of sync with the (fixed-height) preview next to it. */
     resize: none;
+
+    &:hover {
+        border-color: var(--mud-palette-text-primary);
+    }
+
+    &:focus {
+        outline: none;
+        border-color: var(--mud-palette-primary);
+        box-shadow: 0 0 0 1px var(--mud-palette-primary);
+    }
 }
 
 .note-editor-preview {
+    box-sizing: border-box;
     height: var(--note-editor-height);
+    padding: 1rem;
     /* Content taller than the fixed height scrolls internally rather than growing the pane out
-       of sync with the textarea (kept in app.css's imported Bootstrap: .overflow-auto). */
+       of sync with the textarea. */
+    overflow: auto;
+
+    /* The checklist preview: a flex column so its list scrolls while the (absent, when read-only) boxes stay pinned. */
+    &.note-editor-preview-column {
+        display: flex;
+        flex-direction: column;
+    }
 }
 
-/* The editor's checklist preview: checkboxes look normal but can't be clicked (not `disabled`,
-   which would grey them out). ChecklistPanel also drops their tabindex and the label's `for`. */
-.checklist-readonly .form-check-input {
+/* ChecklistPanel's two root elements: the list fills and scrolls, the add boxes stay pinned. */
+.jn-fill {
+    flex: 1 1 auto;
+    overflow: auto;
+}
+
+.jn-noshrink {
+    flex-shrink: 0;
+}
+
+.jn-check-heading {
+    display: block;
+    margin: 1rem 0 0.25rem;
+    font-weight: 600;
+}
+
+.jn-check-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.jn-check-row {
+    padding: 0 0.25rem;
+    border-bottom: 1px solid var(--mud-palette-lines-default);
+
+    &:last-child {
+        border-bottom: 0;
+    }
+
+    /* MudCheckBox's root is a label with negative margins meant for standalone use. */
+    & .mud-checkbox {
+        margin: 0;
+    }
+}
+
+.jn-check-done {
+    text-decoration: line-through;
+    color: var(--mud-palette-text-secondary);
+}
+
+.jn-check-empty {
+    padding: 0.5rem 0.25rem;
+}
+
+/* The editor's checklist preview: checkboxes look normal but can't be clicked (not `Disabled`,
+   which would grey them out). MudCheckBox's ReadOnly blocks keyboard toggling; this blocks the pointer. */
+.checklist-readonly {
     pointer-events: none;
 }
 
-/* The toolbar's Image button is a <label> around a visually-hidden file input, so show keyboard focus on the label. */
-.image-upload-button:has(input:focus-visible) {
-    box-shadow: var(--bs-btn-focus-box-shadow);
+.jn-add-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+
+    & > .mud-button-root {
+        /* Line the button up with the dense outlined input beside it. */
+        height: 40px;
+    }
 }
 
-.markdown-preview img {
-    max-width: 100%;
+.jn-add-category {
+    flex: 0 1 12rem;
 }
 
-/* Markdig emits plain <table>/<th>/<td> with no classes — style it to match Bootstrap's .table
-   look without needing JS to add the class to every rendered table. */
-.markdown-preview table {
-    width: 100%;
-    margin-bottom: 1rem;
-    border-collapse: collapse;
-
-    & th,
-    & td {
-        padding: 0.5rem;
-        border: 1px solid var(--bs-border-color);
-    }
-
-    & th {
-        text-align: left;
-        background-color: var(--bs-secondary-bg);
-    }
+.jn-add-input {
+    flex: 1 1 12rem;
 }

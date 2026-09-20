@@ -1,21 +1,21 @@
-<div class="d-flex justify-content-end mb-2">
-    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => _showChecklist = !_showChecklist">
+<div class="jn-editor-toolbar-row jn-editor-toolbar-end">
+    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => _showChecklist = !_showChecklist">
         @(_showChecklist ? "Hide checklist" : "Show checklist")
-    </button>
+    </MudButton>
 </div>
 
-<div class="row g-3">
-    <div class="@(_showChecklist ? "col-12 col-lg-6" : "col-12")">
-        <textarea class="form-control note-editor-textarea" aria-label="Checklist markdown"
+<div class="jn-editor-split @(_showChecklist ? "jn-editor-split-two" : "")">
+    <div>
+        <textarea class="note-editor-textarea" aria-label="Checklist markdown"
                   value="@Body" @oninput="OnInput"></textarea>
     </div>
     @if (_showChecklist)
     {
-        <div class="col-12 col-lg-6">
+        <div>
             @* Same fixed height as the textarea beside it; the panel's list scrolls internally. *@
-            <div class="border rounded p-3 d-flex flex-column note-editor-preview">
+            <MudPaper Outlined="true" Class="note-editor-preview note-editor-preview-column">
                 <ChecklistPanel Body="@Body" ReadOnly="true" />
-            </div>
+            </MudPaper>
         </div>
     }
 </div>

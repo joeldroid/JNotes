@@ -2,80 +2,74 @@
    Interactive in NoteView (goes through NoteService); ChecklistNoteEditor sets ReadOnly, so it's just
    a live preview of the markdown being edited (inert checkboxes, no add boxes). This component
    only reports what the user did through its callbacks and renders whatever Body it's handed. Its
-   two root elements are meant to sit in a flex-column parent: the list scrolls (flex-grow-1
-   overflow-auto) and the boxes stay pinned (flex-shrink-0); in a plain block parent those classes
-   are harmless. *@
+   two root elements are meant to sit in a flex-column parent: the list scrolls (jn-fill) and the
+   boxes stay pinned (jn-noshrink); in a plain block parent those classes are harmless. *@
 @{
     var sections = ChecklistMarkdownParser.ParseSections(Body);
     var target = ResolveTarget(sections);
     var hasCategories = sections.Any(s => s.Title is not null);
 }
 
-<div class="flex-grow-1 overflow-auto">
+<div class="jn-fill">
     @foreach (var section in sections)
     {
         @if (section.Title is not null)
         {
-            <h6 class="text-uppercase text-body-secondary small fw-semibold mt-3 mb-1">@section.Title</h6>
+            <MudText Typo="Typo.overline" HtmlTag="h3" Color="Color.Secondary" Class="jn-check-heading">@section.Title</MudText>
         }
-        <ul class="list-group list-group-flush mb-0">
+        <div class="jn-check-list">
             @foreach (var item in section.Items)
             {
-                // @key/id carry _listVersion so a reorder rebuilds these rows from the model — see
+                // @key carries _listVersion so a reorder rebuilds these rows from the model — see
                 // OnItemCheckedAsync for why (Blazor's diff would otherwise leave the clicked
                 // checkbox visually ticked at whatever row it landed on).
-                <li class="list-group-item" @key="(_listVersion, item.LineIndex)">
-                    <div class="form-check @(ReadOnly ? "checklist-readonly" : "")">
-                        @* ReadOnly deliberately isn't `disabled` (that greys the box out): the input is made inert by
-                           CSS (pointer-events), tabindex, and dropping the label's `for` so clicking the text can't
-                           toggle it either. *@
-                        <input class="form-check-input" type="checkbox" id="@($"item-{_listVersion}-{item.LineIndex}")"
-                               checked="@item.IsChecked" disabled="@Disabled"
-                               tabindex="@(ReadOnly ? -1 : null)" aria-readonly="@(ReadOnly ? "true" : null)"
-                               @onchange="e => OnItemCheckedAsync(item.LineIndex, e)" />
-                        <label class="form-check-label @(item.IsChecked ? "text-decoration-line-through text-body-secondary" : "")"
-                               for="@(ReadOnly ? null : $"item-{_listVersion}-{item.LineIndex}")">
-                            @item.Text
-                        </label>
-                    </div>
-                </li>
+                <div class="jn-check-row @(ReadOnly ? "checklist-readonly" : "")" @key="(_listVersion, item.LineIndex)">
+                    @* ReadOnly deliberately isn't `Disabled` (that greys the box out): MudCheckBox's own ReadOnly
+                       blocks toggling, and .checklist-readonly also drops pointer events so a click on the label
+                       can't toggle it either. *@
+                    <MudCheckBox T="bool" Value="item.IsChecked" ValueChanged="@(isChecked => OnItemCheckedAsync(item.LineIndex, isChecked))"
+                                 Disabled="Disabled" ReadOnly="ReadOnly" Color="Color.Primary" Dense="true">
+                        <span class="@(item.IsChecked ? "jn-check-done" : null)">@item.Text</span>
+                    </MudCheckBox>
+                </div>
             }
             @if (section.Items.Count == 0)
             {
-                <li class="list-group-item text-body-secondary">
+                <MudText Color="Color.Secondary" Class="jn-check-empty">
                     @(section.Title is null && !ReadOnly ? "No items yet — add one below." : "Nothing here yet.")
-                </li>
+                </MudText>
             }
-        </ul>
+        </div>
     }
 </div>
 
 @if (!ReadOnly)
 {
-    <div class="flex-shrink-0">
-        <div class="input-group mt-3">
+    <div class="jn-noshrink">
+        <div class="jn-add-row">
             @if (hasCategories)
             {
-                <select class="form-select w-auto flex-grow-0" style="max-width: 40%" aria-label="Category for the new item"
-                        disabled="@Disabled" @onchange="OnTargetChanged">
+                <MudSelect T="int" Label="Category" aria-label="Category for the new item" Variant="Variant.Outlined" Margin="Margin.Dense"
+                           Disabled="Disabled" Class="jn-add-category"
+                           Value="@(target.HeadingLineIndex ?? UncategorizedTarget)" ValueChanged="OnTargetChanged">
                     @foreach (var section in sections)
                     {
-                        <option value="@(section.HeadingLineIndex ?? UncategorizedTarget)" selected="@(section == target)">@(section.Title ?? "No category")</option>
+                        <MudSelectItem T="int" Value="@(section.HeadingLineIndex ?? UncategorizedTarget)">@(section.Title ?? "No category")</MudSelectItem>
                     }
-                </select>
+                </MudSelect>
             }
-            <input class="form-control" placeholder="Add an item" aria-label="Add a checklist item"
-                   value="@_newItemText" @oninput="OnNewItemInput" @onkeydown="OnNewItemKeyDownAsync"
-                   disabled="@Disabled" @ref="_newItemInput" />
-            <button class="btn btn-outline-primary" type="button"
-                    disabled="@(Disabled || string.IsNullOrWhiteSpace(_newItemText))" @onclick="AddItemAsync">Add</button>
+            <MudTextField @ref="_newItemInput" T="string" Value="_newItemText" ValueChanged="OnNewItemInput" Immediate="true"
+                          Placeholder="Add an item" aria-label="Add a checklist item" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Disabled="Disabled" OnKeyDown="OnNewItemKeyDownAsync" Class="jn-add-input" />
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                       Disabled="@(Disabled || string.IsNullOrWhiteSpace(_newItemText))" OnClick="AddItemAsync">Add</MudButton>
         </div>
-        <div class="input-group mt-2">
-            <input class="form-control" placeholder="New category" aria-label="New category name"
-                   value="@_newCategoryText" @oninput="OnNewCategoryInput" @onkeydown="OnNewCategoryKeyDownAsync"
-                   disabled="@Disabled" />
-            <button class="btn btn-outline-secondary" type="button"
-                    disabled="@(Disabled || string.IsNullOrWhiteSpace(_newCategoryText))" @onclick="AddCategoryAsync">Add category</button>
+        <div class="jn-add-row">
+            <MudTextField T="string" Value="_newCategoryText" ValueChanged="OnNewCategoryInput" Immediate="true"
+                          Placeholder="New category" aria-label="New category name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Disabled="Disabled" OnKeyDown="OnNewCategoryKeyDownAsync" Class="jn-add-input" />
+            <MudButton Variant="Variant.Outlined"
+                       Disabled="@(Disabled || string.IsNullOrWhiteSpace(_newCategoryText))" OnClick="AddCategoryAsync">Add category</MudButton>
         </div>
     </div>
 }
@@ -98,7 +92,7 @@
     [Parameter] public EventCallback<(string Text, int? CategoryHeadingLine)> OnAddItem { get; set; }
     [Parameter] public EventCallback<string> OnAddCategory { get; set; }
 
-    private ElementReference _newItemInput;
+    private MudTextField<string>? _newItemInput;
     private string _newItemText = "";
     private string _newCategoryText = "";
     private int _target = NoTarget;
@@ -109,7 +103,7 @@
     {
         // Wait for a render where the input is enabled again (the view disables it during a save,
         // which drops focus) so several items can be typed in a row.
-        if (_focusNewItemInput && !Disabled)
+        if (_focusNewItemInput && !Disabled && _newItemInput is not null)
         {
             _focusNewItemInput = false;
             await _newItemInput.FocusAsync();
@@ -121,26 +115,25 @@
     private ChecklistSection ResolveTarget(IReadOnlyList<ChecklistSection> sections) =>
         sections.FirstOrDefault(s => (s.HeadingLineIndex ?? UncategorizedTarget) == _target) ?? sections[^1];
 
-    private void OnTargetChanged(ChangeEventArgs e) =>
-        _target = int.TryParse(e.Value?.ToString(), out var value) ? value : NoTarget;
+    private void OnTargetChanged(int value) => _target = value;
 
-    private async Task OnItemCheckedAsync(int lineIndex, ChangeEventArgs e)
+    private async Task OnItemCheckedAsync(int lineIndex, bool isChecked)
     {
         if (ReadOnly)
         {
             return;
         }
 
-        await OnItemChecked.InvokeAsync((lineIndex, e.Value is bool isChecked && isChecked));
+        await OnItemChecked.InvokeAsync((lineIndex, isChecked));
 
         // Checking an item moves it, so the row that takes its old slot can render identically to
         // what the browser already toggled — Blazor's diff would then skip patching it and leave
-        // the DOM checkbox ticked. Bumping the version changes every row's key and id, forcing a
+        // the DOM checkbox ticked. Bumping the version changes every row's key, forcing a
         // rebuild from the model. (Also snaps the box back if the save failed.)
         _listVersion++;
     }
 
-    private void OnNewItemInput(ChangeEventArgs e) => _newItemText = e.Value?.ToString() ?? "";
+    private void OnNewItemInput(string? value) => _newItemText = value ?? "";
 
     private async Task OnNewItemKeyDownAsync(KeyboardEventArgs e)
     {
@@ -165,7 +158,7 @@
         _focusNewItemInput = true;
     }
 
-    private void OnNewCategoryInput(ChangeEventArgs e) => _newCategoryText = e.Value?.ToString() ?? "";
+    private void OnNewCategoryInput(string? value) => _newCategoryText = value ?? "";
 
     private async Task OnNewCategoryKeyDownAsync(KeyboardEventArgs e)
     {

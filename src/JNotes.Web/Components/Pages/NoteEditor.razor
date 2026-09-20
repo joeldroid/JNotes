@@ -9,38 +9,39 @@
 
 @if (_notFound)
 {
-    <div class="alert alert-warning">This note couldn't be found — it may have been deleted.</div>
-    <a class="btn btn-secondary" href="/">Back to notes</a>
+    <MudAlert Severity="Severity.Warning" Class="mb-3">This note couldn't be found — it may have been deleted.</MudAlert>
+    <MudButton Href="/" Variant="Variant.Outlined">Back to notes</MudButton>
 }
 else if (_note is null)
 {
-    <p class="text-body-secondary">Loading…</p>
+    <MudText Color="Color.Secondary">Loading…</MudText>
 }
 else
 {
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
-        <div class="flex-grow-1" style="min-width: 240px;">
-            <input class="form-control form-control-lg fw-semibold" placeholder="Untitled note"
-                   @bind="_note.Title" @bind:event="oninput" @bind:after="OnMetadataEdited" />
-            <input class="form-control mt-2" placeholder="tags, comma, separated"
-                   @bind="_tagsText" @bind:event="oninput" @bind:after="OnMetadataEdited" />
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Wrap="Wrap.Wrap" Spacing="2" Class="mb-3">
+        <div class="jn-title-block jn-editor-fields">
+            <MudTextField @bind-Value="_note.Title" @bind-Value:after="OnMetadataEdited" Immediate="true"
+                          Placeholder="Untitled note" aria-label="Title" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Typo="Typo.h6" />
+            <MudTextField @bind-Value="_tagsText" @bind-Value:after="OnMetadataEdited" Immediate="true"
+                          Placeholder="tags, comma, separated" aria-label="Tags" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Class="mt-2" />
         </div>
-        <div class="d-flex flex-column align-items-end gap-1 flex-shrink-0">
-            <div class="d-flex gap-2">
-                <a class="btn btn-outline-secondary" href="@($"/notes/{_note.Id}")">Done</a>
-                <button class="btn btn-outline-danger" type="button" title="Move to Trash" aria-label="Move to Trash" @onclick="TrashAsync">
-                    <span aria-hidden="true">♻&#xFE0E;</span>
-                </button>
-            </div>
-            <small class="text-body-secondary">@SaveStatusText</small>
+        <div class="jn-editor-actions">
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                <MudButton Href="@($"/notes/{_note.Id}")" Variant="Variant.Outlined">Done</MudButton>
+                <MudIconButton Icon="@Icons.Material.Outlined.DeleteOutline" Color="Color.Error" Variant="Variant.Outlined"
+                               title="Move to Trash" aria-label="Move to Trash" OnClick="TrashAsync" />
+            </MudStack>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">@SaveStatusText</MudText>
             @if (_saveError is not null)
             {
-                <small class="text-danger">@_saveError</small>
+                <MudText Typo="Typo.caption" Color="Color.Error">@_saveError</MudText>
             }
         </div>
-    </div>
+    </MudStack>
 
-    <p class="text-body-secondary small">Last updated @TimeZoneProvider.ToAppTimeZone(_note.UpdatedAt).DateTime.ToString("g")</p>
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-3">Last updated @TimeZoneProvider.ToAppTimeZone(_note.UpdatedAt).DateTime.ToString("g")</MudText>
 
     @if (_note.Type == NoteType.Checklist)
     {

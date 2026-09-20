@@ -5,30 +5,27 @@
 
 @if (_imageError is not null)
 {
-    <div class="alert alert-danger alert-dismissible py-2" role="alert">
-        @_imageError
-        <button type="button" class="btn-close" aria-label="Dismiss" @onclick="() => _imageError = null"></button>
-    </div>
+    <MudAlert Severity="Severity.Error" Dense="true" ShowCloseIcon="true" CloseIconClicked="() => _imageError = null" Class="mb-2">@_imageError</MudAlert>
 }
 
-<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+<div class="jn-editor-toolbar-row">
     <MarkdownToolbar GetTargetTextarea="() => _textareaRef" ImageBusy="_uploading" OnImageSelected="OnImageSelectedAsync" />
-    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => _showPreview = !_showPreview">
+    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => _showPreview = !_showPreview">
         @(_showPreview ? "Hide preview" : "Show preview")
-    </button>
+    </MudButton>
 </div>
 
-<div class="row g-3">
-    <div class="@(_showPreview ? "col-12 col-lg-6" : "col-12")">
-        <textarea @ref="_textareaRef" class="form-control note-editor-textarea" aria-label="Note body"
+<div class="jn-editor-split @(_showPreview ? "jn-editor-split-two" : "")">
+    <div>
+        <textarea @ref="_textareaRef" class="note-editor-textarea" aria-label="Note body"
                   value="@Body" @oninput="OnInput"></textarea>
     </div>
     @if (_showPreview)
     {
-        <div class="col-12 col-lg-6">
-            <div class="border rounded p-3 overflow-auto note-editor-preview">
+        <div>
+            <MudPaper Outlined="true" Class="note-editor-preview">
                 <MarkdownPreview Markdown="@Body" />
-            </div>
+            </MudPaper>
         </div>
     }
 </div>

@@ -13,21 +13,21 @@
     &.mermaid-error {
         text-align: left;
         white-space: pre-wrap;
-        font-family: var(--bs-font-monospace, monospace);
+        font-family: var(--jnotes-font-mono);
         font-size: 0.875em;
-        color: var(--bs-secondary-color);
+        color: var(--mud-palette-text-secondary);
     }
 
     &.mermaid-error {
         padding-left: 0.75rem;
-        border-left: 3px solid var(--bs-warning);
+        border-left: 3px solid var(--mud-palette-warning);
 
         &::before {
             content: "Diagram error — showing the source.";
             display: block;
             margin-bottom: 0.25rem;
-            font-family: var(--bs-body-font-family);
-            color: var(--bs-warning-text-emphasis, var(--bs-secondary-color));
+            font-family: var(--mud-typography-default-family);
+            color: var(--mud-palette-warning);
         }
     }
 

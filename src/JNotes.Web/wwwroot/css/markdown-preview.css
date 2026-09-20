@@ -1,0 +1,92 @@
+/* Styling for rendered note markdown (MarkdownPreview). Markdig emits plain, class-less HTML that
+   MudBlazor doesn't style, so headings, lists, code, quotes and tables are dressed here from the
+   palette variables. Mermaid blocks are in mermaid.css. */
+.markdown-preview {
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+
+    & > :first-child {
+        margin-top: 0;
+    }
+
+    & > :last-child {
+        margin-bottom: 0;
+    }
+
+    & h1, & h2, & h3, & h4, & h5, & h6 {
+        margin: 1.5em 0 0.5em;
+        font-weight: 500;
+        line-height: 1.25;
+    }
+
+    & h1 { font-size: 1.75rem; }
+    & h2 { font-size: 1.5rem; }
+    & h3 { font-size: 1.25rem; }
+    & h4 { font-size: 1.1rem; }
+    & h5 { font-size: 1rem; }
+    & h6 { font-size: 0.9rem; color: var(--mud-palette-text-secondary); }
+
+    & p, & ul, & ol, & blockquote, & pre, & table, & hr {
+        margin: 0 0 1rem;
+    }
+
+    & ul, & ol {
+        padding-left: 2rem;
+    }
+
+    & a {
+        color: var(--mud-palette-primary);
+    }
+
+    & img {
+        max-width: 100%;
+    }
+
+    & code {
+        padding: 0.15em 0.35em;
+        border-radius: 4px;
+        background-color: var(--mud-palette-background-gray);
+        font-family: var(--jnotes-font-mono);
+        font-size: 0.875em;
+    }
+
+    & pre {
+        padding: 0.75rem 1rem;
+        overflow: auto;
+        border-radius: var(--mud-default-borderradius);
+        background-color: var(--mud-palette-background-gray);
+
+        & code {
+            padding: 0;
+            background: none;
+            font-size: 0.875rem;
+        }
+    }
+
+    & blockquote {
+        padding-left: 1rem;
+        border-left: 3px solid var(--mud-palette-lines-default);
+        color: var(--mud-palette-text-secondary);
+    }
+
+    & hr {
+        border: 0;
+        border-top: 1px solid var(--mud-palette-lines-default);
+    }
+
+    & table {
+        width: 100%;
+        border-collapse: collapse;
+
+        & th,
+        & td {
+            padding: 0.5rem;
+            border: 1px solid var(--mud-palette-lines-default);
+        }
+
+        & th {
+            text-align: left;
+            background-color: var(--mud-palette-background-gray);
+        }
+    }
+}

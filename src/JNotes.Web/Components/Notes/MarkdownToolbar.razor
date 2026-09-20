@@ -1,31 +1,34 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JSRuntime
 
-<div class="d-flex flex-wrap gap-2">
-    <div class="btn-group" role="group" aria-label="Markdown formatting">
-        <button type="button" class="btn btn-sm btn-outline-secondary fw-bold" title="Bold" @onclick="BoldAsync">B</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary fst-italic" title="Italic" @onclick="ItalicAsync">I</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" title="Bulleted list" @onclick="BulletListAsync">☰ List</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" title="Numbered list" @onclick="OrderedListAsync">1. List</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary" title="Insert table" @onclick="TableAsync">Table</button>
-    </div>
-    <div class="btn-group" role="group" aria-label="Diagrams">
-        <button type="button" class="btn btn-sm btn-outline-secondary"
-                title="Insert a left-to-right flow chart" aria-label="Insert a left-to-right flow chart"
-                @onclick="FlowchartLeftToRightAsync">Flow →</button>
-        <button type="button" class="btn btn-sm btn-outline-secondary"
-                title="Insert a top-to-bottom flow chart" aria-label="Insert a top-to-bottom flow chart"
-                @onclick="FlowchartTopToBottomAsync">Flow ↓</button>
-    </div>
-    <div class="btn-group" role="group" aria-label="Images">
-        @* A label wrapping a visually-hidden file input (not display:none, so it stays keyboard-focusable). *@
-        <label class="btn btn-sm btn-outline-secondary mb-0 image-upload-button @(ImageBusy ? "disabled" : "")"
-               title="Insert an image (you can also paste one into the note)">
-            @(ImageBusy ? "Uploading…" : "Image")
-            <InputFile @key="_imageInputVersion" class="visually-hidden" accept="image/png,image/jpeg,image/gif,image/webp"
-                       disabled="@ImageBusy" OnChange="OnImageChosenAsync" aria-label="Insert an image" />
-        </label>
-    </div>
+<div class="jn-toolbar">
+    <MudButtonGroup Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default" aria-label="Markdown formatting">
+        <MudButton title="Bold" aria-label="Bold" OnClick="BoldAsync"><strong>B</strong></MudButton>
+        <MudButton title="Italic" aria-label="Italic" OnClick="ItalicAsync"><em>I</em></MudButton>
+        <MudButton title="Bulleted list" OnClick="BulletListAsync" StartIcon="@Icons.Material.Filled.FormatListBulleted">List</MudButton>
+        <MudButton title="Numbered list" OnClick="OrderedListAsync" StartIcon="@Icons.Material.Filled.FormatListNumbered">List</MudButton>
+        <MudButton title="Insert table" OnClick="TableAsync" StartIcon="@Icons.Material.Filled.TableChart">Table</MudButton>
+    </MudButtonGroup>
+    <MudButtonGroup Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default" aria-label="Diagrams">
+        <MudButton title="Insert a left-to-right flow chart" aria-label="Insert a left-to-right flow chart"
+                   OnClick="FlowchartLeftToRightAsync">Flow →</MudButton>
+        <MudButton title="Insert a top-to-bottom flow chart" aria-label="Insert a top-to-bottom flow chart"
+                   OnClick="FlowchartTopToBottomAsync">Flow ↓</MudButton>
+    </MudButtonGroup>
+    @* MudFileUpload wraps the same InputFile the toolbar used before, so the picked file is still an
+       IBrowserFile read over the circuit — no upload route. It draws no UI of its own here: the button
+       below just opens its picker. *@
+    <MudFileUpload T="IBrowserFile" @ref="_upload" Accept="image/png,image/jpeg,image/gif,image/webp"
+                   OnFilesChanged="OnImageChosenAsync" Disabled="ImageBusy">
+        <CustomContent Context="upload">
+            <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default" Disabled="ImageBusy"
+                       StartIcon="@Icons.Material.Filled.Image"
+                       title="Insert an image (you can also paste one into the note)"
+                       OnClick="() => upload.OpenFilePickerAsync()">
+                @(ImageBusy ? "Uploading…" : "Image")
+            </MudButton>
+        </CustomContent>
+    </MudFileUpload>
 </div>
 
 @code {
@@ -78,13 +81,17 @@
     [Parameter] public bool ImageBusy { get; set; }
 
     private IJSObjectReference? _module;
-    private int _imageInputVersion;
+    private MudFileUpload<IBrowserFile>? _upload;
 
     private async Task OnImageChosenAsync(InputFileChangeEventArgs e)
     {
         await OnImageSelected.InvokeAsync(e.File);
-        // A fresh <input> per pick, so choosing the same file again still raises OnChange.
-        _imageInputVersion++;
+
+        // Reset the input once the upload is done, so choosing the same file again still raises OnFilesChanged.
+        if (_upload is not null)
+        {
+            await _upload.ClearAsync();
+        }
     }
 
     private async Task<IJSObjectReference> GetModuleAsync() =>

@@ -5,6 +5,7 @@
 @import url("variables.css");
 @import url("blazor-template.css");
 @import url("note-editor.css");
+@import url("markdown-preview.css");
 @import url("mermaid.css");
 @import url("note-list.css");
 @import url("note-view.css");
