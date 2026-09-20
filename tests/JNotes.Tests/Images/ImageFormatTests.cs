@@ -72,4 +72,25 @@ public class ImageFormatTests
         Assert.Equal("image/jpeg", ImageFormat.ContentTypeOf(ValidName + ".jpg"));
         Assert.Null(ImageFormat.ContentTypeOf("../etc/passwd"));
     }
+
+    [Fact]
+    public void FindStoredFileNames_finds_every_name_wherever_it_appears()
+    {
+        const string Other = "fedcba9876543210fedcba9876543210";
+        var text = $"---\ncover: images/{ValidName}.png\n---\n![a](images/{ValidName}.png) and <img src=\"images/{Other}.webp\">\n```\n{Other}.jpg\n```";
+
+        var names = ImageFormat.FindStoredFileNames(text).ToList();
+
+        Assert.Equal([$"{ValidName}.png", $"{ValidName}.png", $"{Other}.webp", $"{Other}.jpg"], names);
+    }
+
+    [Theory]
+    [InlineData("no images here")]
+    [InlineData("images/short.png")]
+    [InlineData("images/0123456789abcdef0123456789abcdef.svg")]
+    [InlineData("0123456789abcdef0123456789abcdef")] // no extension
+    public void FindStoredFileNames_ignores_text_that_is_not_a_stored_name(string text)
+    {
+        Assert.Empty(ImageFormat.FindStoredFileNames(text));
+    }
 }

@@ -195,7 +195,7 @@ ordinary markdown that GitHub, Obsidian, and similar tools also render.
 
 An image inserted into a text note is saved as `notes/<user-id>/images/<random-id>.<ext>` and linked
 from the body as `![name](images/<random-id>.<ext>)` — relative to the note, so it resolves in any
-editor pointed at the folder. Deleting a note (or the link) doesn't delete its image file.
+editor pointed at the folder. Deleting a note (or the link) doesn't delete its image file, since the same image can be used by several notes; **Settings → Administration → Images → Clean up unused images** removes the ones no note (or trashed note) uses any more.
 
 JNotes keeps checked items after unchecked ones within each run of adjacent checklist items, but the
 file is still ordinary markdown — you can reorder it by hand.

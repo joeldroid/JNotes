@@ -6,6 +6,7 @@
 @inject ISettingsService SettingsService
 @inject INoteIndexReconciler Reconciler
 @inject INoteService NoteService
+@inject IImageService ImageService
 @inject IUserRepository UserRepository
 @inject IUserManagementService UserManagementService
 @inject ICurrentUserContext CurrentUser
@@ -104,6 +105,39 @@
                                 <li>@error</li>
                             }
                         </ul>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="mb-4">
+            <h3 class="h5">Images</h3>
+            <p class="text-body-secondary small">
+                Deleting a note (even permanently) never deletes the images pasted into it, because the same
+                image can be used by several notes. Use this to remove your images that no note or trashed note
+                uses any more. Images added in the last @((int)ImageCleanupMinAge.TotalMinutes) minutes are always kept.
+            </p>
+            <button class="btn btn-outline-primary" @onclick="CleanUpImagesAsync" disabled="@_isCleaningImages">
+                @(_isCleaningImages ? "Cleaning up…" : "Clean up unused images")
+            </button>
+
+            @if (_imageCleanupError is not null)
+            {
+                <div class="alert alert-danger mt-3 mb-0">@_imageCleanupError</div>
+            }
+            else if (_imageCleanupResult is { } cleanup)
+            {
+                <div class="alert alert-success mt-3 mb-0">
+                    <div>
+                        @(cleanup.Deleted == 0
+                            ? "No unused images found."
+                            : $"Removed {cleanup.Deleted} unused image{(cleanup.Deleted == 1 ? "" : "s")}, freeing {FormatBytes(cleanup.BytesFreed)}.")
+                    </div>
+                    @if (cleanup.SkippedRecent > 0)
+                    {
+                        <div class="small">
+                            @cleanup.SkippedRecent recent image@(cleanup.SkippedRecent == 1 ? " was" : "s were") kept for now — run this again in a few minutes.
+                        </div>
                     }
                 </div>
             }
@@ -290,6 +324,12 @@
     private bool _isRescanning;
     private ReconciliationResult? _lastResult;
 
+    // Long enough for an editor's debounced autosave to have written a just-pasted image's link.
+    private static readonly TimeSpan ImageCleanupMinAge = TimeSpan.FromMinutes(10);
+    private bool _isCleaningImages;
+    private ImageCleanupResult? _imageCleanupResult;
+    private string? _imageCleanupError;
+
     private bool _passwordAuthEnabled;
     private OidcOptions _oidc = new();
     private string? _securityError;
@@ -363,6 +403,32 @@
         await RefreshCountAsync();
         _isRescanning = false;
     }
+
+    private async Task CleanUpImagesAsync()
+    {
+        _isCleaningImages = true;
+        _imageCleanupError = null;
+        try
+        {
+            _imageCleanupResult = await ImageService.CleanUpUnusedAsync(ImageCleanupMinAge);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _imageCleanupResult = null;
+            _imageCleanupError = $"Couldn't clean up images: {ex.Message}";
+        }
+        finally
+        {
+            _isCleaningImages = false;
+        }
+    }
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
+        _ => $"{bytes / (1024.0 * 1024.0):0.#} MB",
+    };
 
     private async Task ChangePasswordAsync()
     {

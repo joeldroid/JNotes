@@ -75,6 +75,38 @@ public sealed class FileSystemImageStore : IImageStore
         return new ImageContent(stream, contentType);
     }
 
+    public async Task<IReadOnlyList<StoredImage>> ListAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var folder = await ResolveFolderAsync(userId, cancellationToken);
+        if (!Directory.Exists(folder))
+        {
+            return [];
+        }
+
+        var images = new List<StoredImage>();
+        foreach (var file in new DirectoryInfo(folder).EnumerateFiles())
+        {
+            if (ImageFormat.IsStoredFileName(file.Name))
+            {
+                images.Add(new StoredImage(file.Name, file.Length, new DateTimeOffset(file.LastWriteTimeUtc, TimeSpan.Zero)));
+            }
+        }
+
+        return images;
+    }
+
+    public async Task DeleteAsync(Guid userId, string fileName, CancellationToken cancellationToken = default)
+    {
+        // Same path-traversal guard as OpenReadAsync.
+        if (!ImageFormat.IsStoredFileName(fileName))
+        {
+            return;
+        }
+
+        var path = Path.Combine(await ResolveFolderAsync(userId, cancellationToken), fileName);
+        File.Delete(path); // no-op if it's already gone
+    }
+
     private async Task<string> ResolveFolderAsync(Guid userId, CancellationToken cancellationToken)
     {
         var notesRoot = await _settingsService.GetNotesFolderPathAsync(cancellationToken);

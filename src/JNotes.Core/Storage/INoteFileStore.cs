@@ -66,4 +66,13 @@ public interface INoteFileStore
     /// <summary>When <paramref name="noteId"/> was moved to the trash — see <see cref="TrashAsync"/>.</summary>
     /// <exception cref="NoteNotFoundException">No file exists in the trash for <paramref name="noteId"/>.</exception>
     Task<DateTimeOffset> GetTrashedAtUtcAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The raw, unparsed text of every <c>.md</c> file <paramref name="userId"/> has — live notes and
+    /// the trash alike, including ones whose front matter is corrupted or whose name isn't a note id.
+    /// For scans that must not miss anything (which images are still referenced), where going through
+    /// <see cref="ReadAsync"/> would skip exactly the files it can't parse. A file that vanishes
+    /// mid-scan (purged, trashed) is skipped; any other I/O failure propagates.
+    /// </summary>
+    IAsyncEnumerable<string> EnumerateRawContentsAsync(Guid userId, CancellationToken cancellationToken = default);
 }

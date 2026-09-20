@@ -63,6 +63,16 @@ public static partial class ImageFormat
     public static bool IsStoredFileName(string? fileName) =>
         fileName is not null && StoredFileNameRegex().IsMatch(fileName);
 
+    /// <summary>
+    /// Every stored-image file name mentioned anywhere in <paramref name="text"/> (a note's raw file
+    /// content), not just well-formed <c>![](images/…)</c> links. Deliberately loose — case-insensitive,
+    /// and it also matches inside code fences, front matter and longer strings — because its one job
+    /// is deciding an image is *still wanted*, where a false positive only keeps a file and a false
+    /// negative deletes one a note needs.
+    /// </summary>
+    public static IEnumerable<string> FindStoredFileNames(string text) =>
+        MentionedFileNameRegex().Matches(text).Select(m => m.Value);
+
     /// <summary>The MIME type for a stored file name, or <c>null</c> if it isn't a valid one (see <see cref="IsStoredFileName"/>).</summary>
     public static string? ContentTypeOf(string? fileName)
     {
@@ -84,4 +94,7 @@ public static partial class ImageFormat
     // \z, not $: "$" also matches just before a trailing newline.
     [GeneratedRegex(@"^[0-9a-f]{32}\.(png|jpg|gif|webp)\z", RegexOptions.CultureInvariant)]
     private static partial Regex StoredFileNameRegex();
+
+    [GeneratedRegex(@"[0-9a-f]{32}\.(?:png|jpg|gif|webp)", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex MentionedFileNameRegex();
 }

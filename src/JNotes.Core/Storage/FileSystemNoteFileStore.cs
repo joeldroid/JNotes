@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using JNotes.Core.Models;
 using JNotes.Core.Serialization;
 using JNotes.Core.Settings;
@@ -166,6 +167,29 @@ public sealed class FileSystemNoteFileStore : INoteFileStore
         }
 
         return new DateTimeOffset(File.GetLastWriteTimeUtc(path), TimeSpan.Zero);
+    }
+
+    public async IAsyncEnumerable<string> EnumerateRawContentsAsync(
+        Guid userId,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var folder = await ResolveFolderAsync(userId, cancellationToken);
+        var trashFolder = await ResolveTrashFolderAsync(userId, cancellationToken);
+
+        foreach (var file in Directory.EnumerateFiles(folder, "*.md").Concat(Directory.EnumerateFiles(trashFolder, "*.md")))
+        {
+            string content;
+            try
+            {
+                content = await File.ReadAllTextAsync(file, cancellationToken);
+            }
+            catch (FileNotFoundException)
+            {
+                continue; // purged or trashed since we listed it
+            }
+
+            yield return content;
+        }
     }
 
     private async Task<string> ResolveFolderAsync(Guid userId, CancellationToken cancellationToken)

@@ -285,8 +285,20 @@ per pick so the same file can be chosen twice) just raises `OnImageSelected`, an
   name that reaches the disk. SVG is excluded on purpose: opened directly it can run script in the
   app's origin. 10 MB cap (`ImageFormat.MaxBytes`), enforced while streaming to disk, with the
   partial file deleted on failure; the editor also refuses an oversized file up front.
-- **Known limitation:** orphans — nothing tracks references, so deleting a note or a link never
-  deletes the image (the same image may be pasted into several notes).
+- **Orphans are swept on demand, never on delete.** Nothing tracks references (the same image may be
+  pasted into several notes), so deleting/purging a note or editing a link out never touches the
+  image. Settings → Administration → Images calls `IImageService.CleanUpUnusedAsync(minAge)`, which
+  deletes the current user's images that no `.md` file mentions. Safety rules, all deliberate:
+  "mentions" is `ImageFormat.FindStoredFileNames` over the **raw text** of every `.md` in the user
+  folder *and* `trash/` (`INoteFileStore.EnumerateRawContentsAsync` — not `ReadAsync`, which would skip
+  the corrupted-front-matter notes that still need their images), matched loosely (any occurrence of
+  the stored name, case-insensitive, code fences and front matter included) because a false positive
+  only keeps a file; every note is read *before* any delete, so a read failure deletes nothing;
+  `IImageStore.ListAsync` only returns names JNotes generated, so a stray file is never a candidate;
+  and images newer than `minAge` (10 min in the UI) are skipped and reported, because an upload lands
+  on disk before the debounced autosave writes the note containing its link. An image in a *trashed*
+  note survives until that note is purged. It lives in Administration settings with Storage/Index
+  (same "acts only on your own data" reasoning), so Members can't run it.
 
 **Mermaid diagrams render in text-note previews only** (`MarkdownPreview`, so the editor's right
 pane and `NoteView`; never checklists, the list, or the trash). A ```` ```mermaid ```` fence is an
