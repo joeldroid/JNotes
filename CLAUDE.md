@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-JNotes is a self-hosted, multi-user note-taking app: Blazor Server (.NET 10) UI, notes stored as
+JNotes is a self-hosted, multi-user note-taking app: Blazor Server (.NET 10) UI built on MudBlazor, notes stored as
 portable markdown files on disk (each a readable `.md` with YAML front matter, one subfolder per
 user), a Redis index over them for fast search — the index is a **derived cache**, never the
 source of truth — and a SQLite database for everything else (settings, user accounts). See
@@ -83,9 +83,32 @@ logout, and the OIDC challenge are therefore plain form posts / minimal-API endp
 
 **Theme.** Dark is the app-wide default: `SettingsService.GetThemeAsync` returns `AppTheme.Dark`
 when a user has no `UserSetting` row. `App.razor`'s `OnInitializedAsync` prerenders
-`<html data-bs-theme>`, and always uses Dark for unauthenticated requests (`/login`, `/setup`) —
+`<html data-theme>`, and always uses Dark for unauthenticated requests (`/login`, `/setup`) —
 a fixed choice, since there's no signed-in user yet. A user who chose light sees a dark login
 screen until they sign in.
+
+**UI is MudBlazor** (NuGet `MudBlazor`, `AddMudServices()` in `Program.cs`; Roboto is vendored under
+`wwwroot/lib/roboto` and `fonts.css`, so there are no external requests). Things that aren't obvious:
+- **One theme, one owner.** `Theme/JNotesTheme.cs` is the shared `MudTheme` (palettes, Roboto stack).
+  `MainLayout.razor` hosts `MudThemeProvider`/`MudPopoverProvider`/`MudDialogProvider`/
+  `MudSnackbarProvider` and seeds the scoped `ThemeState` from `ISettingsService` (same
+  `IsAuthenticated` guard as `App.razor` — `NotFound`/`Error` reuse `MainLayout` anonymously).
+  `Settings.razor`'s dark-mode switch calls `ThemeState.Set`; `MainLayout` re-renders the provider and
+  rewrites `<html data-theme>` over JS interop (that attribute is what `mermaid-preview.js` reads).
+- **Palette variables exist only at runtime.** `MudBlazor.min.css` uses `var(--mud-palette-*)` but never
+  defines them; `MudThemeProvider` emits them. Our own CSS reads them (`--mud-palette-lines-default`,
+  `--mud-palette-text-secondary`, …). `--jnotes-font-mono` (in `variables.css`) is the one mono stack.
+- **Static-SSR pages can't contain interactive MudBlazor components.** `/login` and `/setup` (and
+  `AuthLayout`) are static so `SignInAsync` can write `Set-Cookie`; a `MudTextField`/`MudButton` there
+  would be dead. They use plain `<form>`/`<input>` styled with `mud-*` classes and `auth.css`.
+  `MudThemeProvider` is fine there (it only emits the CSS variables). Rendering-only components
+  (`MudText`) work anywhere.
+- **`MudBlazor` 9's API differs from 7/8 in places** (e.g. `MudFileUpload` has `CustomContent`, not
+  `ActivatorContent`). Check parameter names against `~/.nuget/packages/mudblazor/<ver>/lib/net10.0/MudBlazor.xml`,
+  not memory.
+- **MudBlazor inputs keep their own state.** After a server-side refusal, a `MudSwitch`/`MudCheckBox`
+  stays where the user clicked unless it's rebuilt — bump an `@key` (`_securityVersion` in `Settings.razor`,
+  `_listVersion` in `ChecklistPanel`).
 
 **Data Protection keys are persisted next to the database** (`{DB_PATH's directory}/keys/`,
 `Program.cs`). They sign the auth cookie; at the default (ephemeral container filesystem) every
@@ -132,31 +155,33 @@ restart regenerates them and silently signs everyone out.
   mutations (create/delete/reset-password) have no server-side role check beyond what
   `UpdateProfileAsync`/`DeleteUserAsync` do; they rely on Blazor Server's render-tree-scoped event
   dispatch (a Member's circuit never receives a handler id for a button `AuthorizeView` didn't
-  render). Storage/Index only act on *your own* notes but live in Administration settings to keep
+  render). The three user dialogs (edit profile, reset password, delete — inline `MudDialog`s bound to
+  the `*Target` fields) are therefore declared *inside* the Administration `AuthorizeView`. Storage/Index only act on *your own* notes but live in Administration settings to keep
   "App settings" to what every Member needs.
 
 ## Sidebar (`NavMenu.razor`)
 
-- **Layout:** a single `d-flex flex-column h-100` wrapper, with `mt-auto` on the account section
-  bottom-anchoring it. Both hosts give it a definite height (`MainLayout.razor`'s desktop `<aside>`;
-  the mobile `.offcanvas-body` via `.offcanvas`'s `flex-grow: 1`), so no separate mobile styling.
+- **Layout:** one `MudDrawer` (`Variant="Responsive"`, md breakpoint, `ClipMode.Always`) in
+  `MainLayout.razor` hosts a single `NavMenu` — a persistent sidebar on desktop, an overlay opened by the
+  app bar's menu button below md (so the menu, and its search box state, exists once). `MudDrawer`'s
+  content is already a full-height flex column; `.jn-account { margin-top: auto }` (`nav-menu.css`)
+  bottom-anchors the account section. `MainLayout` closes the overlay on navigation when the viewport
+  is below md (`IBrowserViewportService`).
 - **Account widget:** avatar initials from `UserInitials.Compute` (pure static: `FirstName[0]` +
   `LastName[0]` if both, else first two letters of first name, then username; max 2 chars).
-  Clicking toggles a Bootstrap `collapse` (`#accountMenu`, same `.collapsed` chevron pattern as
-  `NoteList.razor`) with "My Profile" and "Sign out"; `/profile` has no top-level nav entry.
-- **Order:** Search, New note, Notes, Settings, Trash. Icons are plain Unicode glyphs in
-  `<span class="nav-icon">` (✎ ▤ ⚙ ♻), not a vendored icon font (Bootstrap and mermaid are the only
-  vendored UI dependencies, under `wwwroot/lib/`). ✎, ⚙, ♻ append U+FE0E to force monochrome; ▤ has
-  no emoji presentation. 🗑 was rejected because it ignores U+FE0E and renders as color emoji in
-  Chrome.
-  `.nav-icon` is a fixed-width inline-block so labels align. The search input has no icon, and
-  clears itself on every `@onclick`.
+  Clicking toggles a `MudCollapse` (`_accountOpen`) with "My Profile" and "Sign out" (a plain
+  `<form method="post" action="/logout">` with a `MudButton ButtonType="Submit"`, never an
+  `OnClick`); `/profile` has no top-level nav entry.
+- **Order:** Search, New note, Notes, Settings, Trash. Icons are MudBlazor's built-in
+  `Icons.Material.*` (compiled SVG path strings — no icon font, no network). The vendored UI
+  dependencies are Roboto and mermaid, under `wwwroot/lib/`; MudBlazor itself comes from NuGet. The
+  search field has a leading search icon and clears itself on every `@onclick` (an unmatched attribute
+  on `MudTextField`, which lands on its root element).
 - **"New note" lives here, not in `NoteList.razor`, so it works from any page.** It calls
   `INoteService.CreateAsync`, then navigates to `/notes/{id}/edit` (a new note has nothing to
   view). New notes of every type, checklists included, start with an **empty body**. It's a
-  `<li class="nav-item dropdown">` in the *same* `nav nav-pills` list as its siblings, so it shares
-  `.nav-link` styling and is only highlighted while its type-picker is open (Bootstrap's stock
-  `.nav-pills .show>.nav-link`). It's wrapped in an unqualified `<AuthorizeView>` (not a manual
+  `MudMenu` whose activator is a `MudNavLink`, inside the same `MudNavMenu` as its siblings so it
+  shares their look; the two items are Text note and Checklist. It's wrapped in an unqualified `<AuthorizeView>` (not a manual
   `IsAuthenticated` check) because `NavMenu` also renders for `NotFound`/`Error` (`[AllowAnonymous]`,
   same `MainLayout`), and an anonymous circuit never gets a handler id for markup `AuthorizeView`
   didn't render.
@@ -242,10 +267,14 @@ skipping empty buckets and never re-sorting. It's pure static with no clock/time
 and each `UpdatedAt` are converted to that zone first (comparing raw UTC dates would misbucket).
 Boundaries are checked in strict priority order (today → … → previous), not as independent ranges,
 because `monthStart` can fall *after* `lastWeekStart` early in a month. Sections collapse with
-Bootstrap's native `data-bs-toggle="collapse"`; `note-list.css` rotates the chevron off `.collapsed`.
+`MudExpansionPanels` (multi-expand). Which groups the user collapsed is kept in `_collapsedGroups`, not
+left to the panel, because the panel's `Expanded` parameter would snap back to open on every re-render
+(e.g. when a filter changes). The Type/Tag filters are `MudSelect`s; "no filter" is an explicit sentinel
+value because `MudSelect` can't label an empty-string value.
 
 **`ChecklistNoteEditor` and `TextNoteEditor` deliberately share one layout.** A hide/show button on
-top, then a `row g-3` / `col-12 col-lg-6` split: the always-visible markdown `<textarea>` on the
+top, then a `.jn-editor-split` CSS grid (one column, two from 960px when the right pane is shown — a
+grid rather than `MudGrid`, whose negative-margin spacing risks horizontal overflow): the always-visible markdown `<textarea>` on the
 left, and a togglable, **visible-by-default** right pane (`MarkdownPreview` / a read-only
 `ChecklistPanel`) driven by a plain `bool` (`_showPreview`/`_showChecklist`), the left going full-width when
 it's hidden. Both right panes share `.note-editor-preview`'s fixed height (see `note-editor.css`);
@@ -254,12 +283,13 @@ difference: `TextNoteEditor` has the `MarkdownToolbar` (bold etc.); `ChecklistNo
 deliberately doesn't. **The editor's checklist pane is a pure preview** — inert checkboxes, no
 add-item/add-category boxes (`ChecklistPanel ReadOnly="true"`): once the user is editing the raw
 markdown, a second way to edit it just duplicates and crowds the UI. Checking, adding items, and
-adding categories happen in `NoteView` only. A Bootstrap `.collapse` can't be used
-because it keeps state in the DOM and can't drive Blazor's `col-*` class switch.
+adding categories happen in `NoteView` only. The body input stays a **native `<textarea>`** (styled as
+`.note-editor-textarea`), not a `MudTextField`: `markdown-toolbar.js` and `image-paste.js` drive the real
+DOM element and rely on a real `input` event.
 
 **Images: text notes only, button + paste, no drag-and-drop.** `TextNoteEditor` owns the upload;
-`MarkdownToolbar`'s Image button (a `<label>` around a visually-hidden `InputFile`, `@key` bumped
-per pick so the same file can be chosen twice) just raises `OnImageSelected`, and
+`MarkdownToolbar`'s Image button (a `MudButton` inside a `MudFileUpload<IBrowserFile>`'s `CustomContent`
+that opens its picker; `ClearAsync` after each pick so the same file can be chosen twice) just raises `OnImageSelected`, and
 `wwwroot/js/image-paste.js` calls `OnImagePastedAsync` on a paste. Both funnel into one
 `UploadAndInsertAsync` → `IImageService.SaveAsync` → `insertAtCursor` with
 `ImageLinks.ToMarkdown` (that fires a real `input` event, so Body/autosave need no plumbing).
@@ -339,10 +369,10 @@ implement the interface.
   with `.mermaid-error` and is stamped so it retries only when source or theme changes. For a parse
   failure its hover `title` is always the generic "Invalid mermaid syntax." (`parse` runs with
   `suppressErrors`, so mermaid's own message isn't available).
-- **Theme is read from `data-bs-theme` in JS**, not passed from C#, with a `MutationObserver` on
-  `<html>`: `Settings.razor` flips that attribute live with no reload, so a server-side parameter
-  would go stale. The theme is part of the cache key, so both variants coexist.
-- **`MarkdownToolbar`'s "Flow →" / "Flow ↓" buttons** (a second "Diagrams" `btn-group`) insert
+- **Theme is read from `data-theme` in JS**, not passed from C#, with a `MutationObserver` on
+  `<html>`: `MainLayout` flips that attribute live with no reload (when `ThemeState` changes), so a
+  server-side parameter would go stale. The theme is part of the cache key, so both variants coexist.
+- **`MarkdownToolbar`'s "Flow →" / "Flow ↓" buttons** (a second "Diagrams" `MudButtonGroup`) insert
   `flowchart LR` / `flowchart TD` starters. The snippet text lives as C# raw-string consts in the
   component (non-interpolated: the `{Decision}` braces are literal) and goes through the existing
   `insertAtCursor`, which dispatches a real `input` event, so autosave needs no new plumbing.
@@ -397,8 +427,8 @@ the heading if the category is empty.
 
 **`ChecklistPanel` is the one checklist UI, used by both the view (interactive) and the editor
 (`ReadOnly`, see above)** (`Components/Notes/`). `ReadOnly` renders just the grouped list with
-inert checkboxes — deliberately not `disabled`, which greys them out; instead `.checklist-readonly`
-sets `pointer-events: none` (`note-editor.css`), `tabindex="-1"`, and the label drops its `for`; the rest of this paragraph describes the interactive mode. It groups items by section, has a category `<select>` (shown only once
+inert checkboxes — deliberately not `Disabled`, which greys them out; instead `MudCheckBox`'s own `ReadOnly`
+blocks toggling and `.checklist-readonly` sets `pointer-events: none` (`note-editor.css`); the rest of this paragraph describes the interactive mode. It groups items by section, has a category `MudSelect<int>` (shown only once
 headings exist; defaults to the last category, and a new category is auto-selected) beside the
 add-item box, and a separate "New category" box. It owns no persistence: it renders the `Body` it's
 given and reports actions through `OnItemChecked`/`OnAddItem`/`OnAddCategory` callbacks, so the
@@ -408,10 +438,11 @@ the last category. Renaming, deleting, or reordering categories is done in the e
 textarea (the editor's panel is read-only). After an add, the panel refocuses its item input on the next render where it's enabled
 (the view disables it during a save, which drops focus).
 
-**`@key` + `_listVersion` is required on checklist rows** (`ChecklistPanel.razor`): the `<li>`
-`@key` and the checkbox `id`/`for` all include `_listVersion`, bumped after every mutation. Without it, the browser has already ticked the clicked
-box, the item moves, and the row taking its slot renders the same as the old one, so Blazor's diff
-skips it and the DOM stays ticked while the model disagrees.
+**`@key` + `_listVersion` is required on checklist rows** (`ChecklistPanel.razor`): each row's
+`@key` includes `_listVersion`, bumped after every mutation. Without it, the `MudCheckBox` has already
+toggled itself, the item moves, and the row taking its slot renders the same as the old one, so Blazor's
+diff skips it and the box stays ticked while the model disagrees. (The same rebuild snaps a box back if
+the save failed.)
 
 **The editor edits raw markdown only; the view goes through the service.** `ChecklistNoteEditor`
 has one input, the markdown textarea, whose changes raise `BodyChanged` and ride `NoteEditor`'s
@@ -437,10 +468,13 @@ their own provider because they need things the fixture doesn't expose (`ISetupS
 
 ## CSS
 
-Plain hand-authored CSS directly under `wwwroot/css/` — no Sass, no build step. `variables.css`
-holds custom properties (`:root { --note-editor-height: 60vh; ... }`); `note-editor.css`,
-`note-list.css`, `nav-menu.css` use native nesting (`&`); `app.css` (linked from `App.razor`)
-`@import`s the rest. Add a new concern as its own `.css` file `@import`ed from `app.css`.
+Plain hand-authored CSS directly under `wwwroot/css/` — no Sass, no build step. MudBlazor supplies
+components and the palette (see "UI is MudBlazor"); our CSS only adds what it doesn't cover.
+`variables.css` holds custom properties (`:root { --note-editor-height: 60vh; ... }`); `fonts.css`
+declares the vendored Roboto; `note-editor.css`, `note-list.css`, `nav-menu.css`, `settings.css` use
+native nesting (`&`); `markdown-preview.css` styles the class-less HTML Markdig emits (MudBlazor doesn't
+touch bare `h1`/`p`/`pre`/`table`); `auth.css` is the static-SSR login/setup look; `app.css` (linked
+from `App.razor`) `@import`s the rest. Add a new concern as its own `.css` file `@import`ed from `app.css`.
 `dotnet watch` and `app.MapStaticAssets()` serve these like any static asset.
 
 ## Docker build gotcha

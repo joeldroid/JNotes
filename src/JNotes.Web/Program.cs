@@ -1,4 +1,3 @@
-using MudBlazor.Services;
 using JNotes.Core;
 using JNotes.Core.Data;
 using JNotes.Core.Images;
@@ -9,12 +8,14 @@ using JNotes.Web.Components;
 using JNotes.Web.Components.Layout;
 using JNotes.Web.Images;
 using JNotes.Web.Indexing;
+using JNotes.Web.Theme;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -84,7 +85,7 @@ if (oidcConfigured)
 }
 
 builder.Services.AddMudServices();
-builder.Services.AddScoped<JNotes.Web.Theme.ThemeState>();
+builder.Services.AddScoped<ThemeState>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

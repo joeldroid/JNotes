@@ -1,5 +1,5 @@
-/* App-specific CSS custom properties. Bootstrap itself stays as vendored precompiled CSS
-   (wwwroot/lib/bootstrap) — these are only for JNotes's own styles below. */
+/* App-specific CSS custom properties, for JNotes's own styles. Colours and typography come from
+   MudBlazor's palette variables (--mud-palette-*), which MudThemeProvider emits from Theme/JNotesTheme.cs. */
 :root {
     /* Fixed (not min) so the textarea and its preview pane always match — see note-editor.css. */
     --note-editor-height: 60vh;
@@ -14,6 +14,4 @@
 
     --validation-valid-color: #26b050;
     --validation-invalid-color: #e50000;
-
-    --checkbox-border-color: #929292;
 }

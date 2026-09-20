@@ -1,6 +1,7 @@
-/* Carried over from the Blazor project template's original app.css: focus/validation styling,
-   the unhandled-error banner, and a couple of form-control tweaks. Framework-level, not
-   JNotes-specific — kept in its own module so it's easy to tell apart from note-editor.css. */
+/* Carried over from the Blazor project template's original app.css: focus/validation styling
+   (the .valid/.invalid rules are for the plain InputText fields on the static /login and /setup pages)
+   and the error-boundary banner. Framework-level, not JNotes-specific — kept in its own module so
+   it's easy to tell apart from note-editor.css. */
 h1:focus {
     outline: none;
 }
@@ -24,22 +25,5 @@ h1:focus {
 
     &::after {
         content: 'An error has occurred.';
-    }
-}
-
-.darker-border-checkbox.form-check-input {
-    border-color: var(--checkbox-border-color);
-}
-
-.form-floating {
-    & > .form-control-plaintext::placeholder,
-    & > .form-control::placeholder {
-        color: var(--bs-secondary-color);
-        text-align: end;
-    }
-
-    & > .form-control-plaintext:focus::placeholder,
-    & > .form-control:focus::placeholder {
-        text-align: start;
     }
 }

@@ -61,13 +61,11 @@
     {
         StateHasChanged();
 
-        // <html data-theme> is what mermaid-preview.js reads (it can't see MudThemeProvider's state);
-        // data-bs-theme keeps not-yet-migrated Bootstrap markup themed until it's removed.
+        // <html data-theme> is what mermaid-preview.js reads (it can't see MudThemeProvider's state).
         var name = Theme.IsDark ? AppTheme.Dark : AppTheme.Light;
         try
         {
             await JSRuntime.InvokeVoidAsync("document.documentElement.setAttribute", "data-theme", name);
-            await JSRuntime.InvokeVoidAsync("document.documentElement.setAttribute", "data-bs-theme", name);
         }
         catch (JSDisconnectedException)
         {

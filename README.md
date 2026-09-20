@@ -16,7 +16,7 @@ see [Authentication](#authentication) below for that flow, adding more users, an
   sign in with a password, OIDC, or both.
 - **Portable storage** — every note is `notes/<user-id>/<id>.md` with a small YAML front matter
   header (title, tags, type, timestamps) followed by the markdown body.
-- **Responsive UI** — Bootstrap 5, usable on both desktop and mobile.
+- **Responsive UI** — [MudBlazor](https://mudblazor.com) (Material design) with a light/dark theme, usable on both desktop and mobile.
 - **Self-healing index** — the Redis index is reconciled against the notes folder at startup and
   on demand (Settings → Rescan Now), so edits made directly to the files (outside the app, or
   while the container was stopped) are picked up automatically.
@@ -39,16 +39,17 @@ tests/
 
 ### Styling
 
-JNotes's own CSS is plain, modern CSS — hand-authored files served directly from
-`src/JNotes.Web/wwwroot/css/`, no build step, no Node.js, no CSS preprocessor. `variables.css`
-defines app-wide custom properties (`:root { --note-editor-height: 60vh; ... }`); `note-editor.css`,
-`note-list.css`, and `nav-menu.css` are one file per concern, using native CSS nesting (`&`) instead
-of a Sass equivalent; `app.css` pulls them all together with native `@import`. Add a new concern as
-its own `.css` file and `@import` it from `app.css`.
+The UI is built with [MudBlazor](https://mudblazor.com), pulled in as a NuGet package; its colours come
+from the theme in `src/JNotes.Web/Theme/JNotesTheme.cs`. JNotes's own CSS is plain, modern CSS —
+hand-authored files served directly from `src/JNotes.Web/wwwroot/css/`, no build step, no Node.js, no CSS
+preprocessor — covering only what MudBlazor doesn't. `variables.css` defines app-wide custom properties
+(`:root { --note-editor-height: 60vh; ... }`); `note-editor.css`, `note-list.css`, `nav-menu.css` and the
+rest are one file per concern, using native CSS nesting (`&`) instead of a Sass equivalent; `app.css`
+pulls them all together with native `@import`. Add a new concern as its own `.css` file and `@import` it
+from `app.css`.
 
-Bootstrap itself stays as the vendored precompiled CSS/JS in `wwwroot/lib/bootstrap` — it isn't
-part of JNotes's own CSS. Compiling Bootstrap from its own Sass source (to override its variables
-for a custom theme) is possible later but is a separate, larger change.
+The Roboto font is vendored under `wwwroot/lib/roboto` (latin subset, SIL OFL 1.1), so the UI makes no
+external font requests.
 
 [mermaid](https://mermaid.js.org) (diagram rendering) is vendored the same way under
 `wwwroot/lib/mermaid` (pinned to 11.17.2, MIT). The browser only loads it when a note actually
