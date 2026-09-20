@@ -14,33 +14,6 @@ public class SettingsServiceTests : IAsyncLifetime
     private ISettingsService Settings => _fixture.Scope.ServiceProvider.GetRequiredService<ISettingsService>();
 
     [Fact]
-    public async Task TabbedView_defaults_to_off()
-    {
-        Assert.False(await Settings.GetTabbedViewAsync(_fixture.UserAId));
-    }
-
-    [Fact]
-    public async Task TabbedView_round_trips_and_can_be_turned_back_off()
-    {
-        await Settings.SetTabbedViewAsync(_fixture.UserAId, true);
-        Assert.True(await Settings.GetTabbedViewAsync(_fixture.UserAId));
-
-        await Settings.SetTabbedViewAsync(_fixture.UserAId, false);
-        Assert.False(await Settings.GetTabbedViewAsync(_fixture.UserAId));
-    }
-
-    [Fact]
-    public async Task TabbedView_is_per_user_and_independent_of_theme()
-    {
-        await Settings.SetTabbedViewAsync(_fixture.UserAId, true);
-        await Settings.SetThemeAsync(_fixture.UserAId, AppTheme.Light);
-
-        Assert.True(await Settings.GetTabbedViewAsync(_fixture.UserAId));
-        Assert.False(await Settings.GetTabbedViewAsync(_fixture.UserBId));
-        Assert.Equal(AppTheme.Dark, await Settings.GetThemeAsync(_fixture.UserBId));
-    }
-
-    [Fact]
     public async Task ImageCleanupInterval_defaults_to_seven_days()
     {
         Assert.Equal(7, await Settings.GetImageCleanupIntervalDaysAsync());

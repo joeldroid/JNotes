@@ -25,8 +25,6 @@ builder.Services.AddHostedService<AutoIndexBackgroundService>();
 builder.Services.AddHostedService<ImageCleanupBackgroundService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserContext, AuthenticatedCurrentUserContext>();
-// Per-circuit open-tab list for the desktop tabbed view (layout strip + note pages share it).
-builder.Services.AddScoped<TabWorkspaceState>();
 
 // Persisted alongside the database (same bind-mounted volume in Docker) rather than the container's
 // ephemeral filesystem — without this, the keys used to sign the auth cookie are regenerated on
