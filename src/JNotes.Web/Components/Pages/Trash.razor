@@ -2,75 +2,54 @@
 @attribute [Authorize]
 @inject INoteService NoteService
 @inject IAppTimeZoneProvider TimeZoneProvider
+@inject IDialogService DialogService
 
 <PageTitle>Trash</PageTitle>
 
-<h1 class="h3 mb-1">Trash</h1>
-<p class="text-body-secondary small mb-3">Notes here can be restored or permanently deleted.</p>
+<MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-1">Trash</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">Notes here can be restored or permanently deleted.</MudText>
 
 @if (_trashedNotes is null)
 {
-    <p class="text-body-secondary">Loading…</p>
+    <MudText Color="Color.Secondary">Loading…</MudText>
 }
 else if (_trashedNotes.Count == 0)
 {
-    <p class="text-body-secondary">Trash is empty.</p>
+    <MudText Color="Color.Secondary">Trash is empty.</MudText>
 }
 else
 {
-    <div class="list-group">
+    <div class="jn-note-list">
         @foreach (var note in _trashedNotes)
         {
-            <div class="list-group-item d-flex justify-content-between align-items-start gap-3">
-                <div>
-                    <div class="d-flex align-items-center gap-2">
-                        <span class="badge text-bg-secondary">@(note.Type == NoteType.Checklist ? "Checklist" : "Text")</span>
+            <MudPaper Outlined="true" Class="jn-trash-item">
+                <div class="jn-note-main">
+                    <div class="jn-note-title">
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Filled">@(note.Type == NoteType.Checklist ? "Checklist" : "Text")</MudChip>
                         <strong>@(string.IsNullOrWhiteSpace(note.Title) ? "Untitled note" : note.Title)</strong>
                     </div>
                     @if (note.Tags.Count > 0)
                     {
-                        <div class="mt-1">
+                        <div class="jn-tags">
                             @foreach (var tag in note.Tags)
                             {
-                                <span class="badge text-bg-light border me-1">@tag</span>
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@tag</MudChip>
                             }
                         </div>
                     }
-                    <div class="text-body-secondary small mt-1">Deleted @TimeZoneProvider.ToAppTimeZone(note.TrashedAt).DateTime.ToString("g")</div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">Deleted @TimeZoneProvider.ToAppTimeZone(note.TrashedAt).DateTime.ToString("g")</MudText>
                 </div>
-                <div class="d-flex gap-2 flex-shrink-0">
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => RestoreAsync(note.Id)">Restore</button>
-                    <button class="btn btn-sm btn-outline-danger" @onclick="() => BeginPurge(note)">Delete forever</button>
-                </div>
-            </div>
+                <MudStack Row="true" Spacing="2" Class="flex-shrink-0">
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => RestoreAsync(note.Id)">Restore</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error" OnClick="() => PurgeAsync(note)">Delete forever</MudButton>
+                </MudStack>
+            </MudPaper>
         }
-    </div>
-}
-
-@if (_purgeTarget is not null)
-{
-    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Permanently delete "@(string.IsNullOrWhiteSpace(_purgeTarget.Title) ? "Untitled note" : _purgeTarget.Title)"?</h5>
-                    <button type="button" class="btn-close" @onclick="() => _purgeTarget = null"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="mb-0">This can't be undone.</p>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="() => _purgeTarget = null">Cancel</button>
-                    <button class="btn btn-danger" @onclick="ConfirmPurgeAsync">Delete forever</button>
-                </div>
-            </div>
-        </div>
     </div>
 }
 
 @code {
     private IReadOnlyList<TrashedNoteSummary>? _trashedNotes;
-    private TrashedNoteSummary? _purgeTarget;
 
     protected override async Task OnInitializedAsync() => await RefreshAsync();
 
@@ -82,12 +61,22 @@ else
         await RefreshAsync();
     }
 
-    private void BeginPurge(TrashedNoteSummary note) => _purgeTarget = note;
-
-    private async Task ConfirmPurgeAsync()
+    private async Task PurgeAsync(TrashedNoteSummary note)
     {
-        await NoteService.PurgeAsync(_purgeTarget!.Id);
-        _purgeTarget = null;
+        var name = string.IsNullOrWhiteSpace(note.Title) ? "Untitled note" : note.Title;
+
+        // true = "Delete forever"; anything else (Cancel, Esc, backdrop click) leaves the note alone.
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            $"Permanently delete \"{name}\"?",
+            "This can't be undone.",
+            yesText: "Delete forever",
+            cancelText: "Cancel");
+        if (confirmed != true)
+        {
+            return;
+        }
+
+        await NoteService.PurgeAsync(note.Id);
         await RefreshAsync();
     }
 }

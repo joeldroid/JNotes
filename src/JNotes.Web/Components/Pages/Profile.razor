@@ -8,46 +8,39 @@
 
 <PageTitle>My Profile</PageTitle>
 
-<h1 class="h3 mb-3">My Profile</h1>
+<MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-3">My Profile</MudText>
 
 @if (_user is null)
 {
-    <p class="text-body-secondary">Loading…</p>
+    <MudText Color="Color.Secondary">Loading…</MudText>
 }
 else
 {
-    <EditForm Model="_model" OnValidSubmit="SaveAsync" style="max-width: 420px;">
+    <EditForm Model="_model" OnValidSubmit="SaveAsync" class="jn-form-narrow">
         <DataAnnotationsValidator />
-        @if (_error is not null)
-        {
-            <div class="alert alert-danger py-2">@_error</div>
-        }
-
-        <p class="mb-3">
-            <strong>Username:</strong> @_user.Username
-            <span class="text-body-secondary small">(username can't be changed here)</span>
-        </p>
-
-        <div class="mb-2">
-            <label class="form-label">First name</label>
-            <InputText class="form-control" @bind-Value="_model.FirstName" />
-        </div>
-        <div class="mb-2">
-            <label class="form-label">Last name</label>
-            <InputText class="form-control" @bind-Value="_model.LastName" />
-        </div>
-        <div class="mb-2">
-            <label class="form-label">Email</label>
-            <InputText class="form-control" @bind-Value="_model.Email" disabled="@(!_canEditEmail)" />
-            @if (!_canEditEmail)
+        <MudStack Spacing="2">
+            @if (_error is not null)
             {
-                <div class="form-text">Only an admin can change your email.</div>
+                <MudAlert Severity="Severity.Error" Dense="true">@_error</MudAlert>
             }
-        </div>
 
-        <button type="submit" class="btn btn-primary" disabled="@_isSaving">
-            @(_isSaving ? "Saving…" : "Save")
-        </button>
+            <MudText>
+                <strong>Username:</strong> @_user.Username
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Inline="true">(username can't be changed here)</MudText>
+            </MudText>
+
+            <MudTextField @bind-Value="_model.FirstName" Label="First name" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <MudTextField @bind-Value="_model.LastName" Label="Last name" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            <MudTextField @bind-Value="_model.Email" Label="Email" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Disabled="@(!_canEditEmail)"
+                          HelperText="@(_canEditEmail ? null : "Only an admin can change your email.")" />
+
+            <div>
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_isSaving">
+                    @(_isSaving ? "Saving…" : "Save")
+                </MudButton>
+            </div>
+        </MudStack>
     </EditForm>
 }
 

@@ -1,13 +1,75 @@
-/* The default notes view's collapsible relative-date sections (Today/Yesterday/This week/…). */
-.note-group-header {
-    & .note-group-chevron {
-        display: inline-block;
-        transition: transform 0.15s ease;
-    }
+/* The default notes view: filters, the relative-date sections (Today/Yesterday/This week/…), and
+   each note row. The sections themselves are MudExpansionPanels. */
+.jn-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
 
-    /* Bootstrap's collapse JS toggles .collapsed on the trigger element itself — present when the
-       target is hidden, absent while it's shown. Rotate the chevron to point down while expanded. */
-    &:not(.collapsed) .note-group-chevron {
-        transform: rotate(90deg);
+    & > .mud-input-control {
+        flex: 0 1 12rem;
+        min-width: 9rem;
     }
+}
+
+.jn-group-count {
+    font-weight: 400;
+    color: var(--mud-palette-text-secondary);
+}
+
+.jn-note-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+}
+
+.jn-note-item {
+    transition: background-color 0.1s ease;
+
+    &:hover {
+        background-color: var(--mud-palette-action-default-hover, rgba(128, 128, 128, 0.08));
+    }
+}
+
+/* The whole row is one link; the note's own title/tags/time are just its content. */
+.jn-note-link {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    color: inherit;
+    text-decoration: none;
+}
+
+.jn-note-main {
+    min-width: 0;
+}
+
+.jn-note-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.jn-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
+}
+
+.jn-note-time {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* Trash rows: like a note row, but with the Restore/Delete buttons in place of a link. */
+.jn-trash-item {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
 }

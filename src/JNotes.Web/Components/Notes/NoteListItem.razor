@@ -1,23 +1,25 @@
 @inject IAppTimeZoneProvider TimeZoneProvider
 
-<a class="list-group-item list-group-item-action d-flex justify-content-between align-items-start gap-3" href="@($"/notes/{Note.Id}")">
-    <div>
-        <div class="d-flex align-items-center gap-2">
-            <span class="badge text-bg-secondary">@(Note.Type == NoteType.Checklist ? "Checklist" : "Text")</span>
-            <strong>@(string.IsNullOrWhiteSpace(Note.Title) ? "Untitled note" : Note.Title)</strong>
-        </div>
-        @if (Note.Tags.Count > 0)
-        {
-            <div class="mt-1">
-                @foreach (var tag in Note.Tags)
-                {
-                    <span class="badge text-bg-light border me-1">@tag</span>
-                }
+<MudPaper Outlined="true" Class="jn-note-item">
+    <a class="jn-note-link" href="@($"/notes/{Note.Id}")">
+        <div class="jn-note-main">
+            <div class="jn-note-title">
+                <MudChip T="string" Size="Size.Small" Variant="Variant.Filled">@(Note.Type == NoteType.Checklist ? "Checklist" : "Text")</MudChip>
+                <strong>@(string.IsNullOrWhiteSpace(Note.Title) ? "Untitled note" : Note.Title)</strong>
             </div>
-        }
-    </div>
-    <small class="text-body-secondary text-nowrap">@TimeZoneProvider.ToAppTimeZone(Note.UpdatedAt).DateTime.ToString("g")</small>
-</a>
+            @if (Note.Tags.Count > 0)
+            {
+                <div class="jn-tags">
+                    @foreach (var tag in Note.Tags)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@tag</MudChip>
+                    }
+                </div>
+            }
+        </div>
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="jn-note-time">@TimeZoneProvider.ToAppTimeZone(Note.UpdatedAt).DateTime.ToString("g")</MudText>
+    </a>
+</MudPaper>
 
 @code {
     [Parameter, EditorRequired] public NoteSummary Note { get; set; } = null!;
