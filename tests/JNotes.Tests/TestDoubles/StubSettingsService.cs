@@ -1,3 +1,4 @@
+using JNotes.Core.Images;
 using JNotes.Core.Settings;
 
 namespace JNotes.Tests.TestDoubles;
@@ -8,6 +9,8 @@ internal sealed class StubSettingsService(string notesFolderPath) : ISettingsSer
     private string _notesFolderPath = notesFolderPath;
     private readonly Dictionary<Guid, string> _themesByUser = [];
     private bool _passwordAuthEnabled = true;
+    private int _imageCleanupIntervalDays = ImageCleanupSchedule.DefaultIntervalDays;
+    private DateTimeOffset? _imageCleanupLastRunUtc;
 
     public Task<string> GetNotesFolderPathAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(_notesFolderPath);
@@ -33,6 +36,24 @@ internal sealed class StubSettingsService(string notesFolderPath) : ISettingsSer
     public Task SetPasswordAuthEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
     {
         _passwordAuthEnabled = enabled;
+        return Task.CompletedTask;
+    }
+
+    public Task<int> GetImageCleanupIntervalDaysAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(_imageCleanupIntervalDays);
+
+    public Task SetImageCleanupIntervalDaysAsync(int days, CancellationToken cancellationToken = default)
+    {
+        _imageCleanupIntervalDays = days;
+        return Task.CompletedTask;
+    }
+
+    public Task<DateTimeOffset?> GetImageCleanupLastRunUtcAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(_imageCleanupLastRunUtc);
+
+    public Task SetImageCleanupLastRunUtcAsync(DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+    {
+        _imageCleanupLastRunUtc = whenUtc;
         return Task.CompletedTask;
     }
 }

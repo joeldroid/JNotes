@@ -39,7 +39,7 @@ docker compose up --build   # production-shaped: what Docker actually runs, not 
 
 **Web never touches the filesystem, EF Core/SQLite, or Redis directly** — only Core's interfaces
 (`INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
-`IUserManagementService`, `IImageService`). Enforced at build time: `Microsoft.CodeAnalysis.BannedApiAnalyzers`
+`IUserManagementService`, `IImageService`, `IImageCleanupService`). Enforced at build time: `Microsoft.CodeAnalysis.BannedApiAnalyzers`
 (`src/JNotes.Web/BannedSymbols.txt`) bans `System.IO.File`/`Directory`, `DbContext`,
 `SqliteConnection`, and Redis's `IConnectionMultiplexer`/`IDatabase` in Web. Pure static Core
 helpers (`ChecklistMarkdownParser`, `NoteGrouping`, `UserInitials`, `UserValidation`) are fine to
@@ -285,20 +285,31 @@ per pick so the same file can be chosen twice) just raises `OnImageSelected`, an
   name that reaches the disk. SVG is excluded on purpose: opened directly it can run script in the
   app's origin. 10 MB cap (`ImageFormat.MaxBytes`), enforced while streaming to disk, with the
   partial file deleted on failure; the editor also refuses an oversized file up front.
-- **Orphans are swept on demand, never on delete.** Nothing tracks references (the same image may be
-  pasted into several notes), so deleting/purging a note or editing a link out never touches the
-  image. Settings → Administration → Images calls `IImageService.CleanUpUnusedAsync(minAge)`, which
-  deletes the current user's images that no `.md` file mentions. Safety rules, all deliberate:
-  "mentions" is `ImageFormat.FindStoredFileNames` over the **raw text** of every `.md` in the user
-  folder *and* `trash/` (`INoteFileStore.EnumerateRawContentsAsync` — not `ReadAsync`, which would skip
-  the corrupted-front-matter notes that still need their images), matched loosely (any occurrence of
-  the stored name, case-insensitive, code fences and front matter included) because a false positive
-  only keeps a file; every note is read *before* any delete, so a read failure deletes nothing;
+- **Orphans are swept on a schedule, never on delete.** Nothing tracks references (the same image may be
+  pasted into several notes), so deleting/purging a note or editing a link out never touches the image.
+  `IImageCleanupService` (Core, **explicit `userId`** like the reconciler — its caller is a background
+  service with no current user) deletes a user's images that no `.md` file mentions;
+  `CleanUpAllUsersAsync` loops every user with per-user failure isolation and records the run time.
+  **The schedule is an admin, app-wide setting** (Settings → Administration → Images, a `Settings` row
+  `ImageCleanupIntervalDays`, default **7**, `0` = off, max 365; `ImageCleanupSchedule` holds the
+  rules, `IsDue` is pure and unit-tested). Unlike `AUTO_INDEX_INTERVAL_MINUTES` (env var, read once),
+  it's editable at runtime, so `JNotes.Web/Images/ImageCleanupBackgroundService` **polls every 15 min**
+  and re-reads it rather than sleeping a whole interval. The last run is persisted
+  (`ImageCleanupLastRunUtc` row) so a restart neither skips a pass nor — for a container restarting
+  more often than the interval — postpones it forever. **A never-run schedule starts its clock instead
+  of running**, so upgrading (or a fresh install) deletes nothing on first start; the first pass is one
+  interval later. "Clean up now" runs the same all-users pass and shares that clock. Like
+  `SetPasswordAuthEnabledAsync`, `SetImageCleanupIntervalDaysAsync` has no Core role check; it relies
+  on the Administration `AuthorizeView`. Safety rules, all deliberate: "mentions" is
+  `ImageFormat.FindStoredFileNames` over the **raw text** of every `.md` in the user folder *and*
+  `trash/` (`INoteFileStore.EnumerateRawContentsAsync` — not `ReadAsync`, which would skip the
+  corrupted-front-matter notes that still need their images), matched loosely (any occurrence of the
+  stored name, case-insensitive, code fences and front matter included) because a false positive only
+  keeps a file; every note is read *before* any delete, so a read failure deletes nothing;
   `IImageStore.ListAsync` only returns names JNotes generated, so a stray file is never a candidate;
-  and images newer than `minAge` (10 min in the UI) are skipped and reported, because an upload lands
-  on disk before the debounced autosave writes the note containing its link. An image in a *trashed*
-  note survives until that note is purged. It lives in Administration settings with Storage/Index
-  (same "acts only on your own data" reasoning), so Members can't run it.
+  and images newer than `ImageCleanupSchedule.MinImageAge` (10 min) are skipped, because an upload
+  lands on disk before the debounced autosave writes the note containing its link. An image in a
+  *trashed* note survives until that note is purged.
 
 **Mermaid diagrams render in text-note previews only** (`MarkdownPreview`, so the editor's right
 pane and `NoteView`; never checklists, the list, or the trash). A ```` ```mermaid ```` fence is an

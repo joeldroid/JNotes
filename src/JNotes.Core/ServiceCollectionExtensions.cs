@@ -96,6 +96,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INoteFileStore, FileSystemNoteFileStore>();
         services.AddScoped<IImageStore, FileSystemImageStore>();
         services.AddScoped<IImageService, ImageService>();
+        // Scoped like IAllUsersIndexReconciler: the singleton background service that drives it makes a scope per check.
+        services.AddScoped<IImageCleanupService, ImageCleanupService>();
         services.AddSingleton<INoteIndexRepository, RedisNoteIndexRepository>();
         services.AddScoped<INoteService, NoteService>();
         services.AddScoped<INoteIndexReconciler, NoteIndexReconciler>();

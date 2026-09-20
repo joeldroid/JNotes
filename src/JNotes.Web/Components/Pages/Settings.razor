@@ -6,7 +6,8 @@
 @inject ISettingsService SettingsService
 @inject INoteIndexReconciler Reconciler
 @inject INoteService NoteService
-@inject IImageService ImageService
+@inject IImageCleanupService ImageCleanup
+@inject IAppTimeZoneProvider TimeZoneProvider
 @inject IUserRepository UserRepository
 @inject IUserManagementService UserManagementService
 @inject ICurrentUserContext CurrentUser
@@ -114,11 +115,35 @@
             <h3 class="h5">Images</h3>
             <p class="text-body-secondary small">
                 Deleting a note (even permanently) never deletes the images pasted into it, because the same
-                image can be used by several notes. Use this to remove your images that no note or trashed note
-                uses any more. Images added in the last @((int)ImageCleanupMinAge.TotalMinutes) minutes are always kept.
+                image can be used by several notes. Instead, images that no note or trashed note uses any more
+                are removed for <strong>all users</strong> on a schedule. Images added in the last
+                @((int)ImageCleanupSchedule.MinImageAge.TotalMinutes) minutes are always kept.
+            </p>
+
+            <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+                <label for="imageCleanupDays" class="form-label mb-0">Clean up every</label>
+                <input id="imageCleanupDays" type="number" class="form-control" style="width: 6rem;"
+                       min="@ImageCleanupSchedule.DisabledIntervalDays" max="@ImageCleanupSchedule.MaxIntervalDays"
+                       @bind="_imageCleanupDays" @bind:event="oninput" />
+                <span>day(s)</span>
+                <button class="btn btn-primary" @onclick="SaveImageCleanupIntervalAsync">Save</button>
+            </div>
+            <p class="text-body-secondary small mb-2">
+                Enter 0 to turn the automatic cleanup off (@ImageCleanupSchedule.MaxIntervalDays days at most). Default: @ImageCleanupSchedule.DefaultIntervalDays.
+            </p>
+            @if (_imageCleanupSettingMessage is not null)
+            {
+                <div class="alert @(_imageCleanupSettingError ? "alert-danger" : "alert-success") py-2">@_imageCleanupSettingMessage</div>
+            }
+
+            <p class="mb-2">
+                <strong>Last cleanup:</strong>
+                @(_imageCleanupLastRun is { } lastRun
+                    ? TimeZoneProvider.ToAppTimeZone(lastRun).ToString("f")
+                    : "not yet")
             </p>
             <button class="btn btn-outline-primary" @onclick="CleanUpImagesAsync" disabled="@_isCleaningImages">
-                @(_isCleaningImages ? "Cleaning up…" : "Clean up unused images")
+                @(_isCleaningImages ? "Cleaning up…" : "Clean up now")
             </button>
 
             @if (_imageCleanupError is not null)
@@ -127,7 +152,7 @@
             }
             else if (_imageCleanupResult is { } cleanup)
             {
-                <div class="alert alert-success mt-3 mb-0">
+                <div class="alert @(cleanup.UsersFailed > 0 ? "alert-warning" : "alert-success") mt-3 mb-0">
                     <div>
                         @(cleanup.Deleted == 0
                             ? "No unused images found."
@@ -138,6 +163,10 @@
                         <div class="small">
                             @cleanup.SkippedRecent recent image@(cleanup.SkippedRecent == 1 ? " was" : "s were") kept for now — run this again in a few minutes.
                         </div>
+                    }
+                    @if (cleanup.UsersFailed > 0)
+                    {
+                        <div class="small">Cleanup failed for @cleanup.UsersFailed user(s) — see the server log.</div>
                     }
                 </div>
             }
@@ -324,10 +353,12 @@
     private bool _isRescanning;
     private ReconciliationResult? _lastResult;
 
-    // Long enough for an editor's debounced autosave to have written a just-pasted image's link.
-    private static readonly TimeSpan ImageCleanupMinAge = TimeSpan.FromMinutes(10);
+    private int _imageCleanupDays;
+    private DateTimeOffset? _imageCleanupLastRun;
+    private string? _imageCleanupSettingMessage;
+    private bool _imageCleanupSettingError;
     private bool _isCleaningImages;
-    private ImageCleanupResult? _imageCleanupResult;
+    private AllUsersImageCleanupResult? _imageCleanupResult;
     private string? _imageCleanupError;
 
     private bool _passwordAuthEnabled;
@@ -366,6 +397,8 @@
         {
             _notesFolderPath = await SettingsService.GetNotesFolderPathAsync();
             await RefreshCountAsync();
+            _imageCleanupDays = await SettingsService.GetImageCleanupIntervalDaysAsync();
+            _imageCleanupLastRun = await SettingsService.GetImageCleanupLastRunUtcAsync();
 
             _oidc = OidcOptionsAccessor.Value;
             _passwordAuthEnabled = await SettingsService.GetPasswordAuthEnabledAsync();
@@ -404,13 +437,31 @@
         _isRescanning = false;
     }
 
+    private async Task SaveImageCleanupIntervalAsync()
+    {
+        try
+        {
+            await SettingsService.SetImageCleanupIntervalDaysAsync(_imageCleanupDays);
+            _imageCleanupSettingError = false;
+            _imageCleanupSettingMessage = ImageCleanupSchedule.IsEnabled(_imageCleanupDays)
+                ? $"Unused images will be cleaned up every {_imageCleanupDays} day(s)."
+                : "Automatic image cleanup is off.";
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            _imageCleanupSettingError = true;
+            _imageCleanupSettingMessage = $"Enter a whole number of days from {ImageCleanupSchedule.DisabledIntervalDays} to {ImageCleanupSchedule.MaxIntervalDays}.";
+        }
+    }
+
     private async Task CleanUpImagesAsync()
     {
         _isCleaningImages = true;
         _imageCleanupError = null;
         try
         {
-            _imageCleanupResult = await ImageService.CleanUpUnusedAsync(ImageCleanupMinAge);
+            _imageCleanupResult = await ImageCleanup.CleanUpAllUsersAsync(ImageCleanupSchedule.MinImageAge);
+            _imageCleanupLastRun = await SettingsService.GetImageCleanupLastRunUtcAsync();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

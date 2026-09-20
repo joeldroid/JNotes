@@ -28,4 +28,19 @@ public interface ISettingsService
     /// would lock every user out — refused rather than silently accepted.
     /// </exception>
     Task SetPasswordAuthEnabledAsync(bool enabled, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Installation-wide: how often, in days, the background service deletes every user's unused images
+    /// (see <c>IImageCleanupService</c>). <c>0</c> turns it off. Defaults to
+    /// <see cref="Images.ImageCleanupSchedule.DefaultIntervalDays"/>.
+    /// </summary>
+    Task<int> GetImageCleanupIntervalDaysAsync(CancellationToken cancellationToken = default);
+
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="days"/> isn't in [0, <see cref="Images.ImageCleanupSchedule.MaxIntervalDays"/>].</exception>
+    Task SetImageCleanupIntervalDaysAsync(int days, CancellationToken cancellationToken = default);
+
+    /// <summary>When an all-users image cleanup last finished (automatic or manual), or <c>null</c> if it never has.</summary>
+    Task<DateTimeOffset?> GetImageCleanupLastRunUtcAsync(CancellationToken cancellationToken = default);
+
+    Task SetImageCleanupLastRunUtcAsync(DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
 }

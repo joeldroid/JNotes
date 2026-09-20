@@ -5,6 +5,8 @@ using JNotes.Core.Users;
 using JNotes.Web;
 using JNotes.Web.Auth;
 using JNotes.Web.Components;
+using JNotes.Web.Components.Layout;
+using JNotes.Web.Images;
 using JNotes.Web.Indexing;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -19,8 +21,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddJNotesCore(builder.Configuration);
 // Periodic index reconciliation — interval controlled by AUTO_INDEX_INTERVAL_MINUTES (0 disables).
 builder.Services.AddHostedService<AutoIndexBackgroundService>();
+// Periodic unused-image cleanup — unlike the above, the interval is an admin setting in the app (default 7 days, 0 = off).
+builder.Services.AddHostedService<ImageCleanupBackgroundService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserContext, AuthenticatedCurrentUserContext>();
+// Per-circuit open-tab list for the desktop tabbed view (layout strip + note pages share it).
+builder.Services.AddScoped<TabWorkspaceState>();
 
 // Persisted alongside the database (same bind-mounted volume in Docker) rather than the container's
 // ephemeral filesystem — without this, the keys used to sign the auth cookie are regenerated on
