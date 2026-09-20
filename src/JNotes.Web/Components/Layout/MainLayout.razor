@@ -1,37 +1,99 @@
 @inherits LayoutComponentBase
+@implements IDisposable
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ISettingsService SettingsService
+@inject ICurrentUserContext CurrentUser
+@inject ThemeState Theme
+@inject IJSRuntime JSRuntime
+@inject IBrowserViewportService Viewport
+@inject NavigationManager Navigation
 
-<div class="d-flex flex-column vh-100">
-    <nav class="navbar navbar-expand-md navbar-dark bg-dark px-3 flex-shrink-0">
-        <button class="navbar-toggler d-md-none" type="button" data-bs-toggle="offcanvas"
-                data-bs-target="#sidebarOffcanvas" aria-controls="sidebarOffcanvas" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <a class="navbar-brand ms-2 ms-md-0" href="/">JNotes</a>
-    </nav>
+<MudThemeProvider Theme="JNotesTheme.Instance" IsDarkMode="Theme.IsDark" ObserveSystemDarkModeChange="false" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
 
-    <div class="d-flex flex-grow-1 overflow-hidden">
-        <aside class="d-none d-md-flex flex-column border-end bg-body-tertiary p-3 flex-shrink-0" style="width: 220px;">
-            <NavMenu />
-        </aside>
+<MudLayout>
+    <MudAppBar Elevation="0" Dense="true">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" Class="d-md-none"
+                       aria-label="Toggle navigation" OnClick="() => _drawerOpen = !_drawerOpen" />
+        <a href="/" class="jn-brand">JNotes</a>
+    </MudAppBar>
 
-        <div class="offcanvas offcanvas-start" tabindex="-1" id="sidebarOffcanvas" aria-labelledby="sidebarOffcanvasLabel">
-            <div class="offcanvas-header">
-                <h5 class="offcanvas-title" id="sidebarOffcanvasLabel">JNotes</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
-            </div>
-            <div class="offcanvas-body">
-                <NavMenu />
-            </div>
-        </div>
+    @* One responsive drawer instead of the old desktop <aside> + offcanvas pair, so NavMenu (and its
+       search box state) exists once. *@
+    <MudDrawer @bind-Open="_drawerOpen" Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md"
+               ClipMode="DrawerClipMode.Always" Elevation="0">
+        <NavMenu />
+    </MudDrawer>
 
-        <main class="flex-grow-1 overflow-auto p-3 p-md-4">
+    <MudMainContent>
+        <div class="jn-page">
             @Body
-        </main>
-    </div>
-</div>
+        </div>
+    </MudMainContent>
+</MudLayout>
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
 </div>
+
+@code {
+    private bool _drawerOpen = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Guarded on IsAuthenticated: NotFound/Error use this layout with [AllowAnonymous], and
+        // ICurrentUserContext.UserId throws for an unauthenticated principal (same rule as NavMenu and
+        // App.razor). Dark is the app-wide default, and what an anonymous visitor always gets.
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var isDark = authState.User.Identity?.IsAuthenticated != true
+            || await SettingsService.GetThemeAsync(CurrentUser.UserId) == AppTheme.Dark;
+        Theme.Initialize(isDark);
+
+        Theme.Changed += OnThemeChanged;
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnThemeChanged() => _ = InvokeAsync(async () =>
+    {
+        StateHasChanged();
+
+        // <html data-theme> is what mermaid-preview.js reads (it can't see MudThemeProvider's state);
+        // data-bs-theme keeps not-yet-migrated Bootstrap markup themed until it's removed.
+        var name = Theme.IsDark ? AppTheme.Dark : AppTheme.Light;
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("document.documentElement.setAttribute", "data-theme", name);
+            await JSRuntime.InvokeVoidAsync("document.documentElement.setAttribute", "data-bs-theme", name);
+        }
+        catch (JSDisconnectedException)
+        {
+            // The circuit's gone — nothing to update.
+        }
+    });
+
+    // Below the drawer breakpoint it's an overlay, so picking a destination should dismiss it.
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => _ = InvokeAsync(async () =>
+    {
+        try
+        {
+            if (_drawerOpen && await Viewport.GetCurrentBreakpointAsync() is Breakpoint.Xs or Breakpoint.Sm)
+            {
+                _drawerOpen = false;
+                StateHasChanged();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+    });
+
+    public void Dispose()
+    {
+        Theme.Changed -= OnThemeChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

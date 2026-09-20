@@ -1,3 +1,4 @@
+using MudBlazor.Services;
 using JNotes.Core;
 using JNotes.Core.Data;
 using JNotes.Core.Images;
@@ -81,6 +82,9 @@ if (oidcConfigured)
         options.Events = new OpenIdConnectEvents { OnTokenValidated = OidcAccountLinker.OnTokenValidatedAsync };
     });
 }
+
+builder.Services.AddMudServices();
+builder.Services.AddScoped<JNotes.Web.Theme.ThemeState>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

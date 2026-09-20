@@ -1,0 +1,25 @@
+/* Roboto (SIL OFL 1.1, latin subset) vendored under wwwroot/lib/roboto — no external font requests.
+   The theme's font stack (Theme/JNotesTheme.cs) falls back to system fonts for anything outside latin. */
+@font-face {
+    font-family: "Roboto";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("../lib/roboto/roboto-latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "Roboto";
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url("../lib/roboto/roboto-latin-500-normal.woff2") format("woff2");
+}
+
+@font-face {
+    font-family: "Roboto";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("../lib/roboto/roboto-latin-700-normal.woff2") format("woff2");
+}

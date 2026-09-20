@@ -1,45 +1,77 @@
-/* Monochrome, font-rendered glyphs (not an icon library — none is vendored) before nav labels.
-   inline-block + fixed width keeps labels aligned regardless of each glyph's natural width. */
-.nav-icon {
-    display: inline-block;
-    width: 1.1em;
-    text-align: center;
+/* App chrome: the app bar brand, page padding, and the sidebar's search box + account widget.
+   Everything else in the sidebar is MudNavMenu/MudNavLink/MudMenu and styles itself. */
+.jn-brand {
+    color: inherit;
+    font-size: 1.25rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    text-decoration: none;
 }
 
-/* "New note"'s dropdown-toggle should look like the plain Notes/Settings/Trash pills at rest, and
-   only pick up the active-pill styling while its type-picker menu is actually open. Bootstrap's
-   own dropdown JS toggles ".show" on the toggle element itself here (not on the parent, the way
-   ".nav-pills .show>.nav-link" assumes), so that stock rule doesn't fire — this mirrors it by hand
-   for the one state it misses. */
-.nav-pills .nav-link.dropdown-toggle.show {
-    color: var(--bs-nav-pills-link-active-color);
-    background-color: var(--bs-nav-pills-link-active-bg);
+.jn-page {
+    padding: 1rem;
+
+    @media (min-width: 960px) {
+        padding: 1.5rem;
+    }
 }
 
-/* The sidebar's bottom-anchored account widget (avatar + name, expands to My Profile/Sign out). */
-.account-avatar {
-    display: inline-flex;
+/* MudDrawer's content area is already a full-height flex column, so mt-auto on the account section
+   bottom-anchors it. */
+.jn-nav {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 0.75rem;
+}
+
+.jn-nav-search {
+    margin-bottom: 0.5rem;
+}
+
+.jn-account {
+    margin-top: auto;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--mud-palette-lines-default);
+}
+
+.jn-account-toggle {
+    display: flex;
     align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background-color: var(--bs-primary);
-    color: #ffffff;
-    font-size: 0.75rem;
-    font-weight: 600;
-    line-height: 1;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.25rem;
+    border: 0;
+    border-radius: var(--mud-default-borderradius);
+    background: transparent;
+    color: var(--mud-palette-text-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+        background-color: var(--mud-palette-action-default-hover, rgba(128, 128, 128, 0.12));
+    }
 }
 
-.account-menu-toggle {
-    & .account-menu-chevron {
-        display: inline-block;
-        transition: transform 0.15s ease;
-    }
+.jn-account-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
-    /* Bootstrap's collapse JS toggles .collapsed on the trigger element itself — present when the
-       target is hidden, absent while it's shown. Rotate the chevron to point down while expanded. */
-    &:not(.collapsed) .account-menu-chevron {
-        transform: rotate(90deg);
+.jn-chevron {
+    color: var(--mud-palette-text-secondary);
+    transition: transform 0.15s ease;
+
+    &.jn-chevron-open {
+        transform: rotate(180deg);
     }
+}
+
+.jn-signout {
+    margin: 0.5rem 0.25rem 0;
 }

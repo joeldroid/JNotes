@@ -22,7 +22,7 @@ let themeObserved = false;
 let idCounter = 0;
 
 function currentTheme() {
-    return document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'default';
+    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default';
 }
 
 function keyFor(theme, source) {
@@ -96,7 +96,7 @@ function observeTheme() {
         return;
     }
     themeObserved = true;
-    // Settings -> Dark mode flips data-bs-theme live with no reload, and Blazor keeps the same
+    // Settings -> Dark mode flips data-theme live with no reload, and Blazor keeps the same
     // <html> element across in-app navigation, so the DOM is the only reliable source of truth.
     new MutationObserver(() => {
         if (currentTheme() === configuredTheme) {
@@ -108,7 +108,7 @@ function observeTheme() {
         for (const container of document.querySelectorAll('.markdown-preview')) {
             renderDiagrams(container);
         }
-    }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-bs-theme'] });
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 }
 
 async function renderPending(container) {

@@ -1,6 +1,7 @@
 /* Entry point — plain modern CSS served directly from wwwroot/css/, no build step (custom
    properties instead of Sass variables, native nesting instead of Sass nesting). Add new modules
    here as the app grows — one @import per concern, each importable on its own. */
+@import url("fonts.css");
 @import url("variables.css");
 @import url("blazor-template.css");
 @import url("note-editor.css");
@@ -8,3 +9,4 @@
 @import url("note-list.css");
 @import url("note-view.css");
 @import url("nav-menu.css");
+@import url("auth.css");

@@ -13,6 +13,7 @@
     <!-- Enforces the Web/Core boundary at build time: Web must consume INoteService/ISettingsService/
          INoteIndexReconciler from JNotes.Core rather than reaching around them into the filesystem or EF Core. -->
     <AdditionalFiles Include="BannedSymbols.txt" />
+    <PackageReference Include="MudBlazor" Version="9.10.0" />
   </ItemGroup>
 
   <PropertyGroup>

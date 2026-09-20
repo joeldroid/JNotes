@@ -2,7 +2,7 @@
 @inject ICurrentUserContext CurrentUser
 
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="@_theme">
+<html lang="en" data-theme="@_theme" data-bs-theme="@_theme">
 
 <head>
     <meta charset="utf-8" />
@@ -10,6 +10,7 @@
     <base href="/" />
     <ResourcePreloader />
     <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
+    <link rel="stylesheet" href="@Assets["_content/MudBlazor/MudBlazor.min.css"]" />
     <link rel="stylesheet" href="@Assets["css/app.css"]" />
     <link rel="stylesheet" href="@Assets["JNotes.Web.styles.css"]" />
     <ImportMap />
@@ -20,6 +21,7 @@
     <Routes @rendermode="RenderModeForPage" />
     <ReconnectModal />
     <script src="@Assets["lib/bootstrap/dist/js/bootstrap.bundle.min.js"]"></script>
+    <script src="@Assets["_content/MudBlazor/MudBlazor.min.js"]"></script>
     <script src="@Assets["_framework/blazor.web.js"]"></script>
 </body>
 

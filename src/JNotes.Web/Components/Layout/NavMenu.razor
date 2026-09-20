@@ -4,68 +4,55 @@
 @inject INoteService NoteService
 @inject NavigationManager NavigationManager
 
-<div class="d-flex flex-column h-100">
+<div class="jn-nav">
     <AuthorizeView>
-        <div class="mb-3">
-            <input type="search" class="form-control form-control-sm" placeholder="Search"
-                   value="@_searchText" @oninput="OnSearchInput" @onkeydown="OnSearchKeyDown" @onclick="ClearSearch" />
+        <div class="jn-nav-search">
+            @* Clicking anywhere in the field starts a fresh search (see ClearSearch); the unmatched @onclick
+               lands on MudTextField's root element, so it also fires for clicks on the input itself. *@
+            <MudTextField T="string" Value="_searchText" ValueChanged="OnSearchChanged" Immediate="true"
+                          Placeholder="Search" aria-label="Search notes" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          OnKeyDown="OnSearchKeyDown" @onclick="ClearSearch" />
         </div>
     </AuthorizeView>
 
-    <ul class="nav nav-pills flex-column gap-1">
+    <MudNavMenu Class="jn-nav-list">
         <AuthorizeView>
-            <!-- Same list as Notes/Settings/Trash below (not a separate btn-primary block) so it
-                 picks up their nav-link alignment/spacing for free, and Bootstrap's own
-                 ".nav-pills .show>.nav-link" rule highlights it only while the type-picker dropdown
-                 is actually open — not permanently, the way a standalone colored button would be. -->
-            <li class="nav-item dropdown">
-                <button class="nav-link dropdown-toggle text-start w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    <span class="nav-icon" aria-hidden="true">✎&#xFE0E;</span> New note
-                </button>
-                <ul class="dropdown-menu">
-                    <li><button class="dropdown-item" @onclick='() => CreateNoteAsync(NoteType.Text)'>Text note</button></li>
-                    <li><button class="dropdown-item" @onclick='() => CreateNoteAsync(NoteType.Checklist)'>Checklist</button></li>
-                </ul>
-            </li>
+            @* Not a plain nav link: it opens the type picker, so the note is only created once a type is chosen. *@
+            <MudMenu FullWidth="true" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
+                <ActivatorContent Context="menuContext">
+                    <MudNavLink Icon="@Icons.Material.Outlined.EditNote">New note</MudNavLink>
+                </ActivatorContent>
+                <ChildContent>
+                    <MudMenuItem OnClick="() => CreateNoteAsync(NoteType.Text)">Text note</MudMenuItem>
+                    <MudMenuItem OnClick="() => CreateNoteAsync(NoteType.Checklist)">Checklist</MudMenuItem>
+                </ChildContent>
+            </MudMenu>
         </AuthorizeView>
-        <li class="nav-item">
-            <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
-                <span class="nav-icon" aria-hidden="true">▤</span> Notes
-            </NavLink>
-        </li>
-        <li class="nav-item">
-            <NavLink class="nav-link" href="/settings">
-                <span class="nav-icon" aria-hidden="true">⚙&#xFE0E;</span> Settings
-            </NavLink>
-        </li>
-        <li class="nav-item">
-            <NavLink class="nav-link" href="/trash">
-                <span class="nav-icon" aria-hidden="true">♻&#xFE0E;</span> Trash
-            </NavLink>
-        </li>
-    </ul>
+        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.StickyNote2">Notes</MudNavLink>
+        <MudNavLink Href="/settings" Icon="@Icons.Material.Outlined.Settings">Settings</MudNavLink>
+        <MudNavLink Href="/trash" Icon="@Icons.Material.Outlined.DeleteOutline">Trash</MudNavLink>
+    </MudNavMenu>
 
     <AuthorizeView>
-        <div class="mt-auto pt-3 border-top">
-            <button class="btn btn-link text-decoration-none d-flex align-items-center gap-2 w-100 px-0 account-menu-toggle"
-                    type="button" data-bs-toggle="collapse" data-bs-target="#accountMenu" aria-expanded="false">
-                <span class="account-avatar flex-shrink-0">@_initials</span>
-                <span class="text-body text-truncate flex-grow-1 text-start">@_displayName</span>
-                <span class="account-menu-chevron text-body-secondary">▸</span>
+        <div class="jn-account">
+            <button type="button" class="jn-account-toggle" aria-expanded="@(_accountOpen ? "true" : "false")"
+                    @onclick="() => _accountOpen = !_accountOpen">
+                <MudAvatar Color="Color.Primary" Size="Size.Small">@_initials</MudAvatar>
+                <span class="jn-account-name">@_displayName</span>
+                <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Class="@(_accountOpen ? "jn-chevron jn-chevron-open" : "jn-chevron")" />
             </button>
-            <div class="collapse" id="accountMenu">
-                <ul class="nav nav-pills flex-column gap-1 mt-2">
-                    <li class="nav-item">
-                        <NavLink class="nav-link" href="/profile">
-                            My Profile
-                        </NavLink>
-                    </li>
-                </ul>
-                <form method="post" action="/logout" class="mt-2">
+            <MudCollapse Expanded="_accountOpen">
+                <MudNavMenu Dense="true" Class="mt-1">
+                    <MudNavLink Href="/profile" Icon="@Icons.Material.Outlined.Person">My Profile</MudNavLink>
+                </MudNavMenu>
+                @* Stays a plain form POST — SignOutAsync writes Set-Cookie, so it can't be an @onclick in the circuit. *@
+                <form method="post" action="/logout" class="jn-signout">
                     <AntiforgeryToken />
-                    <button type="submit" class="btn btn-outline-secondary btn-sm w-100">Sign out</button>
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Default"
+                               Size="Size.Small" FullWidth="true">Sign out</MudButton>
                 </form>
-            </div>
+            </MudCollapse>
         </div>
     </AuthorizeView>
 </div>
@@ -74,6 +61,7 @@
     private string _displayName = "";
     private string _initials = "";
     private string _searchText = "";
+    private bool _accountOpen;
 
     protected override async Task OnInitializedAsync()
     {
@@ -102,10 +90,7 @@
         NavigationManager.NavigateTo($"/notes/{note.Id}/edit");
     }
 
-    private void OnSearchInput(ChangeEventArgs e)
-    {
-        _searchText = e.Value?.ToString() ?? "";
-    }
+    private void OnSearchChanged(string? value) => _searchText = value ?? "";
 
     private void ClearSearch()
     {
