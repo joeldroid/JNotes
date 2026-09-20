@@ -14,145 +14,138 @@
 @inject IOptions<OidcOptions> OidcOptionsAccessor
 @inject IOptions<JNotesOptions> JNotesOptionsAccessor
 @inject NavigationManager NavigationManager
-@inject IJSRuntime JSRuntime
+@inject ThemeState Theme
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Settings</PageTitle>
 
-<h1 class="h3 mb-3">Settings</h1>
+<MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-3">Settings</MudText>
 
-<section class="mb-5">
-    <h2 class="h4 mb-3">App settings</h2>
+<section class="jn-settings-group">
+    <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-3">App settings</MudText>
 
-    <section class="mb-4">
-        <h3 class="h5">Appearance</h3>
-        <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" role="switch" id="darkModeSwitch"
-                   checked="@(_theme == AppTheme.Dark)" @onchange="ToggleThemeAsync" />
-            <label class="form-check-label" for="darkModeSwitch">Dark mode</label>
-        </div>
-    </section>
+    <MudPaper Outlined="true" Class="jn-settings-card">
+        <MudText Typo="Typo.subtitle1" HtmlTag="h3" Class="mb-1">Appearance</MudText>
+        <MudSwitch T="bool" Value="@(_theme == AppTheme.Dark)" ValueChanged="ToggleThemeAsync" Label="Dark mode" Color="Color.Primary" />
+    </MudPaper>
 
-    <section style="max-width: 420px;">
-        <h3 class="h5">Account</h3>
-        <div class="d-flex gap-2 align-items-end flex-wrap">
-            <div class="flex-grow-1">
-                <label class="form-label small mb-1">New password</label>
-                <input type="password" class="form-control" @bind="_newPassword" @bind:event="oninput" />
-            </div>
-            <button class="btn btn-outline-primary" @onclick="ChangePasswordAsync">Change password</button>
+    <MudPaper Outlined="true" Class="jn-settings-card jn-settings-card-narrow">
+        <MudText Typo="Typo.subtitle1" HtmlTag="h3" Class="mb-2">Account</MudText>
+        <div class="jn-inline-form">
+            <MudTextField T="string" @bind-Value="_newPassword" Immediate="true" Label="New password" InputType="InputType.Password"
+                          Variant="Variant.Outlined" Margin="Margin.Dense" Class="jn-inline-grow" />
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ChangePasswordAsync">Change password</MudButton>
         </div>
         @if (_passwordChangeMessage is not null)
         {
-            <div class="alert @(_passwordChangeError ? "alert-danger" : "alert-success") py-2 mt-2 mb-0">@_passwordChangeMessage</div>
+            <MudAlert Severity="@(_passwordChangeError ? Severity.Error : Severity.Success)" Dense="true" Class="mt-2">@_passwordChangeMessage</MudAlert>
         }
-    </section>
+    </MudPaper>
 </section>
 
 <AuthorizeView Roles="Admin" Context="adminAuthContext">
-    <section>
-        <h2 class="h4 mb-3">Administration settings</h2>
+    <section class="jn-settings-group">
+        <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-3">Administration settings</MudText>
 
-        <section class="mb-4">
-            <h3 class="h5">Security</h3>
-            <div class="form-check form-switch mb-2">
-                <input class="form-check-input" type="checkbox" role="switch" id="passwordAuthSwitch"
-                       checked="@_passwordAuthEnabled" disabled="@(!_oidc.IsConfigured && _passwordAuthEnabled)"
-                       @onchange="TogglePasswordAuthAsync" />
-                <label class="form-check-label" for="passwordAuthSwitch">Allow username/password login</label>
-            </div>
+        <MudPaper Outlined="true" Class="jn-settings-card">
+            <MudText Typo="Typo.subtitle1" HtmlTag="h3" Class="mb-1">Security</MudText>
+            @* @key is bumped when the server refuses a change, so the switch is rebuilt from the model instead of
+               keeping the position the user just clicked it to. *@
+            <MudSwitch @key="_securityVersion" T="bool" Value="_passwordAuthEnabled" ValueChanged="TogglePasswordAuthAsync"
+                       Disabled="@(!_oidc.IsConfigured && _passwordAuthEnabled)" Color="Color.Primary"
+                       Label="Allow username/password login" />
             @if (!_oidc.IsConfigured)
             {
-                <p class="text-body-secondary small">
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
                     Can't be turned off — OIDC isn't configured (set OIDC_AUTHORITY/OIDC_CLIENT_ID/OIDC_CLIENT_SECRET), so this is the only sign-in method available.
-                </p>
+                </MudText>
             }
             else
             {
-                <p class="text-body-secondary small">OIDC is configured against <code>@_oidc.Authority</code>.</p>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">OIDC is configured against <code class="jn-code">@_oidc.Authority</code>.</MudText>
             }
             @if (_securityError is not null)
             {
-                <div class="alert alert-danger py-2">@_securityError</div>
+                <MudAlert Severity="Severity.Error" Dense="true">@_securityError</MudAlert>
             }
-        </section>
+        </MudPaper>
 
-        <section class="mb-4">
-            <h3 class="h5">Storage</h3>
-            <p class="mb-1"><strong>Notes folder:</strong> <code>@_notesFolderPath</code></p>
-            <p class="text-body-secondary small">Changing the notes folder requires an app restart to take effect.</p>
-            <p class="mb-0"><strong>Notes indexed:</strong> @_noteCount</p>
-        </section>
+        <MudPaper Outlined="true" Class="jn-settings-card">
+            <MudText Typo="Typo.subtitle1" HtmlTag="h3" Class="mb-1">Storage</MudText>
+            <MudText Class="mb-1"><strong>Notes folder:</strong> <code class="jn-code">@_notesFolderPath</code></MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">Changing the notes folder requires an app restart to take effect.</MudText>
+            <MudText><strong>Notes indexed:</strong> @_noteCount</MudText>
+        </MudPaper>
 
-        <section class="mb-4">
-            <h3 class="h5">Index</h3>
-            <p class="text-body-secondary small">
+        <MudPaper Outlined="true" Class="jn-settings-card">
+            <MudText Typo="Typo.subtitle1" HtmlTag="h3" Class="mb-1">Index</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
                 The index is rebuilt automatically at startup@(JNotesOptionsAccessor.Value.AutoIndexIntervalMinutes > 0 ? $" and every {JNotesOptionsAccessor.Value.AutoIndexIntervalMinutes} minute(s)" : ""). Use this if you've added, edited, or removed
                 note files directly on disk while the app is running.
-            </p>
-            <button class="btn btn-outline-primary" @onclick="RescanAsync" disabled="@_isRescanning">
+            </MudText>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="RescanAsync" Disabled="_isRescanning">
                 @(_isRescanning ? "Rescanning…" : "Rescan Now")
-            </button>
+            </MudButton>
 
             @if (_lastResult is { } result)
             {
-                <div class="alert @(result.Errors.Count > 0 ? "alert-warning" : "alert-success") mt-3 mb-0">
+                <MudAlert Severity="@(result.Errors.Count > 0 ? Severity.Warning : Severity.Success)" Class="mt-3">
                     <div>Added @result.Added, updated @result.Updated, removed @result.Removed.</div>
                     @if (result.Errors.Count > 0)
                     {
-                        <ul class="mb-0 mt-2">
+                        <ul class="jn-alert-list">
                             @foreach (var error in result.Errors)
                             {
                                 <li>@error</li>
                             }
                         </ul>
                     }
-                </div>
+                </MudAlert>
             }
-        </section>
+        </MudPaper>
 
-        <section class="mb-4">
-            <h3 class="h5">Images</h3>
-            <p class="text-body-secondary small">
+        <MudPaper Outlined="true" Class="jn-settings-card">
+            <MudText Typo="Typo.subtitle1" HtmlTag="h3" Class="mb-1">Images</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
                 Deleting a note (even permanently) never deletes the images pasted into it, because the same
                 image can be used by several notes. Instead, images that no note or trashed note uses any more
                 are removed for <strong>all users</strong> on a schedule. Images added in the last
                 @((int)ImageCleanupSchedule.MinImageAge.TotalMinutes) minutes are always kept.
-            </p>
+            </MudText>
 
-            <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
-                <label for="imageCleanupDays" class="form-label mb-0">Clean up every</label>
-                <input id="imageCleanupDays" type="number" class="form-control" style="width: 6rem;"
-                       min="@ImageCleanupSchedule.DisabledIntervalDays" max="@ImageCleanupSchedule.MaxIntervalDays"
-                       @bind="_imageCleanupDays" @bind:event="oninput" />
+            <div class="jn-inline-form jn-inline-form-center mb-1">
+                <span>Clean up every</span>
+                <MudNumericField T="int" @bind-Value="_imageCleanupDays" Immediate="true" aria-label="Days between image cleanups"
+                                 Min="ImageCleanupSchedule.DisabledIntervalDays" Max="ImageCleanupSchedule.MaxIntervalDays"
+                                 HideSpinButtons="true" Variant="Variant.Outlined" Margin="Margin.Dense" Class="jn-days-field" />
                 <span>day(s)</span>
-                <button class="btn btn-primary" @onclick="SaveImageCleanupIntervalAsync">Save</button>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveImageCleanupIntervalAsync">Save</MudButton>
             </div>
-            <p class="text-body-secondary small mb-2">
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
                 Enter 0 to turn the automatic cleanup off (@ImageCleanupSchedule.MaxIntervalDays days at most). Default: @ImageCleanupSchedule.DefaultIntervalDays.
-            </p>
+            </MudText>
             @if (_imageCleanupSettingMessage is not null)
             {
-                <div class="alert @(_imageCleanupSettingError ? "alert-danger" : "alert-success") py-2">@_imageCleanupSettingMessage</div>
+                <MudAlert Severity="@(_imageCleanupSettingError ? Severity.Error : Severity.Success)" Dense="true" Class="mb-2">@_imageCleanupSettingMessage</MudAlert>
             }
 
-            <p class="mb-2">
+            <MudText Class="mb-2">
                 <strong>Last cleanup:</strong>
                 @(_imageCleanupLastRun is { } lastRun
                     ? TimeZoneProvider.ToAppTimeZone(lastRun).ToString("f")
                     : "not yet")
-            </p>
-            <button class="btn btn-outline-primary" @onclick="CleanUpImagesAsync" disabled="@_isCleaningImages">
+            </MudText>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="CleanUpImagesAsync" Disabled="_isCleaningImages">
                 @(_isCleaningImages ? "Cleaning up…" : "Clean up now")
-            </button>
+            </MudButton>
 
             @if (_imageCleanupError is not null)
             {
-                <div class="alert alert-danger mt-3 mb-0">@_imageCleanupError</div>
+                <MudAlert Severity="Severity.Error" Class="mt-3">@_imageCleanupError</MudAlert>
             }
             else if (_imageCleanupResult is { } cleanup)
             {
-                <div class="alert @(cleanup.UsersFailed > 0 ? "alert-warning" : "alert-success") mt-3 mb-0">
+                <MudAlert Severity="@(cleanup.UsersFailed > 0 ? Severity.Warning : Severity.Success)" Class="mt-3">
                     <div>
                         @(cleanup.Deleted == 0
                             ? "No unused images found."
@@ -160,22 +153,22 @@
                     </div>
                     @if (cleanup.SkippedRecent > 0)
                     {
-                        <div class="small">
+                        <div class="jn-alert-detail">
                             @cleanup.SkippedRecent recent image@(cleanup.SkippedRecent == 1 ? " was" : "s were") kept for now — run this again in a few minutes.
                         </div>
                     }
                     @if (cleanup.UsersFailed > 0)
                     {
-                        <div class="small">Cleanup failed for @cleanup.UsersFailed user(s) — see the server log.</div>
+                        <div class="jn-alert-detail">Cleanup failed for @cleanup.UsersFailed user(s) — see the server log.</div>
                     }
-                </div>
+                </MudAlert>
             }
-        </section>
+        </MudPaper>
 
-        <section class="mb-4">
-            <h3 class="h5">User management</h3>
+        <MudPaper Outlined="true" Class="jn-settings-card jn-settings-card-wide">
+            <MudText Typo="Typo.subtitle1" HtmlTag="h3" Class="mb-2">User management</MudText>
 
-            <table class="table align-middle" style="max-width: 900px;">
+            <MudSimpleTable Dense="true" Hover="true" Elevation="0" Class="mb-4">
                 <thead>
                     <tr>
                         <th>Username</th>
@@ -205,139 +198,106 @@
                                 @(user.OidcSubject is not null ? "OIDC" : "")
                             </td>
                             <td>@user.CreatedAt.LocalDateTime.ToString("d")</td>
-                            <td class="text-end text-nowrap">
-                                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => BeginEditProfile(user)">Edit profile</button>
-                                <button class="btn btn-sm btn-outline-secondary me-1" @onclick="() => BeginResetPassword(user)">Reset password</button>
-                                <button class="btn btn-sm btn-outline-danger" disabled="@(isSelf || isLastAdmin)" @onclick="() => BeginDelete(user)">Delete</button>
+                            <td>
+                                <div class="jn-row-actions">
+                                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => BeginEditProfile(user)">Edit profile</MudButton>
+                                    <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => BeginResetPassword(user)">Reset password</MudButton>
+                                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error" Disabled="@(isSelf || isLastAdmin)"
+                                               OnClick="() => BeginDelete(user)">Delete</MudButton>
+                                </div>
                             </td>
                         </tr>
                     }
                 </tbody>
-            </table>
+            </MudSimpleTable>
 
-            <section style="max-width: 420px;">
-                <h4 class="h6">Add user</h4>
+            <div class="jn-form-narrow">
+                <MudText Typo="Typo.subtitle2" HtmlTag="h4" Class="mb-2">Add user</MudText>
                 <EditForm Model="_newUser" OnValidSubmit="CreateUserAsync">
                     <DataAnnotationsValidator />
-                    @if (_createUserError is not null)
-                    {
-                        <div class="alert alert-danger py-2">@_createUserError</div>
-                    }
-                    <div class="mb-2">
-                        <label class="form-label">Username <span class="text-body-secondary small">(lowercase only)</span></label>
-                        <InputText class="form-control" @bind-Value="_newUser.Username" />
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Role</label>
-                        <InputSelect class="form-select" @bind-Value="_newUser.Role">
-                            <option value="@UserRole.Member">Member</option>
-                            <option value="@UserRole.Admin">Admin</option>
-                        </InputSelect>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Email <span class="text-body-secondary small">(needed to link an OIDC sign-in later)</span></label>
-                        <InputText class="form-control" @bind-Value="_newUser.Email" />
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Password <span class="text-body-secondary small">(leave blank for an OIDC-only account)</span></label>
-                        <InputText type="password" class="form-control" @bind-Value="_newUser.Password" />
-                    </div>
-                    <button type="submit" class="btn btn-outline-primary" disabled="@_isCreating">Add user</button>
+                    <MudStack Spacing="2">
+                        @if (_createUserError is not null)
+                        {
+                            <MudAlert Severity="Severity.Error" Dense="true">@_createUserError</MudAlert>
+                        }
+                        <MudTextField @bind-Value="_newUser.Username" For="() => _newUser.Username" Label="Username" HelperText="Lowercase only."
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        <MudSelect T="UserRole" @bind-Value="_newUser.Role" Label="Role" Variant="Variant.Outlined" Margin="Margin.Dense">
+                            <MudSelectItem T="UserRole" Value="UserRole.Member">Member</MudSelectItem>
+                            <MudSelectItem T="UserRole" Value="UserRole.Admin">Admin</MudSelectItem>
+                        </MudSelect>
+                        <MudTextField @bind-Value="_newUser.Email" Label="Email" HelperText="Needed to link an OIDC sign-in later."
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        <MudTextField @bind-Value="_newUser.Password" Label="Password" InputType="InputType.Password"
+                                      HelperText="Leave blank for an OIDC-only account." Variant="Variant.Outlined" Margin="Margin.Dense" />
+                        <div>
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Primary" Disabled="_isCreating">Add user</MudButton>
+                        </div>
+                    </MudStack>
                 </EditForm>
-            </section>
-        </section>
+            </div>
+        </MudPaper>
     </section>
+
+    @* The user dialogs live inside the Administration AuthorizeView (they used to sit after it, gated only by
+       the state the admin-rendered buttons set) so a Member's circuit never gets any of their handler ids. *@
+    <MudDialog Visible="@(_editProfileTarget is not null)" VisibleChanged="OnEditProfileVisibleChanged" Options="_dialogOptions">
+        <TitleContent>Edit profile for @_editProfileTarget?.Username</TitleContent>
+        <DialogContent>
+            <MudStack Spacing="2">
+                @if (_editProfileError is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true">@_editProfileError</MudAlert>
+                }
+                <MudTextField T="string" @bind-Value="_editFirstName" Immediate="true" Label="First name" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                <MudTextField T="string" @bind-Value="_editLastName" Immediate="true" Label="Last name" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                <MudTextField T="string" @bind-Value="_editEmail" Immediate="true" Label="Email" Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudStack>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="() => _editProfileTarget = null">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmEditProfileAsync">Save</MudButton>
+        </DialogActions>
+    </MudDialog>
+
+    <MudDialog Visible="@(_resetPasswordTarget is not null)" VisibleChanged="OnResetPasswordVisibleChanged" Options="_dialogOptions">
+        <TitleContent>Reset password for @_resetPasswordTarget?.Username</TitleContent>
+        <DialogContent>
+            <MudStack Spacing="2">
+                @if (_resetPasswordError is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true">@_resetPasswordError</MudAlert>
+                }
+                <MudTextField T="string" @bind-Value="_resetPasswordValue" Immediate="true" Label="New password" InputType="InputType.Password"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" />
+            </MudStack>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="() => _resetPasswordTarget = null">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmResetPasswordAsync">Set password</MudButton>
+        </DialogActions>
+    </MudDialog>
+
+    <MudDialog Visible="@(_deleteTarget is not null)" VisibleChanged="OnDeleteVisibleChanged" Options="_dialogOptions">
+        <TitleContent>Delete @_deleteTarget?.Username?</TitleContent>
+        <DialogContent>
+            <MudStack Spacing="2">
+                <MudText>
+                    Their notes won't be deleted — the folder is moved aside
+                    (<code class="jn-code">notes/deleted/@_deleteTarget?.Id/</code>) and their account is removed.
+                </MudText>
+                @if (_deleteError is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true">@_deleteError</MudAlert>
+                }
+            </MudStack>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="() => _deleteTarget = null">Cancel</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Error" OnClick="ConfirmDeleteAsync">Delete</MudButton>
+        </DialogActions>
+    </MudDialog>
 </AuthorizeView>
-
-@if (_editProfileTarget is not null)
-{
-    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Edit profile for @_editProfileTarget.Username</h5>
-                    <button type="button" class="btn-close" @onclick="() => _editProfileTarget = null"></button>
-                </div>
-                <div class="modal-body">
-                    @if (_editProfileError is not null)
-                    {
-                        <div class="alert alert-danger py-2">@_editProfileError</div>
-                    }
-                    <div class="mb-2">
-                        <label class="form-label">First name</label>
-                        <input class="form-control" @bind="_editFirstName" @bind:event="oninput" />
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Last name</label>
-                        <input class="form-control" @bind="_editLastName" @bind:event="oninput" />
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Email</label>
-                        <input class="form-control" @bind="_editEmail" @bind:event="oninput" />
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="() => _editProfileTarget = null">Cancel</button>
-                    <button class="btn btn-primary" @onclick="ConfirmEditProfileAsync">Save</button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
-
-@if (_resetPasswordTarget is not null)
-{
-    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Reset password for @_resetPasswordTarget.Username</h5>
-                    <button type="button" class="btn-close" @onclick="() => _resetPasswordTarget = null"></button>
-                </div>
-                <div class="modal-body">
-                    @if (_resetPasswordError is not null)
-                    {
-                        <div class="alert alert-danger py-2">@_resetPasswordError</div>
-                    }
-                    <label class="form-label">New password</label>
-                    <input type="password" class="form-control" @bind="_resetPasswordValue" @bind:event="oninput" />
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="() => _resetPasswordTarget = null">Cancel</button>
-                    <button class="btn btn-primary" @onclick="ConfirmResetPasswordAsync">Set password</button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
-
-@if (_deleteTarget is not null)
-{
-    <div class="modal d-block" tabindex="-1" style="background: rgba(0,0,0,0.5);">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Delete @_deleteTarget.Username?</h5>
-                    <button type="button" class="btn-close" @onclick="() => _deleteTarget = null"></button>
-                </div>
-                <div class="modal-body">
-                    <p>
-                        Their notes won't be deleted — the folder is moved aside
-                        (<code>notes/deleted/@_deleteTarget.Id/</code>) and their account is removed.
-                    </p>
-                    @if (_deleteError is not null)
-                    {
-                        <div class="alert alert-danger py-2">@_deleteError</div>
-                    }
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="() => _deleteTarget = null">Cancel</button>
-                    <button class="btn btn-danger" @onclick="ConfirmDeleteAsync">Delete</button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
 
 @code {
     // App settings
@@ -364,6 +324,14 @@
     private bool _passwordAuthEnabled;
     private OidcOptions _oidc = new();
     private string? _securityError;
+    private int _securityVersion;
+
+    private static readonly DialogOptions _dialogOptions = new()
+    {
+        CloseOnEscapeKey = true,
+        FullWidth = true,
+        MaxWidth = MaxWidth.Small,
+    };
 
     private IReadOnlyList<UserAccount> _users = [];
     private int _adminCount;
@@ -412,15 +380,15 @@
         return authState.User.IsInRole(nameof(UserRole.Admin));
     }
 
-    private async Task ToggleThemeAsync(ChangeEventArgs e)
+    private async Task ToggleThemeAsync(bool isDark)
     {
-        _theme = e.Value is true ? AppTheme.Dark : AppTheme.Light;
+        _theme = isDark ? AppTheme.Dark : AppTheme.Light;
         await SettingsService.SetThemeAsync(CurrentUser.UserId, _theme);
 
-        // Applies instantly without a reload — the <html> element persists across in-app
-        // navigation under InteractiveServer, so this sticks until a real page reload, at which
-        // point App.razor reads the now-persisted setting server-side anyway.
-        await JSRuntime.InvokeVoidAsync("document.documentElement.setAttribute", "data-bs-theme", _theme);
+        // Applies instantly without a reload: MainLayout owns MudThemeProvider and the <html>
+        // data-theme attribute (which mermaid-preview.js reads) and updates both when this changes. A
+        // real page reload gets the same value from the now-persisted setting (App.razor/MainLayout).
+        Theme.Set(isDark);
     }
 
     private async Task RefreshCountAsync()
@@ -496,9 +464,8 @@
         _passwordChangeMessage = "Password changed.";
     }
 
-    private async Task TogglePasswordAuthAsync(ChangeEventArgs e)
+    private async Task TogglePasswordAuthAsync(bool enabled)
     {
-        var enabled = e.Value is true;
         _securityError = null;
         try
         {
@@ -508,6 +475,9 @@
         catch (InvalidOperationException ex)
         {
             _securityError = ex.Message;
+
+            // The switch already moved under the user's finger; rebuilding it snaps it back to the model.
+            _securityVersion++;
         }
     }
 
@@ -568,6 +538,31 @@
         finally
         {
             _isCreating = false;
+        }
+    }
+
+    // The dialogs report Esc/backdrop closes through VisibleChanged; opening is driven by the *Target fields.
+    private void OnEditProfileVisibleChanged(bool visible)
+    {
+        if (!visible)
+        {
+            _editProfileTarget = null;
+        }
+    }
+
+    private void OnResetPasswordVisibleChanged(bool visible)
+    {
+        if (!visible)
+        {
+            _resetPasswordTarget = null;
+        }
+    }
+
+    private void OnDeleteVisibleChanged(bool visible)
+    {
+        if (!visible)
+        {
+            _deleteTarget = null;
         }
     }
 

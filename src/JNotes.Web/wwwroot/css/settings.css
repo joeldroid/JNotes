@@ -1,0 +1,67 @@
+/* Settings page: each section is a bordered card; a few small layout helpers for inline forms. */
+.jn-settings-group {
+    margin-bottom: 2rem;
+}
+
+.jn-settings-card {
+    max-width: 720px;
+    margin-bottom: 1rem;
+    padding: 1.25rem;
+
+    &.jn-settings-card-narrow {
+        max-width: 480px;
+    }
+
+    &.jn-settings-card-wide {
+        max-width: 1000px;
+    }
+}
+
+.jn-inline-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 0.5rem;
+
+    &.jn-inline-form-center {
+        align-items: center;
+    }
+
+    & > .mud-button-root {
+        height: 40px;
+    }
+}
+
+.jn-inline-grow {
+    flex: 1 1 12rem;
+}
+
+.jn-days-field {
+    flex: 0 0 6rem;
+    width: 6rem;
+}
+
+.jn-code {
+    padding: 0.1em 0.35em;
+    border-radius: 4px;
+    background-color: var(--mud-palette-background-gray);
+    font-family: var(--jnotes-font-mono);
+    font-size: 0.875em;
+}
+
+.jn-alert-list {
+    margin: 0.5rem 0 0;
+    padding-left: 1.25rem;
+}
+
+.jn-alert-detail {
+    font-size: 0.875rem;
+}
+
+.jn-row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.25rem;
+    white-space: nowrap;
+}
