@@ -17,17 +17,11 @@
     </AuthorizeView>
 
     <MudNavMenu Class="jn-nav-list">
+        @* One entry per note type (rather than a "New note" dropdown): each creates the note straight away.
+           Wrapped in an unqualified <AuthorizeView> because NavMenu also renders for NotFound/Error. *@
         <AuthorizeView>
-            @* Not a plain nav link: it opens the type picker, so the note is only created once a type is chosen. *@
-            <MudMenu FullWidth="true" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft">
-                <ActivatorContent Context="menuContext">
-                    <MudNavLink Icon="@Icons.Material.Outlined.EditNote">New note</MudNavLink>
-                </ActivatorContent>
-                <ChildContent>
-                    <MudMenuItem OnClick="() => CreateNoteAsync(NoteType.Text)">Text note</MudMenuItem>
-                    <MudMenuItem OnClick="() => CreateNoteAsync(NoteType.Checklist)">Checklist</MudMenuItem>
-                </ChildContent>
-            </MudMenu>
+            <MudNavLink Icon="@Icons.Material.Outlined.NoteAdd" OnClick="() => CreateNoteAsync(NoteType.Text)">New text note</MudNavLink>
+            <MudNavLink Icon="@Icons.Material.Outlined.Checklist" OnClick="() => CreateNoteAsync(NoteType.Checklist)">New checklist</MudNavLink>
         </AuthorizeView>
         <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.StickyNote2">Notes</MudNavLink>
         <MudNavLink Href="/settings" Icon="@Icons.Material.Outlined.Settings">Settings</MudNavLink>

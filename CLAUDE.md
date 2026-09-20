@@ -172,16 +172,17 @@ restart regenerates them and silently signs everyone out.
   Clicking toggles a `MudCollapse` (`_accountOpen`) with "My Profile" and "Sign out" (a plain
   `<form method="post" action="/logout">` with a `MudButton ButtonType="Submit"`, never an
   `OnClick`); `/profile` has no top-level nav entry.
-- **Order:** Search, New note, Notes, Settings, Trash. Icons are MudBlazor's built-in
+- **Order:** Search, New text note, New checklist, Notes, Settings, Trash. Icons are MudBlazor's built-in
   `Icons.Material.*` (compiled SVG path strings — no icon font, no network). The vendored UI
   dependencies are Roboto and mermaid, under `wwwroot/lib/`; MudBlazor itself comes from NuGet. The
   search field has a leading search icon and clears itself on every `@onclick` (an unmatched attribute
   on `MudTextField`, which lands on its root element).
-- **"New note" lives here, not in `NoteList.razor`, so it works from any page.** It calls
+- **"New text note" / "New checklist" live here, not in `NoteList.razor`, so they work from any page.** Each calls
   `INoteService.CreateAsync`, then navigates to `/notes/{id}/edit` (a new note has nothing to
-  view). New notes of every type, checklists included, start with an **empty body**. It's a
-  `MudMenu` whose activator is a `MudNavLink`, inside the same `MudNavMenu` as its siblings so it
-  shares their look; the two items are Text note and Checklist. It's wrapped in an unqualified `<AuthorizeView>` (not a manual
+  view). New notes of every type, checklists included, start with an **empty body**. They're two
+  plain `MudNavLink`s with an `OnClick` and no `Href` (MudBlazor only raises `OnClick` when `Href` is
+  unset) rather than one "New note" dropdown — a `MudMenu` inside `MudNavMenu` didn't work in practice, and one
+  click per type is faster anyway. They're wrapped in an unqualified `<AuthorizeView>` (not a manual
   `IsAuthenticated` check) because `NavMenu` also renders for `NotFound`/`Error` (`[AllowAnonymous]`,
   same `MainLayout`), and an anonymous circuit never gets a handler id for markup `AuthorizeView`
   didn't render.
