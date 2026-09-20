@@ -10,34 +10,36 @@
 
 <PageTitle>Set up JNotes</PageTitle>
 
-<div class="mx-auto" style="max-width: 360px; margin-top: 4rem;">
-    <h1 class="h3 mb-2 text-center">Welcome to JNotes</h1>
-    <p class="text-body-secondary text-center mb-4">Create the first admin account to get started.</p>
+<div class="auth-card mud-paper mud-elevation-2">
+    <h1 class="auth-title mud-typography mud-typography-h5">Welcome to JNotes</h1>
+    <p class="auth-subtitle mud-typography mud-typography-body2">Create the first admin account to get started.</p>
 
-    <EditForm Model="Model" FormName="setup" OnValidSubmit="HandleSetupAsync">
+    <EditForm Model="Model" FormName="setup" OnValidSubmit="HandleSetupAsync" class="auth-form">
         <DataAnnotationsValidator />
         @if (_error is not null)
         {
-            <div class="alert alert-danger py-2">@_error</div>
+            <div class="auth-alert auth-alert-error" role="alert">@_error</div>
         }
-        <div class="mb-3">
-            <label class="form-label" for="username">Username</label>
-            <InputText id="username" class="form-control" @bind-Value="Model!.Username" autofocus />
-            <div class="form-text">Lowercase only.</div>
+        <div class="auth-field">
+            <label for="username">Username</label>
+            <InputText id="username" class="auth-input" @bind-Value="Model!.Username" autofocus />
+            <div class="auth-hint">Lowercase only.</div>
         </div>
-        <div class="mb-3">
-            <label class="form-label" for="email">Email</label>
-            <InputText id="email" class="form-control" @bind-Value="Model!.Email" />
+        <div class="auth-field">
+            <label for="email">Email</label>
+            <InputText id="email" class="auth-input" @bind-Value="Model!.Email" />
         </div>
-        <div class="mb-3">
-            <label class="form-label" for="password">Password</label>
-            <InputText id="password" type="password" class="form-control" @bind-Value="Model!.Password" />
+        <div class="auth-field">
+            <label for="password">Password</label>
+            <InputText id="password" type="password" class="auth-input" @bind-Value="Model!.Password" />
         </div>
-        <div class="mb-3">
-            <label class="form-label" for="confirmPassword">Confirm password</label>
-            <InputText id="confirmPassword" type="password" class="form-control" @bind-Value="Model!.ConfirmPassword" />
+        <div class="auth-field">
+            <label for="confirmPassword">Confirm password</label>
+            <InputText id="confirmPassword" type="password" class="auth-input" @bind-Value="Model!.ConfirmPassword" />
         </div>
-        <button type="submit" class="btn btn-primary w-100">Create admin account</button>
+        <button type="submit" class="mud-button-root mud-button mud-button-filled mud-button-filled-primary mud-button-full-width">
+            <span class="mud-button-label">Create admin account</span>
+        </button>
     </EditForm>
 </div>
 

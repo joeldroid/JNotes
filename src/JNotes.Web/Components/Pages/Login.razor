@@ -12,17 +12,17 @@
 
 <PageTitle>Sign in</PageTitle>
 
-<div class="mx-auto" style="max-width: 360px; margin-top: 4rem;">
-    <h1 class="h3 mb-4 text-center">JNotes</h1>
+<div class="auth-card mud-paper mud-elevation-2">
+    <h1 class="auth-title mud-typography mud-typography-h5">JNotes</h1>
 
     @if (Error == "no-account")
     {
-        <div class="alert alert-warning">No account was found for that sign-in. Ask your admin to create one.</div>
+        <div class="auth-alert auth-alert-warning" role="alert">No account was found for that sign-in. Ask your admin to create one.</div>
     }
 
     @if (!_passwordAuthEnabled && !_oidc.IsConfigured)
     {
-        <div class="alert alert-danger">
+        <div class="auth-alert auth-alert-error" role="alert">
             No sign-in method is available — password login is disabled and OIDC isn't configured.
             Contact your administrator.
         </div>
@@ -31,28 +31,31 @@
     {
         @if (_passwordAuthEnabled)
         {
-            <EditForm Model="Model" FormName="login" OnValidSubmit="HandleLoginAsync" class="mb-3">
+            <EditForm Model="Model" FormName="login" OnValidSubmit="HandleLoginAsync" class="auth-form">
                 <DataAnnotationsValidator />
                 @if (_loginError is not null)
                 {
-                    <div class="alert alert-danger py-2">@_loginError</div>
+                    <div class="auth-alert auth-alert-error" role="alert">@_loginError</div>
                 }
-                <div class="mb-3">
-                    <label class="form-label" for="username">Username</label>
-                    <InputText id="username" class="form-control" @bind-Value="Model!.Username" autofocus />
+                <div class="auth-field">
+                    <label for="username">Username</label>
+                    <InputText id="username" class="auth-input" @bind-Value="Model!.Username" autofocus />
                 </div>
-                <div class="mb-3">
-                    <label class="form-label" for="password">Password</label>
-                    <InputText id="password" type="password" class="form-control" @bind-Value="Model!.Password" />
+                <div class="auth-field">
+                    <label for="password">Password</label>
+                    <InputText id="password" type="password" class="auth-input" @bind-Value="Model!.Password" />
                 </div>
-                <button type="submit" class="btn btn-primary w-100">Sign in</button>
+                <button type="submit" class="mud-button-root mud-button mud-button-filled mud-button-filled-primary mud-button-full-width">
+                    <span class="mud-button-label">Sign in</span>
+                </button>
             </EditForm>
         }
 
         @if (_oidc.IsConfigured)
         {
-            <a class="btn btn-outline-secondary w-100" href="@($"/login/oidc?returnUrl={Uri.EscapeDataString(ReturnUrl ?? "/")}")">
-                Sign in with @_oidc.DisplayName
+            <a class="auth-secondary-action mud-button-root mud-button mud-button-outlined mud-button-outlined-default mud-button-full-width"
+               href="@($"/login/oidc?returnUrl={Uri.EscapeDataString(ReturnUrl ?? "/")}")">
+                <span class="mud-button-label">Sign in with @_oidc.DisplayName</span>
             </a>
         }
     }
