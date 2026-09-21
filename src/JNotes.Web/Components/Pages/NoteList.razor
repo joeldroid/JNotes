@@ -3,87 +3,33 @@
 @inject INoteService NoteService
 @inject IAppTimeZoneProvider TimeZoneProvider
 
+@* Thin routed shell: owns the URL (?q=), data loading and the filter values; NoteListView draws
+   the screen. INoteService is deliberately resolved and used only from this page's first lifecycle
+   methods — see CLAUDE.md's ICurrentUserContext gotcha. *@
+
 <PageTitle>Notes</PageTitle>
 
-@if (!string.IsNullOrWhiteSpace(Query))
-{
-    <MudText Color="Color.Secondary" Class="mb-3">
-        Search results for &ldquo;@Query&rdquo; &middot; <MudLink Href="/">Clear</MudLink>
-    </MudText>
-}
-
-<div class="jn-filters">
-    <MudSelect T="string" Label="Type" Variant="Variant.Outlined" Margin="Margin.Dense"
-               Value="_typeFilter" ValueChanged="OnTypeFilterChangedAsync">
-        <MudSelectItem T="string" Value="@AllTypes">All types</MudSelectItem>
-        <MudSelectItem T="string" Value="@("Text")">Text</MudSelectItem>
-        <MudSelectItem T="string" Value="@("Checklist")">Checklist</MudSelectItem>
-    </MudSelect>
-
-    <MudSelect T="string" Label="Tag" Variant="Variant.Outlined" Margin="Margin.Dense"
-               Value="_tagFilter" ValueChanged="OnTagFilterChangedAsync">
-        <MudSelectItem T="string" Value="@AllTags">All tags</MudSelectItem>
-        @foreach (var tag in _availableTags)
-        {
-            <MudSelectItem T="string" Value="@tag">@tag</MudSelectItem>
-        }
-    </MudSelect>
-</div>
-
-@if (_notes is null)
-{
-    <MudText Color="Color.Secondary">Loading…</MudText>
-}
-else if (_notes.Count == 0)
-{
-    <MudText Color="Color.Secondary">
-        @(string.IsNullOrWhiteSpace(Query) ? "No notes yet — create one to get started." : "No notes match your search.")
-    </MudText>
-}
-else
-{
-    <MudExpansionPanels MultiExpansion="true" Elevation="0" Outlined="true" Gutters="false">
-        @foreach (var group in _groups)
-        {
-            var label = group.Label;
-            <MudExpansionPanel @key="label" Expanded="@(!_collapsedGroups.Contains(label))"
-                               ExpandedChanged="@(expanded => SetGroupExpanded(label, expanded))">
-                <TitleContent>
-                    <MudText Typo="Typo.subtitle1" HtmlTag="h2">
-                        @label <span class="jn-group-count">(@group.Notes.Count)</span>
-                    </MudText>
-                </TitleContent>
-                <ChildContent>
-                    <div class="jn-note-list">
-                        @foreach (var note in group.Notes)
-                        {
-                            <NoteListItem Note="note" />
-                        }
-                    </div>
-                </ChildContent>
-            </MudExpansionPanel>
-        }
-    </MudExpansionPanels>
-}
+<NoteListView Query="@Query"
+              Groups="_groups"
+              AvailableTags="_availableTags"
+              TypeFilter="_typeFilter"
+              TagFilter="_tagFilter"
+              TypeFilterChanged="OnTypeFilterChangedAsync"
+              TagFilterChanged="OnTagFilterChangedAsync" />
 
 @code {
     [SupplyParameterFromQuery(Name = "q")]
     public string? Query { get; set; }
 
-    private IReadOnlyList<NoteSummary>? _notes;
-    private IReadOnlyList<NoteGroup> _groups = [];
+    // null until the first load finishes — NoteGroupList shows "Loading…" for null and the empty
+    // message for an empty list. Equivalent to the old "_notes is null / _notes.Count == 0" test:
+    // GroupByRelativeDate drops empty buckets, so it returns an empty list exactly when the note
+    // list was empty.
+    private IReadOnlyList<NoteGroup>? _groups;
     private IReadOnlyList<string> _availableTags = [];
-    // MudSelect can't show a label for an empty-string value, so "no filter" is an explicit sentinel.
-    // AllTags is a comma because a tag can never contain one (tags are split on commas).
-    private const string AllTypes = "all";
-    private const string AllTags = ",";
 
-    private string _typeFilter = AllTypes;
-    private string _tagFilter = AllTags;
-
-    // Groups the user collapsed. Tracked here (not left to the panel) because the panel's Expanded
-    // parameter would otherwise snap back to open on every re-render, e.g. when a filter changes.
-    private readonly HashSet<string> _collapsedGroups = [];
+    private string _typeFilter = NoteListView.AllTypes;
+    private string _tagFilter = NoteListView.AllTags;
 
     protected override async Task OnInitializedAsync()
     {
@@ -104,36 +50,24 @@ else
         var type = Enum.TryParse<NoteType>(_typeFilter, out var parsed) ? parsed : (NoteType?)null;
         var query = new NoteSearchQuery(
             SearchText: string.IsNullOrWhiteSpace(Query) ? null : Query,
-            Tag: _tagFilter == AllTags ? null : _tagFilter,
+            Tag: _tagFilter == NoteListView.AllTags ? null : _tagFilter,
             Type: type);
 
         // ListAsync already orders by UpdatedAt descending (EfNoteIndexRepository.SearchAsync) —
         // grouping never re-sorts, so that order carries straight through into each bucket.
-        _notes = await NoteService.ListAsync(query);
-        _groups = NoteGrouping.GroupByRelativeDate(_notes, DateTimeOffset.UtcNow, TimeZoneProvider.TimeZone);
+        var notes = await NoteService.ListAsync(query);
+        _groups = NoteGrouping.GroupByRelativeDate(notes, DateTimeOffset.UtcNow, TimeZoneProvider.TimeZone);
     }
 
     private async Task OnTypeFilterChangedAsync(string? value)
     {
-        _typeFilter = value ?? AllTypes;
+        _typeFilter = value ?? NoteListView.AllTypes;
         await RefreshAsync();
     }
 
     private async Task OnTagFilterChangedAsync(string? value)
     {
-        _tagFilter = value ?? AllTags;
+        _tagFilter = value ?? NoteListView.AllTags;
         await RefreshAsync();
-    }
-
-    private void SetGroupExpanded(string label, bool expanded)
-    {
-        if (expanded)
-        {
-            _collapsedGroups.Remove(label);
-        }
-        else
-        {
-            _collapsedGroups.Add(label);
-        }
     }
 }

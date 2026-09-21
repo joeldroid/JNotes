@@ -1,0 +1,66 @@
+@* The relative-date sections of the notes list (Today/Yesterday/This week/…), as multi-expand
+   MudExpansionPanels. Purely presentational: it renders the NoteGroups it's handed — grouping
+   itself is NoteGrouping.GroupByRelativeDate in Core, called by the page that loads the notes.
+   It also owns its own loading/empty placeholders on purpose: being rendered unconditionally by
+   its parent is what keeps this instance (and _collapsedGroups with it) alive when a filter
+   matches nothing. *@
+
+@if (Groups is null)
+{
+    <MudText Color="Color.Secondary">Loading…</MudText>
+}
+else if (Groups.Count == 0)
+{
+    <MudText Color="Color.Secondary">
+        @EmptyText
+    </MudText>
+}
+else
+{
+    <MudExpansionPanels MultiExpansion="true" Elevation="0" Outlined="true" Gutters="false">
+        @foreach (var group in Groups)
+        {
+            var label = group.Label;
+            <MudExpansionPanel @key="label" Expanded="@(!_collapsedGroups.Contains(label))"
+                               ExpandedChanged="@(expanded => SetGroupExpanded(label, expanded))">
+                <TitleContent>
+                    <MudText Typo="Typo.subtitle1" HtmlTag="h2">
+                        @label <span class="jn-group-count">(@group.Notes.Count)</span>
+                    </MudText>
+                </TitleContent>
+                <ChildContent>
+                    <div class="jn-note-list">
+                        @foreach (var note in group.Notes)
+                        {
+                            <NoteListItem Note="note" />
+                        }
+                    </div>
+                </ChildContent>
+            </MudExpansionPanel>
+        }
+    </MudExpansionPanels>
+}
+
+@code {
+    /// <summary>The sections to render, already ordered. <c>null</c> means "still loading"; empty means "no notes matched".</summary>
+    [Parameter] public IReadOnlyList<NoteGroup>? Groups { get; set; }
+
+    /// <summary>Shown when <see cref="Groups"/> is empty — the caller phrases it (search vs. no notes at all).</summary>
+    [Parameter] public string EmptyText { get; set; } = "No notes.";
+
+    // Groups the user collapsed. Tracked here (not left to the panel) because the panel's Expanded
+    // parameter would otherwise snap back to open on every re-render, e.g. when a filter changes.
+    private readonly HashSet<string> _collapsedGroups = [];
+
+    private void SetGroupExpanded(string label, bool expanded)
+    {
+        if (expanded)
+        {
+            _collapsedGroups.Remove(label);
+        }
+        else
+        {
+            _collapsedGroups.Add(label);
+        }
+    }
+}

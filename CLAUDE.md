@@ -192,8 +192,10 @@ restart regenerates them and silently signs everyone out.
   `[SupplyParameterFromQuery(Name = "q")]` and refreshes from `OnParametersSetAsync`, not
   `OnInitializedAsync` — the page instance is reused across searches, only the query string
   changes (same reason `NoteEditor.razor` reacts to its `Id` parameter). Routing through the URL is
-  what makes search work from any page. `NoteList.razor` keeps its own page-local Type/Tag filters
-  and shows "Search results for … · Clear" when `Query` is set.
+  what makes search work from any page. `NoteList.razor` is a thin routed page: it holds `Query`, the
+  page-local Type/Tag filter values and every `INoteService` call, and hands the result to
+  `NoteListView` (`Components/Notes/`), which renders the filters, the "Search results for … · Clear"
+  line shown when `Query` is set, and the list (see "The default notes view" under "Notes UI").
 
 ## Storage and indexing
 
@@ -266,14 +268,27 @@ client-side rather than SQL `LIKE`.
 **The default notes view groups by relative date.** `NoteGrouping.GroupByRelativeDate` buckets an
 already-`UpdatedAt`-descending list into Today/Yesterday/This week/Last week/This month/Previous,
 skipping empty buckets and never re-sorting. It's pure static with no clock/timezone reads —
-`NoteList.razor` passes `DateTimeOffset.UtcNow` and `IAppTimeZoneProvider.TimeZone`, and both "now"
-and each `UpdatedAt` are converted to that zone first (comparing raw UTC dates would misbucket).
-Boundaries are checked in strict priority order (today → … → previous), not as independent ranges,
-because `monthStart` can fall *after* `lastWeekStart` early in a month. Sections collapse with
-`MudExpansionPanels` (multi-expand). Which groups the user collapsed is kept in `_collapsedGroups`, not
-left to the panel, because the panel's `Expanded` parameter would snap back to open on every re-render
-(e.g. when a filter changes). The Type/Tag filters are `MudSelect`s; "no filter" is an explicit sentinel
-value because `MudSelect` can't label an empty-string value.
+`NoteList.razor` calls it from `RefreshAsync`, passing `DateTimeOffset.UtcNow` and
+`IAppTimeZoneProvider.TimeZone`, and both "now" and each `UpdatedAt` are converted to that zone first
+(comparing raw UTC dates would misbucket). Boundaries are checked in strict priority order
+(today → … → previous), not as independent ranges, because `monthStart` can fall *after*
+`lastWeekStart` early in a month.
+
+**The notes screen is split across three files, and the split is deliberate.**
+- `Pages/NoteList.razor` (`/`) owns the URL, the `Query`, the filter values and all `INoteService`
+  calls. `_groups` is `null` until the first load finishes, an empty list when nothing matched (safe as
+  the "empty" signal only because `GroupByRelativeDate` drops empty buckets). The components below inject
+  nothing — `INoteService` has to stay resolved from a routed page's first lifecycle method (see the
+  `ICurrentUserContext` gotcha), and `[SupplyParameterFromQuery]` only works on a routable component.
+- `Components/Notes/NoteListView.razor` renders the search header, the Type/Tag `MudSelect`s and the list.
+  "No filter" is an explicit sentinel (`AllTypes`/`AllTags`, `public const` here and read back by the
+  page) because `MudSelect` can't label an empty-string value.
+- `Components/Notes/NoteGroupList.razor` renders the sections with `MudExpansionPanels` (multi-expand)
+  and its own Loading…/empty placeholders, and owns `_collapsedGroups`. That set is kept here, not left
+  to the panel, because the panel's `Expanded` parameter would snap back to open on every re-render
+  (e.g. when a filter changes). `NoteListView` renders it **unconditionally** — never wrap it in an
+  `@if`: the placeholders live inside it precisely so a filter that matches nothing doesn't destroy the
+  instance (a component survives its own internal branches, not a parent's) and take the set with it.
 
 **`ChecklistNoteEditor` and `TextNoteEditor` deliberately share one layout.** A hide/show button on
 top, then a `.jn-editor-split` CSS grid (one column, two from 960px when the right pane is shown — a
