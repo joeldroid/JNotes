@@ -172,7 +172,8 @@ restart regenerates them and silently signs everyone out.
   Clicking toggles a `MudCollapse` (`_accountOpen`) with "My Profile" and "Sign out" (a plain
   `<form method="post" action="/logout">` with a `MudButton ButtonType="Submit"`, never an
   `OnClick`); `/profile` has no top-level nav entry.
-- **Order:** Search, New text note, New checklist, Notes, Settings, Trash. Icons are MudBlazor's built-in
+- **Order:** Search, Notes, divider, New text note, New checklist, divider, Settings, Trash (the dividers are
+  `MudDivider`s inside the same `AuthorizeView` as the New-note links). Icons are MudBlazor's built-in
   `Icons.Material.*` (compiled SVG path strings — no icon font, no network). The vendored UI
   dependencies are Roboto and mermaid, under `wwwroot/lib/`; MudBlazor itself comes from NuGet. The
   search field has a leading search icon and clears itself on every `@onclick` (an unmatched attribute

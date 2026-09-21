@@ -16,14 +16,17 @@
     </AuthorizeView>
 
     <MudNavMenu Class="jn-nav-list">
+        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.StickyNote2">Notes</MudNavLink>
         @* One entry per note type (rather than a "New note" dropdown): each opens the editor on an unsaved
            draft (nothing is created until Save). Wrapped in an unqualified <AuthorizeView> because NavMenu
-           also renders for NotFound/Error. *@
+           also renders for NotFound/Error; the dividers live inside it so an anonymous visitor doesn't get
+           two separators around nothing. *@
         <AuthorizeView>
+            <MudDivider Class="my-2" />
             <MudNavLink Icon="@Icons.Material.Outlined.NoteAdd" OnClick="() => NewNote(NoteType.Text)">New text note</MudNavLink>
             <MudNavLink Icon="@Icons.Material.Outlined.Checklist" OnClick="() => NewNote(NoteType.Checklist)">New checklist</MudNavLink>
+            <MudDivider Class="my-2" />
         </AuthorizeView>
-        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.StickyNote2">Notes</MudNavLink>
         <MudNavLink Href="/settings" Icon="@Icons.Material.Outlined.Settings">Settings</MudNavLink>
         <MudNavLink Href="/trash" Icon="@Icons.Material.Outlined.DeleteOutline">Trash</MudNavLink>
     </MudNavMenu>
