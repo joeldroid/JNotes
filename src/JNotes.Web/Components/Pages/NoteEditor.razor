@@ -29,9 +29,10 @@ else
         </div>
         <div class="jn-editor-actions">
             <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
-                <MudButton Href="@($"/notes/{_note.Id}")" Variant="Variant.Outlined">Done</MudButton>
-                <MudIconButton Icon="@Icons.Material.Outlined.DeleteOutline" Color="Color.Error" Variant="Variant.Outlined"
-                               title="Move to Trash" aria-label="Move to Trash" OnClick="TrashAsync" />
+                <MudButton Href="@($"/notes/{_note.Id}")" Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Save">Save</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" title="Move to Trash"
+                           StartIcon="@Icons.Material.Outlined.DeleteOutline" OnClick="TrashAsync">Delete</MudButton>
             </MudStack>
             <MudText Typo="Typo.caption" Color="Color.Secondary">@SaveStatusText</MudText>
             @if (_saveError is not null)

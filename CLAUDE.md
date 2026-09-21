@@ -235,7 +235,7 @@ restart regenerates them and silently signs everyone out.
 never edits free-form body text, but for checklists it can **toggle items, add items, and add
 categories** via `INoteService.SetChecklistItemCheckedAsync`/`AddChecklistItemAsync`/
 `AddChecklistCategoryAsync`. A single `_isMutating` flag (passed to the panel as `Disabled`, which
-disables every control while a call is in flight) stands in for the editor's save gate. `NoteEditor.razor` is at `/notes/{id}/edit` with a "Done" link back.
+disables every control while a call is in flight) stands in for the editor's save gate. `NoteEditor.razor` is at `/notes/{id}/edit` with a "Save" link back (autosave has already written everything; the button just returns to the view) and a "Delete" button — the same filled-primary/outlined-error icon+text pair as the view's Edit/Delete.
 The view's whole content (header, meta, body) sits in a centered `.note-view` column capped by
 `--note-view-max-width` (56rem, `note-view.css`); the editor's two-pane split deliberately stays full width.
 
