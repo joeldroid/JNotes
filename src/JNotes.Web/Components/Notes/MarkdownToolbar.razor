@@ -18,13 +18,13 @@
     @* MudFileUpload wraps the same InputFile the toolbar used before, so the picked file is still an
        IBrowserFile read over the circuit — no upload route. It draws no UI of its own here: the button
        below just opens its picker. *@
-    <MudFileUpload T="IBrowserFile" @ref="_upload" Accept="image/png,image/jpeg,image/gif,image/webp"
+    <MudFileUpload T="IBrowserFile" Accept="image/png,image/jpeg,image/gif,image/webp"
                    OnFilesChanged="OnImageChosenAsync" Disabled="ImageBusy">
         <CustomContent Context="upload">
             <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default" Disabled="ImageBusy"
                        StartIcon="@Icons.Material.Filled.Image"
                        title="Insert an image (you can also paste one into the note)"
-                       OnClick="() => upload.OpenFilePickerAsync()">
+                       OnClick="() => OpenPickerAsync(upload)">
                 @(ImageBusy ? "Uploading…" : "Image")
             </MudButton>
         </CustomContent>
@@ -81,7 +81,16 @@
     [Parameter] public bool ImageBusy { get; set; }
 
     private IJSObjectReference? _module;
+    // Captured from CustomContent's context when the button is clicked (the picker only opens from
+    // there, so it's always set before OnFilesChanged fires). Not `@ref`: Rider misreads `@ref` on a
+    // component as an ElementReference and flags a false error, though the compiler is fine with it.
     private MudFileUpload<IBrowserFile>? _upload;
+
+    private async Task OpenPickerAsync(MudFileUpload<IBrowserFile> upload)
+    {
+        _upload = upload;
+        await upload.OpenFilePickerAsync();
+    }
 
     private async Task OnImageChosenAsync(InputFileChangeEventArgs e)
     {
