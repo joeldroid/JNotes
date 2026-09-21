@@ -1,11 +1,13 @@
 @page "/notes/{Id:guid}/edit"
+@page "/notes/new/{TypeName}"
 @attribute [Authorize]
 @implements IAsyncDisposable
 @inject INoteService NoteService
 @inject NavigationManager NavigationManager
 @inject IAppTimeZoneProvider TimeZoneProvider
+@inject IDialogService DialogService
 
-<PageTitle>@(_note?.Title is { Length: > 0 } title ? title : "Note")</PageTitle>
+<PageTitle>@(_note?.Title is { Length: > 0 } title ? title : IsNew ? "New note" : "Note")</PageTitle>
 
 @if (_notFound)
 {
@@ -18,21 +20,37 @@ else if (_note is null)
 }
 else
 {
+    @if (IsNew)
+    {
+        @* A new note is an in-memory draft until Save, so leaving the page is the only way to lose it. *@
+        <NavigationLock OnBeforeInternalNavigation="ConfirmLeaveAsync" ConfirmExternalNavigation="HasDraftContent" />
+    }
+
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Wrap="Wrap.Wrap" Spacing="2" Class="mb-3">
         <div class="jn-title-block jn-editor-fields">
             <MudTextField @bind-Value="_note.Title" @bind-Value:after="OnMetadataEdited" Immediate="true"
                           Placeholder="Untitled note" aria-label="Title" Variant="Variant.Outlined" Margin="Margin.Dense"
-                          Typo="Typo.h6" />
+                          Typo="Typo.h6" Error="@(_titleError is not null)" ErrorText="@_titleError" />
             <MudTextField @bind-Value="_tagsText" @bind-Value:after="OnMetadataEdited" Immediate="true"
                           Placeholder="tags, comma, separated" aria-label="Tags" Variant="Variant.Outlined" Margin="Margin.Dense"
                           Class="mt-2" />
         </div>
         <div class="jn-editor-actions">
             <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
-                <MudButton Href="@($"/notes/{_note.Id}")" Variant="Variant.Filled" Color="Color.Primary"
-                           StartIcon="@Icons.Material.Filled.Save">Save</MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Error" title="Move to Trash"
-                           StartIcon="@Icons.Material.Outlined.DeleteOutline" OnClick="TrashAsync">Delete</MudButton>
+                @if (IsNew)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_isSaving"
+                               StartIcon="@Icons.Material.Filled.Save" OnClick="SaveNewAsync">Save</MudButton>
+                    <MudButton Href="/" Variant="Variant.Outlined" Color="Color.Error" title="Discard this new note"
+                               StartIcon="@Icons.Material.Outlined.Close">Discard</MudButton>
+                }
+                else
+                {
+                    <MudButton Href="@($"/notes/{_note.Id}")" Variant="Variant.Filled" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Save">Save</MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" title="Move to Trash"
+                               StartIcon="@Icons.Material.Outlined.DeleteOutline" OnClick="TrashAsync">Delete</MudButton>
+                }
             </MudStack>
             <MudText Typo="Typo.caption" Color="Color.Secondary">@SaveStatusText</MudText>
             @if (_saveError is not null)
@@ -42,7 +60,10 @@ else
         </div>
     </MudStack>
 
-    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-3">Last updated @TimeZoneProvider.ToAppTimeZone(_note.UpdatedAt).DateTime.ToString("g")</MudText>
+    @if (!IsNew)
+    {
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-3">Last updated @TimeZoneProvider.ToAppTimeZone(_note.UpdatedAt).DateTime.ToString("g")</MudText>
+    }
 
     @if (_note.Type == NoteType.Checklist)
     {
@@ -60,11 +81,17 @@ else
 
     [Parameter] public Guid Id { get; set; }
 
+    // Set only by the /notes/new/{TypeName} route: the note doesn't exist yet, so the page holds an
+    // in-memory draft that is never autosaved — Save creates it.
+    [Parameter] public string? TypeName { get; set; }
+
     private Note? _note;
     private bool _notFound;
     private bool _isSaving;
     private bool _hasUnsavedChanges;
+    private bool _draftSaved;
     private string? _saveError;
+    private string? _titleError;
     private string _tagsText = "";
 
     // Content and metadata autosave debounce independently (typing in the body shouldn't wait on
@@ -80,12 +107,44 @@ else
         _metadataDebouncer = new AutosaveDebouncer(MetadataDebounceDelay, () => SaveNowAsync(NoteSaveScope.Metadata));
     }
 
-    private string SaveStatusText =>
-        _isSaving ? "Saving…" : _hasUnsavedChanges ? "Unsaved changes" : "All changes saved";
+    private bool IsNew => TypeName is not null;
+
+    // Only a draft with something in it is worth a "discard?" prompt; an untouched empty one isn't.
+    private bool HasDraftContent =>
+        IsNew && !_draftSaved && _note is not null
+        && (!string.IsNullOrWhiteSpace(_note.Title)
+            || !string.IsNullOrWhiteSpace(_tagsText)
+            || !string.IsNullOrWhiteSpace(_note.Body));
+
+    private string SaveStatusText => IsNew
+        ? _isSaving ? "Saving…" : "Not saved yet"
+        : _isSaving ? "Saving…" : _hasUnsavedChanges ? "Unsaved changes" : "All changes saved";
 
     protected override async Task OnParametersSetAsync()
     {
         _notFound = false;
+        _saveError = null;
+        _titleError = null;
+
+        if (IsNew)
+        {
+            // Built here rather than in OnInitializedAsync: /notes/new/text -> /notes/new/checklist
+            // reuses this instance and only the parameters change.
+            if (!Enum.TryParse<NoteType>(TypeName, ignoreCase: true, out var type) || !Enum.IsDefined(type))
+            {
+                _note = null;
+                _notFound = true;
+                return;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            _note = new Note { Id = Guid.Empty, Title = "", Type = type, Tags = [], CreatedAt = now, UpdatedAt = now, Body = "" };
+            _tagsText = "";
+            _hasUnsavedChanges = false;
+            _draftSaved = false;
+            return;
+        }
+
         try
         {
             _note = await NoteService.GetAsync(Id);
@@ -101,7 +160,10 @@ else
     private void OnContentEdited()
     {
         _hasUnsavedChanges = true;
-        _contentDebouncer.Trigger();
+        if (!IsNew)
+        {
+            _contentDebouncer.Trigger();
+        }
     }
 
     private void OnMetadataEdited()
@@ -110,16 +172,24 @@ else
         // content-only autosave firing while a tag edit is mid-debounce still writes *some*
         // current snapshot of Tags to the file (the file format has no partial write), so it
         // should be the freshest one, not whatever was last actually saved.
-        _note!.Tags = _tagsText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        _note!.Tags = ParseTags();
         _hasUnsavedChanges = true;
-        _metadataDebouncer.Trigger();
+        _titleError = null;
+        if (!IsNew)
+        {
+            _metadataDebouncer.Trigger();
+        }
     }
 
+    private string[] ParseTags() =>
+        _tagsText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
     /// <summary>
-    /// The single path every save — a debounced autosave of either scope — goes through, so the
+    /// The single path every autosave of an existing note — either scope — goes through, so the
     /// in-flight/error/dirty status shown in the UI is always accurate regardless of which timer
     /// fired. Safe to call from a debounce's background continuation: <c>InvokeAsync</c> is a
-    /// no-op wrapper when already on the right synchronization context.
+    /// no-op wrapper when already on the right synchronization context. Never reached for a new
+    /// note: its debouncers are never triggered.
     /// </summary>
     private async Task SaveNowAsync(NoteSaveScope scope)
     {
@@ -153,6 +223,65 @@ else
         await InvokeAsync(StateHasChanged);
     }
 
+    /// <summary>
+    /// The only place a new note is written. An empty (or whitespace) title is refused so nobody
+    /// ends up with an accidental untitled note; on success the draft becomes a real note and the
+    /// page hands over to its read-only view.
+    /// </summary>
+    private async Task SaveNewAsync()
+    {
+        if (_note is null || _isSaving)
+        {
+            return;
+        }
+
+        var title = _note.Title?.Trim() ?? "";
+        if (title.Length == 0)
+        {
+            _titleError = "Give the note a title before saving.";
+            return;
+        }
+
+        _isSaving = true;
+        _saveError = null;
+        try
+        {
+            var created = await NoteService.CreateAsync(_note.Type, title, ParseTags(), _note.Body);
+
+            // Cleared before navigating so the leave-guard doesn't block Save's own navigation.
+            _draftSaved = true;
+            _hasUnsavedChanges = false;
+            NavigationManager.NavigateTo($"/notes/{created.Id}");
+        }
+        catch (Exception ex)
+        {
+            _saveError = $"Couldn't save note: {ex.Message}";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task ConfirmLeaveAsync(LocationChangingContext context)
+    {
+        if (!HasDraftContent)
+        {
+            return;
+        }
+
+        // true = "Discard"; anything else (Keep editing, Esc, backdrop click) stays on the draft.
+        var discard = await DialogService.ShowMessageBoxAsync(
+            "Discard this new note?",
+            "It hasn't been saved.",
+            yesText: "Discard",
+            cancelText: "Keep editing");
+        if (discard != true)
+        {
+            context.PreventNavigation();
+        }
+    }
+
     private async Task TrashAsync()
     {
         if (_note is null)
@@ -183,7 +312,8 @@ else
         _contentDebouncer.Dispose();
         _metadataDebouncer.Dispose();
 
-        if (_hasUnsavedChanges && _note is not null)
+        // A new note is a draft: leaving without Save must not create it, so there's nothing to flush.
+        if (!IsNew && _hasUnsavedChanges && _note is not null)
         {
             // Best-effort final flush so navigating away right after typing doesn't lose the last
             // stretch of edits — always the full scope, so the index isn't left stale either.

@@ -177,9 +177,9 @@ restart regenerates them and silently signs everyone out.
   dependencies are Roboto and mermaid, under `wwwroot/lib/`; MudBlazor itself comes from NuGet. The
   search field has a leading search icon and clears itself on every `@onclick` (an unmatched attribute
   on `MudTextField`, which lands on its root element).
-- **"New text note" / "New checklist" live here, not in `NoteList.razor`, so they work from any page.** Each calls
-  `INoteService.CreateAsync`, then navigates to `/notes/{id}/edit` (a new note has nothing to
-  view). New notes of every type, checklists included, start with an **empty body**. They're two
+- **"New text note" / "New checklist" live here, not in `NoteList.razor`, so they work from any page.** Each only
+  navigates to `/notes/new/{text|checklist}` — **nothing is created until Save** (see `NoteEditor`'s new-note
+  mode under "Notes UI"). New notes of every type start with an **empty title, tags, and body**. They're two
   plain `MudNavLink`s with an `OnClick` and no `Href` (MudBlazor only raises `OnClick` when `Href` is
   unset) rather than one "New note" dropdown — a `MudMenu` inside `MudNavMenu` didn't work in practice, and one
   click per type is faster anyway. They're wrapped in an unqualified `<AuthorizeView>` (not a manual
@@ -236,10 +236,11 @@ never edits free-form body text, but for checklists it can **toggle items, add i
 categories** via `INoteService.SetChecklistItemCheckedAsync`/`AddChecklistItemAsync`/
 `AddChecklistCategoryAsync`. A single `_isMutating` flag (passed to the panel as `Disabled`, which
 disables every control while a call is in flight) stands in for the editor's save gate. `NoteEditor.razor` is at `/notes/{id}/edit` with a "Save" link back (autosave has already written everything; the button just returns to the view) and a "Delete" button — the same filled-primary/outlined-error icon+text pair as the view's Edit/Delete.
+**The same page also serves `/notes/new/{TypeName}` as an unsaved draft** (`IsNew` = `TypeName is not null`): an in-memory `Note` with `Id = Guid.Empty`, built in `OnParametersSetAsync` (the component is reused when switching text ↔ checklist). **No autosave** — `OnContentEdited`/`OnMetadataEdited` skip the debouncers and `DisposeAsync` skips its flush, since either would create the note. **Save** (`SaveNewAsync`) refuses an empty/whitespace title with an inline error, else calls `INoteService.CreateAsync` and navigates to the view; Delete becomes **Discard** (a link to `/`, nothing on disk to trash). A `NavigationLock` confirms before dropping a draft that has content (`_draftSaved` is set before Save's own navigation so it doesn't block itself). An image pasted into a draft is uploaded immediately, so a discarded draft can leave an orphan for the scheduled cleanup.
 The view's whole content (header, meta, body) sits in a centered `.note-view` column capped by
 `--note-view-max-width` (56rem, `note-view.css`); the editor's two-pane split deliberately stays full width.
 
-**Autosave has two scopes, and the cheaper one is deliberately incomplete.**
+**Autosave (existing notes only) has two scopes, and the cheaper one is deliberately incomplete.**
 `NoteService.AutosaveAsync(note, NoteSaveScope)` is what the editor's debounced autosave,
 checklist changes, and `UpdateAsync` funnel through — there's no Save button.
 - `ContentOnly` (body edits, checklist toggles/adds) writes only the file, never the index. It's the

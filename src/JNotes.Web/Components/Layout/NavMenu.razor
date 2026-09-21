@@ -1,7 +1,6 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IUserRepository UserRepository
 @inject ICurrentUserContext CurrentUser
-@inject INoteService NoteService
 @inject NavigationManager NavigationManager
 
 <div class="jn-nav">
@@ -17,11 +16,12 @@
     </AuthorizeView>
 
     <MudNavMenu Class="jn-nav-list">
-        @* One entry per note type (rather than a "New note" dropdown): each creates the note straight away.
-           Wrapped in an unqualified <AuthorizeView> because NavMenu also renders for NotFound/Error. *@
+        @* One entry per note type (rather than a "New note" dropdown): each opens the editor on an unsaved
+           draft (nothing is created until Save). Wrapped in an unqualified <AuthorizeView> because NavMenu
+           also renders for NotFound/Error. *@
         <AuthorizeView>
-            <MudNavLink Icon="@Icons.Material.Outlined.NoteAdd" OnClick="() => CreateNoteAsync(NoteType.Text)">New text note</MudNavLink>
-            <MudNavLink Icon="@Icons.Material.Outlined.Checklist" OnClick="() => CreateNoteAsync(NoteType.Checklist)">New checklist</MudNavLink>
+            <MudNavLink Icon="@Icons.Material.Outlined.NoteAdd" OnClick="() => NewNote(NoteType.Text)">New text note</MudNavLink>
+            <MudNavLink Icon="@Icons.Material.Outlined.Checklist" OnClick="() => NewNote(NoteType.Checklist)">New checklist</MudNavLink>
         </AuthorizeView>
         <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.StickyNote2">Notes</MudNavLink>
         <MudNavLink Href="/settings" Icon="@Icons.Material.Outlined.Settings">Settings</MudNavLink>
@@ -75,14 +75,10 @@
         }
     }
 
-    private async Task CreateNoteAsync(NoteType type)
-    {
-        // Checklist items are added from the UI now, so a seeded "- [ ] " would just render as a
-        // stray empty checkbox row.
-        var defaultBody = "";
-        var note = await NoteService.CreateAsync(type, "Untitled note", [], defaultBody);
-        NavigationManager.NavigateTo($"/notes/{note.Id}/edit");
-    }
+    // Only navigates: NoteEditor's /notes/new/{type} route holds the note as an in-memory draft and
+    // creates it when the user clicks Save.
+    private void NewNote(NoteType type) =>
+        NavigationManager.NavigateTo($"/notes/new/{type.ToString().ToLowerInvariant()}");
 
     private void OnSearchChanged(string? value) => _searchText = value ?? "";
 
