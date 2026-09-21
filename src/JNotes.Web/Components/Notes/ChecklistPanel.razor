@@ -58,7 +58,7 @@
                     }
                 </MudSelect>
             }
-            <MudTextField @ref="_newItemInput" T="string" Value="_newItemText" ValueChanged="OnNewItemInput" Immediate="true"
+            <MudTextField T="string" @ref="_newItemInput" Value="_newItemText" ValueChanged="OnNewItemInput" Immediate="true"
                           Placeholder="Add an item" aria-label="Add a checklist item" Variant="Variant.Outlined" Margin="Margin.Dense"
                           Disabled="Disabled" OnKeyDown="OnNewItemKeyDownAsync" Class="jn-add-input" />
             <MudButton Variant="Variant.Outlined" Color="Color.Primary"
