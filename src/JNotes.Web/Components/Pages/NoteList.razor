@@ -12,8 +12,8 @@
 <NoteListView Query="@Query"
               Groups="_groups"
               AvailableTags="_availableTags"
-              TypeFilter="_typeFilter"
-              TagFilter="_tagFilter"
+              TypeFilter="@_typeFilter"
+              TagFilter="@_tagFilter"
               TypeFilterChanged="OnTypeFilterChangedAsync"
               TagFilterChanged="OnTagFilterChangedAsync" />
 

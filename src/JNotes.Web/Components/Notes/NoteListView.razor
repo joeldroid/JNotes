@@ -12,14 +12,14 @@
 
 <div class="jn-filters">
     <MudSelect T="string" Label="Type" Variant="Variant.Outlined" Margin="Margin.Dense"
-               Value="TypeFilter" ValueChanged="@(value => TypeFilterChanged.InvokeAsync(value))">
+               Value="@TypeFilter" ValueChanged="@(value => TypeFilterChanged.InvokeAsync(value))">
         <MudSelectItem T="string" Value="@AllTypes">All types</MudSelectItem>
         <MudSelectItem T="string" Value="@("Text")">Text</MudSelectItem>
         <MudSelectItem T="string" Value="@("Checklist")">Checklist</MudSelectItem>
     </MudSelect>
 
     <MudSelect T="string" Label="Tag" Variant="Variant.Outlined" Margin="Margin.Dense"
-               Value="TagFilter" ValueChanged="@(value => TagFilterChanged.InvokeAsync(value))">
+               Value="@TagFilter" ValueChanged="@(value => TagFilterChanged.InvokeAsync(value))">
         <MudSelectItem T="string" Value="@AllTags">All tags</MudSelectItem>
         @foreach (var tag in AvailableTags)
         {
