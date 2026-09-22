@@ -6,7 +6,7 @@ namespace JNotes.Core.Indexing;
 /// Parses/clamps the "AUTO_INDEX_INTERVAL_MINUTES" env var into a value safe to feed a
 /// <see cref="PeriodicTimer"/> — a plain static class, no DI, same shape as
 /// <see cref="Users.UserValidation"/>/<c>NoteGrouping</c>/<c>UserInitials</c>, so the config
-/// semantics are unit-testable without a host, a timer, or Redis.
+/// semantics are unit-testable without a host, a timer, or a database.
 /// </summary>
 public static class AutoIndexInterval
 {

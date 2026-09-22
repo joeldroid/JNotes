@@ -4,7 +4,9 @@ namespace JNotes.Core.Indexing;
 /// The indexed metadata for one note — mirrors the note file for fast listing/search. The
 /// markdown file is still the source of truth: this is a derived cache kept in sync by
 /// <c>NoteService</c> (on write) and <c>INoteIndexReconciler</c> (reconciling against the
-/// filesystem), never edited from anywhere else.
+/// filesystem), never edited from anywhere else. Also the EF entity behind the
+/// <c>NoteIndexEntries</c> table; its tags live in the child <c>NoteIndexTags</c> table (see
+/// <see cref="JNotes.Core.Data.NoteIndexTag"/>) rather than on this class.
 /// </summary>
 public sealed class NoteIndexEntry
 {

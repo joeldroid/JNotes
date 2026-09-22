@@ -3,32 +3,56 @@ using JNotes.Core.Indexing;
 using JNotes.Core.Users;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace JNotes.Core;
 
 /// <summary>Startup-time operations run once by <c>JNotes.Web</c>'s <c>Program.cs</c> after building the host.</summary>
 public static class HostExtensions
 {
+    private const int MaxDatabaseConnectAttempts = 10;
+    private static readonly TimeSpan DatabaseConnectRetryDelay = TimeSpan.FromSeconds(2);
+
     /// <summary>
-    /// Applies pending EF Core migrations. Uses <c>Database.MigrateAsync()</c> rather than
-    /// <c>EnsureCreated()</c> so the schema can evolve later against users' existing databases —
-    /// safe here because this runs as a single-instance container with no multi-replica migration
-    /// race to worry about. Also switches the database to WAL journal mode (see below).
+    /// Waits (briefly, boundedly) for PostgreSQL to accept connections, then applies pending EF Core
+    /// migrations. Uses Database.MigrateAsync() rather than EnsureCreated() so the schema can evolve
+    /// against users' existing databases — safe here because this runs as a single-instance container
+    /// with no multi-replica migration race.
+    /// The wait exists because EF Core connects lazily: a well-formed but unreachable
+    /// POSTGRES_CONNECTION_STRING would otherwise surface much later, and a cold `docker compose up`
+    /// can reach this line while Postgres is still running initdb. docker-compose.yml also gates the
+    /// app on a Postgres healthcheck; this covers `dotnet run` against a just-started container.
+    /// A blank connection string is NOT retried — CreateDbContextAsync throws straight out of the
+    /// options delegate (see ServiceCollectionExtensions.AddJNotesCore).
     /// </summary>
     public static async Task MigrateJNotesDatabaseAsync(this IServiceProvider services)
     {
+        // GetService, not GetRequiredService: some test providers build AddJNotesCore without a
+        // logging provider registered.
+        var logger = services.GetService<ILoggerFactory>()?.CreateLogger("JNotes.Core.HostExtensions");
         var dbContextFactory = services.GetRequiredService<IDbContextFactory<JNotesDbContext>>();
-        await using var db = await dbContextFactory.CreateDbContextAsync();
-        await db.Database.MigrateAsync();
 
-        // WAL mode: readers (note list, search) never block on a writer (autosave) and vice versa
-        // — SQLite's default rollback-journal mode takes an exclusive lock on the whole file for
-        // every write. This is persisted in the database file itself (sticky across restarts, not
-        // per-connection), so running it here is really only doing work once — cheap and
-        // self-healing to run on every startup regardless (e.g. if the file was ever replaced by a
-        // plain-mode backup). Two extra files appear alongside the .db file (`-wal`, `-shm`) —
-        // anything that backs up jnotes.db needs to account for them (see README).
-        await db.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
+        for (var attempt = 1; ; attempt++)
+        {
+            await using var db = await dbContextFactory.CreateDbContextAsync();
+
+            if (await db.Database.CanConnectAsync())
+            {
+                await db.Database.MigrateAsync();
+                return;
+            }
+
+            if (attempt >= MaxDatabaseConnectAttempts)
+            {
+                throw new InvalidOperationException(
+                    $"Could not reach PostgreSQL after {MaxDatabaseConnectAttempts} attempts — check POSTGRES_CONNECTION_STRING.");
+            }
+
+            logger?.LogInformation(
+                "PostgreSQL isn't accepting connections yet (attempt {Attempt}/{MaxAttempts}); retrying in {DelaySeconds}s.",
+                attempt, MaxDatabaseConnectAttempts, DatabaseConnectRetryDelay.TotalSeconds);
+            await Task.Delay(DatabaseConnectRetryDelay);
+        }
     }
 
     /// <summary>

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Options;
 namespace JNotes.Web.Indexing;
 
 /// <summary>
-/// Periodically reconciles every user's Redis index against their note files, catching up
+/// Periodically reconciles every user's note index against their note files, catching up
 /// ContentOnly autosaves and hand-edited files without waiting for a restart or a manual
 /// "Rescan Now". Interval comes from AUTO_INDEX_INTERVAL_MINUTES (0 disables). Lives in
 /// JNotes.Web rather than Core because BackgroundService is a hosting-layer type Core has never

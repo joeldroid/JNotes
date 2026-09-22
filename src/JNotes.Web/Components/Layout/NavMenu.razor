@@ -101,7 +101,7 @@
 
         // Always lands on / (the notes list) regardless of which page the search was triggered
         // from — NoteList.razor's [SupplyParameterFromQuery] "q" parameter is the only thing that
-        // knows how to actually run the search (title/body/tag, via RedisNoteIndexRepository.SearchAsync).
+        // knows how to actually run the search (title/body/tag, via PostgresNoteIndexRepository.SearchAsync).
         var trimmed = _searchText.Trim();
         NavigationManager.NavigateTo(trimmed.Length == 0 ? "/" : $"/?q={Uri.EscapeDataString(trimmed)}");
     }

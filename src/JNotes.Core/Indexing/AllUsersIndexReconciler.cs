@@ -30,7 +30,7 @@ public sealed class AllUsersIndexReconciler : IAllUsersIndexReconciler
 
         foreach (var user in users)
         {
-            // Makes shutdown snappy: RescanAsync threads the token through to the file store/Redis
+            // Makes shutdown snappy: RescanAsync threads the token through to the file store/index
             // but has no check of its own between users.
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -50,7 +50,7 @@ public sealed class AllUsersIndexReconciler : IAllUsersIndexReconciler
             }
             catch (Exception ex)
             {
-                // One user's Redis/IO failure must not abort reconciliation for the rest.
+                // One user's database/IO failure must not abort reconciliation for the rest.
                 _logger.LogWarning(ex, "Index reconciliation failed for user {UserId}; continuing with the remaining users.", user.Id);
                 usersFailed++;
                 errors.Add($"{user.Id}: {ex.Message}");

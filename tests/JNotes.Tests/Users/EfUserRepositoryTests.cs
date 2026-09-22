@@ -1,6 +1,7 @@
 using JNotes.Core;
 using JNotes.Core.Data;
 using JNotes.Core.Users;
+using JNotes.Tests.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -9,17 +10,20 @@ namespace JNotes.Tests.Users;
 public class EfUserRepositoryTests : IAsyncLifetime
 {
     private readonly string _rootDir = Path.Combine(Path.GetTempPath(), "jnotes-tests-" + Guid.NewGuid());
+    private TestPostgresDatabase _database = null!;
     private ServiceProvider _provider = null!;
     private IUserRepository _repository = null!;
 
     public async Task InitializeAsync()
     {
+        _database = await TestPostgresDatabase.CreateAsync();
+
         var services = new ServiceCollection();
         services.AddJNotesCore(new ConfigurationBuilder().Build());
         services.Configure<JNotesOptions>(o =>
         {
             o.NotesFolderPath = Path.Combine(_rootDir, "notes");
-            o.DbPath = Path.Combine(_rootDir, "jnotes.db");
+            o.PostgresConnectionString = _database.ConnectionString;
         });
         _provider = services.BuildServiceProvider();
         await _provider.MigrateJNotesDatabaseAsync();
@@ -29,6 +33,7 @@ public class EfUserRepositoryTests : IAsyncLifetime
     public async Task DisposeAsync()
     {
         await _provider.DisposeAsync();
+        await _database.DisposeAsync();
         if (Directory.Exists(_rootDir))
         {
             Directory.Delete(_rootDir, recursive: true);

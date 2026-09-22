@@ -15,7 +15,7 @@ namespace JNotes.Web.Images;
 /// </summary>
 public sealed class ImageCleanupBackgroundService : BackgroundService
 {
-    // Cheap (one small SQLite read) and short enough that enabling the setting or shortening the interval
+    // Cheap (one small database read) and short enough that enabling the setting or shortening the interval
     // takes effect promptly, long enough to be irrelevant against an interval measured in days.
     private static readonly TimeSpan PollInterval = TimeSpan.FromMinutes(15);
 

@@ -24,7 +24,7 @@ COPY --from=build /app/publish .
 
 ENV ASPNETCORE_URLS=http://+:8080
 ENV NOTES_PATH=/data/notes
-ENV DB_PATH=/data/jnotes.db
+ENV DATA_PROTECTION_KEYS_PATH=/data/keys
 # IANA time zone id (e.g. America/New_York) used to display note timestamps — storage stays UTC
 # regardless. tzdata is already present in this base image, so any IANA id resolves correctly.
 ENV TZ=UTC
@@ -35,7 +35,7 @@ ENV AUTO_INDEX_INTERVAL_MINUTES=5
 # The base image's default non-root user needs to own the mounted volume's mount point;
 # actual ownership of bind-mounted host content still depends on the host directory's
 # permissions (see README for a chown workaround if the container can't write to ./data).
-RUN mkdir -p /data/notes && chown -R $APP_UID /data
+RUN mkdir -p /data/notes /data/keys && chown -R $APP_UID /data
 USER $APP_UID
 
 VOLUME ["/data"]

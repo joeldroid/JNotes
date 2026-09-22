@@ -28,13 +28,18 @@ builder.Services.AddHostedService<ImageCleanupBackgroundService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserContext, AuthenticatedCurrentUserContext>();
 
-// Persisted alongside the database (same bind-mounted volume in Docker) rather than the container's
-// ephemeral filesystem — without this, the keys used to sign the auth cookie are regenerated on
-// every restart, silently signing everyone out (ASP.NET Core logs a DataProtection warning about
-// exactly this if left at its default). Read directly off IConfiguration, same as JNotesOptions's
-// own DB_PATH, since this must be decided before the DI container exists to resolve options from.
-var dbPath = builder.Configuration["DB_PATH"] ?? "jnotes.db";
-var keysDirectory = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(dbPath))!, "keys");
+// Persisted alongside the notes (the same bind-mounted volume in Docker) rather than the
+// container's ephemeral filesystem — without this, the keys used to sign the auth cookie are
+// regenerated on every restart, silently signing everyone out (ASP.NET Core logs a DataProtection
+// warning about exactly this if left at its default).
+// This used to derive from the old SQLite database file's directory; there is no local database
+// file any more (Postgres may be on another host entirely), so it's its own key. When unset it
+// falls back to a "keys" folder beside NOTES_PATH, which reproduces the old location for both defaults
+// (App_Data/notes -> App_Data/keys, /data/notes -> /data/keys). Read directly off IConfiguration,
+// like the OIDC values below, since this must be decided before the DI container exists.
+var notesPath = builder.Configuration["NOTES_PATH"] ?? "notes";
+var keysDirectory = builder.Configuration["DATA_PROTECTION_KEYS_PATH"]
+    ?? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(notesPath))!, "keys");
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keysDirectory));
 
 builder.Services.AddAuthorization(options =>
@@ -93,8 +98,8 @@ builder.Services.AddRazorComponents()
 var app = builder.Build();
 
 // Apply pending EF Core migrations, seed the in-memory "has anyone been set up yet" flag, and
-// reconcile every user's SQLite index against their notes folder before serving traffic, so files
-// added/edited/removed while the app wasn't running are picked up immediately. See
+// reconcile every user's PostgreSQL note index against their notes folder before serving traffic, so
+// files added/edited/removed while the app wasn't running are picked up immediately. See
 // JNotes.Core.HostExtensions. There's no more auto-created default user — the first admin is
 // created for real, with a real password, through /setup.
 await app.Services.MigrateJNotesDatabaseAsync();

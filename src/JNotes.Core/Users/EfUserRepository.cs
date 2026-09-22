@@ -87,12 +87,9 @@ public sealed class EfUserRepository : IUserRepository
     public async Task<IReadOnlyList<UserAccount>> GetAllUsersAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-
-        // Ordered client-side after materializing: EF Core's SQLite provider can't translate an
-        // ORDER BY over a DateTimeOffset column into SQL — fine at this app's scale (a handful of
-        // admin-created users).
-        var users = await db.Users.AsNoTracking().ToListAsync(cancellationToken);
-        return users.OrderBy(u => u.CreatedAt).ToList();
+        // Ordered in SQL: PostgreSQL orders timestamptz natively (the SQLite provider couldn't translate
+        // an ORDER BY over a DateTimeOffset column, which is why this used to materialize first).
+        return await db.Users.AsNoTracking().OrderBy(u => u.CreatedAt).ToListAsync(cancellationToken);
     }
 
     public async Task<UserAccount?> GetUserByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -104,7 +101,7 @@ public sealed class EfUserRepository : IUserRepository
     public async Task<UserAccount?> GetUserByUsernameAsync(string username, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        // Username's NOCASE column collation makes this comparison case-insensitive already.
+        // Username's case-insensitive ICU collation (see JNotesDbContext) makes this comparison case-insensitive already.
         return await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Username == username, cancellationToken);
     }
 

@@ -1,0 +1,185 @@
+using JNotes.Core.Indexing;
+using JNotes.Core.Models;
+using JNotes.Core.Notes;
+
+namespace JNotes.Tests.Integration;
+
+/// <summary>
+/// Pins <see cref="PostgresNoteIndexRepository"/> against the behaviour the Redis implementation
+/// it replaces had — see CLAUDE.md's "Search matching" row. Constructs <see cref="NoteIndexEntry"/>
+/// instances directly (bypassing <c>NoteService</c>/the reconciler) so each test controls exactly
+/// what's indexed.
+/// </summary>
+public class NoteIndexRepositoryTests : IAsyncLifetime
+{
+    private CoreServicesFixture _fixture = null!;
+
+    public async Task InitializeAsync() => _fixture = await CoreServicesFixture.CreateAsync();
+
+    public async Task DisposeAsync() => await _fixture.DisposeAsync();
+
+    private static NoteIndexEntry NewEntry(
+        Guid userId,
+        string title = "Title",
+        string body = "Body",
+        NoteType type = NoteType.Text,
+        DateTimeOffset? updatedAt = null,
+        DateTimeOffset? indexedFileWriteTimeUtc = null)
+    {
+        var id = Guid.NewGuid();
+        var now = DateTimeOffset.UtcNow;
+        return new NoteIndexEntry
+        {
+            Id = id,
+            UserId = userId,
+            Title = title,
+            Body = body,
+            NoteType = type.ToString(),
+            CreatedAt = now,
+            UpdatedAt = updatedAt ?? now,
+            IndexedFileWriteTimeUtc = indexedFileWriteTimeUtc ?? now,
+            FilePath = $"{userId}/{id}.md",
+        };
+    }
+
+    [Fact]
+    public async Task SearchAsync_matches_the_title_the_body_and_a_tag_case_insensitively()
+    {
+        var titled = NewEntry(_fixture.UserAId, title: "A Needle In Title");
+        var bodied = NewEntry(_fixture.UserAId, body: "a needle in the body");
+        var tagged = NewEntry(_fixture.UserAId);
+        await _fixture.IndexRepository.UpsertAsync(titled, []);
+        await _fixture.IndexRepository.UpsertAsync(bodied, []);
+        await _fixture.IndexRepository.UpsertAsync(tagged, ["Needle-Tag"]);
+
+        var byTitle = await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(SearchText: "NEEDLE"));
+        var byTag = await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(SearchText: "needle-tag"));
+
+        Assert.Contains(byTitle, e => e.Id == titled.Id);
+        Assert.Contains(byTitle, e => e.Id == bodied.Id);
+        Assert.Contains(byTag, e => e.Id == tagged.Id);
+    }
+
+    [Fact]
+    public async Task SearchAsync_treats_a_percent_or_underscore_in_the_term_as_a_literal()
+    {
+        var percentNote = NewEntry(_fixture.UserAId, title: "100% done");
+        var notPercentNote = NewEntry(_fixture.UserAId, title: "1000 done");
+        await _fixture.IndexRepository.UpsertAsync(percentNote, []);
+        await _fixture.IndexRepository.UpsertAsync(notPercentNote, []);
+
+        var percentResults = await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(SearchText: "100%"));
+
+        Assert.Single(percentResults);
+        Assert.Equal(percentNote.Id, percentResults[0].Id);
+
+        var snakeNote = NewEntry(_fixture.UserAId, title: "snake_case");
+        var notSnakeNote = NewEntry(_fixture.UserAId, title: "snakeXcase");
+        await _fixture.IndexRepository.UpsertAsync(snakeNote, []);
+        await _fixture.IndexRepository.UpsertAsync(notSnakeNote, []);
+
+        var snakeResults = await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(SearchText: "snake_case"));
+
+        Assert.Single(snakeResults);
+        Assert.Equal(snakeNote.Id, snakeResults[0].Id);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_replaces_the_previous_tags_rather_than_adding_to_them()
+    {
+        var entry = NewEntry(_fixture.UserAId);
+        await _fixture.IndexRepository.UpsertAsync(entry, ["a", "b"]);
+
+        await _fixture.IndexRepository.UpsertAsync(entry, ["c"]);
+
+        var results = await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery());
+        var found = Assert.Single(results, r => r.Id == entry.Id);
+        Assert.Equal(["c"], found.Tags);
+
+        var tags = await _fixture.IndexRepository.GetDistinctTagsAsync(_fixture.UserAId);
+        Assert.DoesNotContain("a", tags);
+        Assert.DoesNotContain("b", tags);
+    }
+
+    [Fact]
+    public async Task SearchAsync_preserves_the_tag_order_it_was_given()
+    {
+        var entry = NewEntry(_fixture.UserAId);
+        await _fixture.IndexRepository.UpsertAsync(entry, ["zebra", "apple"]);
+
+        var results = await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery());
+
+        var found = Assert.Single(results, r => r.Id == entry.Id);
+        Assert.Equal(["zebra", "apple"], found.Tags);
+    }
+
+    [Fact]
+    public async Task SearchAsync_filters_by_an_exact_case_sensitive_tag()
+    {
+        var entry = NewEntry(_fixture.UserAId);
+        await _fixture.IndexRepository.UpsertAsync(entry, ["work"]);
+
+        var results = await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(Tag: "Work"));
+
+        Assert.Empty(results);
+    }
+
+    [Fact]
+    public async Task GetDistinctTagsAsync_is_distinct_ordinal_sorted_and_scoped_to_the_user()
+    {
+        var entryA1 = NewEntry(_fixture.UserAId);
+        var entryA2 = NewEntry(_fixture.UserAId);
+        var entryB = NewEntry(_fixture.UserBId);
+        await _fixture.IndexRepository.UpsertAsync(entryA1, ["zebra", "apple"]);
+        await _fixture.IndexRepository.UpsertAsync(entryA2, ["apple", "mango"]);
+        await _fixture.IndexRepository.UpsertAsync(entryB, ["user-b-only"]);
+
+        var tags = await _fixture.IndexRepository.GetDistinctTagsAsync(_fixture.UserAId);
+
+        Assert.Equal(["apple", "mango", "zebra"], tags);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ignores_a_note_id_that_belongs_to_another_user()
+    {
+        var entry = NewEntry(_fixture.UserAId);
+        await _fixture.IndexRepository.UpsertAsync(entry, []);
+
+        await _fixture.IndexRepository.DeleteAsync(_fixture.UserBId, entry.Id);
+
+        var results = await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery());
+        Assert.Contains(results, r => r.Id == entry.Id);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_is_a_noop_for_an_unknown_id()
+    {
+        await _fixture.IndexRepository.DeleteAsync(_fixture.UserAId, Guid.NewGuid());
+    }
+
+    [Fact]
+    public async Task GetIndexedFileWriteTimesAsync_round_trips_the_mtime_at_index_resolution()
+    {
+        var subMicrosecond = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero).AddTicks(1234567);
+        var entry = NewEntry(_fixture.UserAId, indexedFileWriteTimeUtc: subMicrosecond);
+        await _fixture.IndexRepository.UpsertAsync(entry, []);
+
+        var times = await _fixture.IndexRepository.GetIndexedFileWriteTimesAsync(_fixture.UserAId);
+
+        Assert.Equal(IndexTimestamp.ToIndexResolution(subMicrosecond), times[entry.Id]);
+    }
+
+    [Fact]
+    public async Task SearchAsync_filters_by_note_type()
+    {
+        var textNote = NewEntry(_fixture.UserAId, type: NoteType.Text);
+        var checklistNote = NewEntry(_fixture.UserAId, type: NoteType.Checklist);
+        await _fixture.IndexRepository.UpsertAsync(textNote, []);
+        await _fixture.IndexRepository.UpsertAsync(checklistNote, []);
+
+        var results = await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(Type: NoteType.Checklist));
+
+        var found = Assert.Single(results);
+        Assert.Equal(checklistNote.Id, found.Id);
+    }
+}

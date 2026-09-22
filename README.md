@@ -2,8 +2,9 @@
 
 A self-hosted, multi-user note-taking app built with Blazor Server (.NET 10). Notes are stored
 as portable markdown files on disk — copy the folder and every note is a readable `.md` file in
-any editor. A Redis-backed index makes the notes fast to search/list, and a SQLite database
-stores app settings and user accounts; the index is a derived cache, never the source of truth.
+any editor. A single PostgreSQL database holds user accounts and settings, and the note index that
+makes notes fast to search/list; the index tables are a derived cache, never the source of truth —
+the markdown files always are.
 
 The very first time you run JNotes, you'll land on a setup screen to create the admin account —
 see [Authentication](#authentication) below for that flow, adding more users, and OIDC.
@@ -17,7 +18,7 @@ see [Authentication](#authentication) below for that flow, adding more users, an
 - **Portable storage** — every note is `notes/<user-id>/<id>.md` with a small YAML front matter
   header (title, tags, type, timestamps) followed by the markdown body.
 - **Responsive UI** — [MudBlazor](https://mudblazor.com) (Material design) with a light/dark theme, usable on both desktop and mobile.
-- **Self-healing index** — the Redis index is reconciled against the notes folder at startup and
+- **Self-healing index** — the note index is reconciled against the notes folder at startup and
   on demand (Settings → Rescan Now), so edits made directly to the files (outside the app, or
   while the container was stopped) are picked up automatically.
 
@@ -27,12 +28,12 @@ see [Authentication](#authentication) below for that flow, adding more users, an
 JNotes.slnx
 src/
   JNotes.Web/     Blazor Server UI + composition root (Program.cs)
-  JNotes.Core/     Domain models, markdown/front-matter serialization, file storage, Redis note indexing, EF Core/SQLite settings
+  JNotes.Core/     Domain models, markdown/front-matter serialization, file storage, note indexing, EF Core/PostgreSQL
 tests/
   JNotes.Tests/    xUnit tests for JNotes.Core
 ```
 
-`JNotes.Web` never touches the filesystem, EF Core/SQLite, or Redis directly — it only consumes
+`JNotes.Web` never touches the filesystem or EF Core/PostgreSQL directly — it only consumes
 `INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
 `IUserManagementService`, and `IImageService` from `JNotes.Core`. This is enforced at build time via
 `Microsoft.CodeAnalysis.BannedApiAnalyzers` (`src/JNotes.Web/BannedSymbols.txt`).
@@ -65,39 +66,42 @@ dotnet run --project src/JNotes.Web
 dotnet watch --project src/JNotes.Web run
 ```
 
-By default this stores notes and the SQLite database (settings and user accounts, not the note
-index — see below) under `src/JNotes.Web/App_Data/` (see the `NOTES_PATH`/`DB_PATH` keys in
-`appsettings.json`) — gitignored, safe to delete to start fresh. Override either with an
-environment variable of the same name (`NOTES_PATH`, `DB_PATH`) — this is how `docker-compose.yml`
-points them at `/data`.
+By default this stores notes under `src/JNotes.Web/App_Data/` (see the `NOTES_PATH` key in
+`appsettings.json`) — gitignored, safe to delete to start fresh. Override it with an environment
+variable of the same name (`NOTES_PATH`) — this is how `docker-compose.yml` points it at `/data`.
 
-The note index (everything `NOTES_PATH`'s files are indexed into for listing/search) lives in
-Redis, not SQLite — set `REDIS_CONNECTION_STRING` to a reachable Redis instance (locally, e.g.
-`docker run -p 6379:6379 redis:8-alpine`, then the `appsettings.json` default of `localhost:6379`
-just works). The index is a rebuildable cache: if Redis is empty (fresh container, flushed data),
-the startup reconciliation pass rebuilds it from the markdown files, so it needs no backup of its
-own. Reconciliation also runs on a timer (`AUTO_INDEX_INTERVAL_MINUTES`, see below), so
-externally edited/added/removed `.md` files are picked up without a restart.
+**PostgreSQL is required to run at all** — it holds user accounts, settings, and the note index
+(everything `NOTES_PATH`'s files are indexed into for listing/search). Locally, e.g.:
+
+```bash
+docker run --rm -p 5432:5432 -e POSTGRES_USER=jnotes -e POSTGRES_PASSWORD=jnotes -e POSTGRES_DB=jnotes postgres:18-alpine
+```
+
+then `appsettings.json`'s default `POSTGRES_CONNECTION_STRING` just works. The index (the
+`NoteIndex*` tables) is a rebuildable cache: if it's empty (fresh database, truncated tables), the
+startup reconciliation pass rebuilds it from the markdown files, so it needs no backup of its own.
+Reconciliation also runs on a timer (`AUTO_INDEX_INTERVAL_MINUTES`, see below), so externally
+edited/added/removed `.md` files are picked up without a restart. The accounts/settings tables
+beside it are **not** rebuildable and do need a backup — see the `pg_dump` callout below.
 
 On first run with no users in the database, every request redirects to a setup screen where you
 pick the admin's username and password — see [Authentication](#authentication) below.
 
-> **Upgrading from an older version of JNotes that predates real authentication?** There's no
-> automated migration, and — unlike earlier upgrades — this one leaves the app **completely
-> unusable** if you skip the reset: existing accounts have no password and no admin role, so
-> there's no way to sign in or reach `/settings` to fix it. Delete `App_Data` (or your
-> `NOTES_PATH`/`DB_PATH` targets) and start fresh; you'll go through the setup screen again. If you
-> want to keep old notes, move each `notes/<id>.md` file by hand into a `notes/<user-id>/`
-> subfolder for whichever user should own it (find the new user's id in `/settings`'s
-> Administration settings section, or the `Users` table in `jnotes.db`) before starting the app.
+> **Upgrading from a SQLite/Redis version of JNotes?** There is no automated migration. Your notes
+> are untouched (they're files), but user accounts and settings do not carry over: point
+> `POSTGRES_CONNECTION_STRING` at an empty database and you'll go through the `/setup` screen
+> again. The re-created user gets a **new** user id, so rename `notes/<old-user-id>/` to
+> `notes/<new-user-id>/` (find the new id in Settings → Administration settings) to get the old
+> notes back, then Settings → "Rescan Now". You can delete the old `jnotes.db`/`-wal`/`-shm` files
+> and stop your Redis container.
 
 ### Configuration
 
 | Env var / config key | Default | Purpose |
 | --- | --- | --- |
 | `NOTES_PATH` | `App_Data/notes` (local) / `/data/notes` (Docker) | Folder note markdown files are read from/written to. |
-| `DB_PATH` | `App_Data/jnotes.db` (local) / `/data/jnotes.db` (Docker) | SQLite database file (settings and user accounts — not the note index, see `REDIS_CONNECTION_STRING`). |
-| `REDIS_CONNECTION_STRING` | `localhost:6379` (local) / `redis:6379` (Docker) | StackExchange.Redis connection string backing the note index. Required — there's no SQLite fallback. |
+| `POSTGRES_CONNECTION_STRING` | `Host=localhost;Port=5432;Database=jnotes;Username=jnotes;Password=jnotes` (local) / the compose `postgres` service (Docker) | Npgsql connection string for the one database holding user accounts, settings and the note index. Required — there's no fallback, and a missing or unreachable value fails startup rather than starting degraded. |
+| `DATA_PROTECTION_KEYS_PATH` | `App_Data/keys` (local) / `/data/keys` (Docker) | Where the keys that sign the auth cookie are stored. Must be on persistent storage — on a container's ephemeral filesystem every restart regenerates them and silently signs everyone out. Defaults to a `keys` folder beside `NOTES_PATH`. |
 | `TZ` | `UTC` | IANA time zone id (e.g. `America/New_York`, `Europe/London`) note timestamps are *displayed* in. Storage is always UTC regardless — this only affects what you see in the UI. |
 | `OIDC_AUTHORITY` | unset | Your OIDC provider's issuer URL. Leave unset to disable OIDC entirely. |
 | `OIDC_CLIENT_ID` | unset | OIDC client id registered with your provider. |
@@ -107,12 +111,11 @@ pick the admin's username and password — see [Authentication](#authentication)
 
 All of these take effect at startup only — changing one requires an app/container restart.
 
-> **Backing up `jnotes.db`?** It runs in SQLite's WAL journal mode, so two more files sit next to
-> it — `jnotes.db-wal` and `jnotes.db-shm`. A plain copy of just `jnotes.db` mid-run can miss data
-> still sitting in the WAL file. Stop the app before copying, or checkpoint first
-> (`sqlite3 jnotes.db "PRAGMA wal_checkpoint(TRUNCATE);"`) and copy all three files together. This
-> only affects the settings/accounts database — your notes themselves are always plain `.md`
-> files, safe to copy anytime, and the Redis index is rebuildable regardless.
+> **Backing up the database?** Use `pg_dump` (e.g.
+> `docker compose exec postgres pg_dump -U jnotes jnotes > jnotes.sql`), not a plain file copy —
+> copying the volume's files while the server is running is not a backup. Your notes themselves are
+> always plain `.md` files, safe to copy anytime, and the `NoteIndex*` tables in that dump are
+> rebuildable anyway.
 
 ### Tests
 
@@ -121,6 +124,11 @@ dotnet test JNotes.slnx
 # a single test:
 dotnet test tests/JNotes.Tests --filter "FullyQualifiedName~ChecklistMarkdownParserTests"
 ```
+
+The integration and `Users` suites need a **real PostgreSQL** (same `docker run` line as above;
+override with `JNOTES_TEST_POSTGRES_CONNECTION_STRING`). Each test class creates and drops its own
+`jnotes_test_<guid>` database, so the configured user needs `CREATEDB` (the official image's
+`POSTGRES_USER` is a superuser, so the documented `docker run` just works).
 
 ### Other commands
 
@@ -140,11 +148,13 @@ once after cloning if `dotnet ef` isn't found.
 docker compose up --build
 ```
 
-The app listens on `http://localhost:8080`. Notes and the database are bind-mounted to `./data`
-on the host (`./data/notes/<user-id>/*.md`, `./data/jnotes.db`) — edit files there directly with
-any editor and they'll be picked up next time the app starts (or via Settings → Rescan Now while
-it's running). As with running locally, upgrading from a pre-multi-user version means deleting
-`./data` and starting fresh (see the note above) — there's no automated migration.
+The app listens on `http://localhost:8080`. Notes and the Data Protection keys are bind-mounted to
+`./data` on the host (`./data/notes/<user-id>/*.md`, `./data/keys`) — edit note files there
+directly with any editor and they'll be picked up next time the app starts (or via Settings →
+Rescan Now while it's running). The **database is a named Docker volume** (`jnotes-pgdata`), not a
+file under `./data` — deleting `./data` no longer resets accounts, and `docker compose down -v`
+does. As with running locally, upgrading from a SQLite/Redis version means starting fresh (see the
+note above) — there's no automated migration.
 
 > **Note on file permissions:** the container runs as its base image's non-root user. If Docker
 > can't write to `./data` on your host (uncommon, but possible with some Docker Engine/Linux

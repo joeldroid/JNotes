@@ -12,7 +12,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using StackExchange.Redis;
 
 namespace JNotes.Core;
 
@@ -31,23 +30,23 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddJNotesCore(this IServiceCollection services, IConfiguration configuration)
     {
-        // Flat "NOTES_PATH"/"DB_PATH"/"TZ" keys rather than a nested section — these are the exact
-        // names the app expects as environment variables (see Dockerfile/docker-compose.yml), and
-        // IConfiguration's indexer already reads plain env vars by that name with no "__" nesting
-        // needed, so appsettings.json declares them the same way for local dev.
+        // Flat "NOTES_PATH"/"POSTGRES_CONNECTION_STRING"/"TZ" keys rather than a nested section —
+        // these are the exact names the app expects as environment variables (see
+        // Dockerfile/docker-compose.yml), and IConfiguration's indexer already reads plain env vars
+        // by that name with no "__" nesting needed, so appsettings.json declares them the same way
+        // for local dev.
         services.Configure<JNotesOptions>(options =>
         {
             options.NotesFolderPath = configuration["NOTES_PATH"] ?? options.NotesFolderPath;
-            options.DbPath = configuration["DB_PATH"] ?? options.DbPath;
             options.TimeZoneId = configuration["TZ"] ?? options.TimeZoneId;
-            options.RedisConnectionString = configuration["REDIS_CONNECTION_STRING"] ?? options.RedisConnectionString;
+            options.PostgresConnectionString = configuration["POSTGRES_CONNECTION_STRING"] ?? options.PostgresConnectionString;
             // Parsed (not just "?? default") because the raw string needs validating/clamping — see AutoIndexInterval.
             options.AutoIndexIntervalMinutes = AutoIndexInterval.ParseMinutes(configuration["AUTO_INDEX_INTERVAL_MINUTES"]);
         });
 
         // Same flat-env-var pattern for OIDC — optional, unset means "not configured" (see
         // OidcOptions.IsConfigured). ClientSecret is a secret, but this app has never had a
-        // separate secrets mechanism (DB_PATH etc. work the same way) — never logged.
+        // separate secrets mechanism (POSTGRES_CONNECTION_STRING etc. work the same way) — never logged.
         services.Configure<OidcOptions>(options =>
         {
             options.Authority = configuration["OIDC_AUTHORITY"] ?? options.Authority;
@@ -60,33 +59,16 @@ public static class ServiceCollectionExtensions
         {
             var jnotesOptions = sp.GetRequiredService<IOptions<JNotesOptions>>().Value;
 
-            // SQLite won't create a missing parent directory for the db file on its own — ensure
-            // it exists before anything tries to open a connection.
-            var dbDirectory = Path.GetDirectoryName(jnotesOptions.DbPath);
-            if (!string.IsNullOrEmpty(dbDirectory))
-            {
-                Directory.CreateDirectory(dbDirectory);
-            }
-
-            options.UseSqlite($"Data Source={jnotesOptions.DbPath}");
-        });
-
-        // A single multiplexer instance is reused for the app's whole lifetime (StackExchange.Redis's
-        // own recommendation — it manages its own connection pool/reconnection internally, so there's
-        // nothing per-request to scope, unlike the SQLite DbContextFactory above). Connecting eagerly
-        // at registration time (rather than lazily on first use) means a missing/unreachable
-        // REDIS_CONNECTION_STRING fails fast at startup instead of surfacing on a user's first note
-        // list load.
-        services.AddSingleton<IConnectionMultiplexer>(sp =>
-        {
-            var jnotesOptions = sp.GetRequiredService<IOptions<JNotesOptions>>().Value;
-            if (string.IsNullOrWhiteSpace(jnotesOptions.RedisConnectionString))
+            // Thrown from here (rather than validated at registration) so it fires the first time a
+            // context is created — which is HostExtensions.MigrateJNotesDatabaseAsync, before app.Run().
+            // Same "fail loudly at startup, never limp along" property the old eager Redis connect had.
+            if (string.IsNullOrWhiteSpace(jnotesOptions.PostgresConnectionString))
             {
                 throw new InvalidOperationException(
-                    "REDIS_CONNECTION_STRING is required — the note index has no SQLite fallback.");
+                    "POSTGRES_CONNECTION_STRING is required — JNotes keeps user accounts, settings and the note index in PostgreSQL.");
             }
 
-            return ConnectionMultiplexer.Connect(jnotesOptions.RedisConnectionString);
+            options.UseNpgsql(jnotesOptions.PostgresConnectionString);
         });
 
         services.AddSingleton<INoteMarkdownSerializer, NoteMarkdownSerializer>();
@@ -98,7 +80,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IImageService, ImageService>();
         // Scoped like IAllUsersIndexReconciler: the singleton background service that drives it makes a scope per check.
         services.AddScoped<IImageCleanupService, ImageCleanupService>();
-        services.AddSingleton<INoteIndexRepository, RedisNoteIndexRepository>();
+        // Singleton like the Redis repository it replaces — it creates a JNotesDbContext per call
+        // through the singleton IDbContextFactory, exactly as SettingsService/EfUserRepository do.
+        services.AddSingleton<INoteIndexRepository, PostgresNoteIndexRepository>();
         services.AddScoped<INoteService, NoteService>();
         services.AddScoped<INoteIndexReconciler, NoteIndexReconciler>();
         // Scoped, matching INoteIndexReconciler/IUserRepository — the singleton background service

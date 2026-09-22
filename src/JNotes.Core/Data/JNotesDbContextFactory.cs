@@ -13,8 +13,14 @@ public sealed class JNotesDbContextFactory : IDesignTimeDbContextFactory<JNotesD
 {
     public JNotesDbContext CreateDbContext(string[] args)
     {
+        // `dotnet ef migrations add` never connects, so any well-formed string works; reading the env
+        // var first means `dotnet ef database update` can still reach a real database if you want it
+        // to (the app migrates itself at startup, so you normally don't need to).
+        var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
+            ?? "Host=localhost;Port=5432;Database=jnotes;Username=jnotes;Password=jnotes";
+
         var optionsBuilder = new DbContextOptionsBuilder<JNotesDbContext>()
-            .UseSqlite("Data Source=jnotes.design.db");
+            .UseNpgsql(connectionString);
 
         return new JNotesDbContext(optionsBuilder.Options);
     }

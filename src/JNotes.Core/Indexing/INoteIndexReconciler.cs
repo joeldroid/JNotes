@@ -1,7 +1,7 @@
 namespace JNotes.Core.Indexing;
 
 /// <summary>
-/// Reconciles one user's SQLite index rows against their note files actually on disk, so edits
+/// Reconciles one user's index rows against their note files actually on disk, so edits
 /// made outside the app (or a crash mid-write) are self-healed. Run once per user at startup
 /// (looped by <c>HostExtensions.RunStartupReconciliationAsync</c>) and on demand from the
 /// Settings page's "Rescan Now" (scoped to whoever clicked it) — there is no

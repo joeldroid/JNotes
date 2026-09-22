@@ -42,6 +42,11 @@ public sealed class NoteIndexReconciler : INoteIndexReconciler
                 continue;
             }
 
+            // Rounded to the index's own resolution before comparing or storing: PostgreSQL timestamptz keeps
+            // microseconds while the filesystem mtime has 100-nanosecond ticks, so an un-rounded comparison
+            // would make every unchanged file look modified on every rescan. See IndexTimestamp.
+            currentWriteTime = IndexTimestamp.ToIndexResolution(currentWriteTime);
+
             if (!isNew && lastIndexedWriteTime >= currentWriteTime)
             {
                 continue; // Unchanged since it was last indexed — skip re-parsing the file.

@@ -6,16 +6,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 JNotes is a self-hosted, multi-user note-taking app: Blazor Server (.NET 10) UI built on MudBlazor, notes stored as
 portable markdown files on disk (each a readable `.md` with YAML front matter, one subfolder per
-user), a Redis index over them for fast search — the index is a **derived cache**, never the
-source of truth — and a SQLite database for everything else (settings, user accounts). See
-README.md for features, the note file format, and the configuration reference.
+user), and a single PostgreSQL database holding user accounts and settings plus a note index over
+the files for fast search — the index tables are a **derived cache**, never the source of truth;
+the markdown files are. See README.md for features, the note file format, and the configuration
+reference.
 
 ## Commands
 
 ```bash
 # Build / test / format (from repo root)
 dotnet build JNotes.slnx
-dotnet test JNotes.slnx                          # integration tests need a real Redis (see Tests)
+dotnet test JNotes.slnx                          # integration tests need a real PostgreSQL (see Tests)
 dotnet test tests/JNotes.Tests --filter "FullyQualifiedName~ChecklistMarkdownParserTests"   # single class
 dotnet format JNotes.slnx
 dotnet format JNotes.slnx --verify-no-changes    # CI-style check
@@ -35,13 +36,13 @@ docker compose up --build   # production-shaped: what Docker actually runs, not 
 ## Architecture
 
 **Three projects**, one-directional dependency: `JNotes.Web` (Blazor Server UI + composition root)
-→ `JNotes.Core` (domain, storage, indexing, EF Core, Redis) ← `JNotes.Tests` (xUnit, tests Core only).
+→ `JNotes.Core` (domain, storage, indexing, EF Core) ← `JNotes.Tests` (xUnit, tests Core only).
 
-**Web never touches the filesystem, EF Core/SQLite, or Redis directly** — only Core's interfaces
+**Web never touches the filesystem or EF Core/PostgreSQL directly** — only Core's interfaces
 (`INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
 `IUserManagementService`, `IImageService`, `IImageCleanupService`). Enforced at build time: `Microsoft.CodeAnalysis.BannedApiAnalyzers`
-(`src/JNotes.Web/BannedSymbols.txt`) bans `System.IO.File`/`Directory`, `DbContext`,
-`SqliteConnection`, and Redis's `IConnectionMultiplexer`/`IDatabase` in Web. Pure static Core
+(`src/JNotes.Web/BannedSymbols.txt`) bans `System.IO.File`/`Directory`, `DbContext`, and Npgsql's
+`NpgsqlConnection`/`NpgsqlDataSource` in Web. Pure static Core
 helpers (`ChecklistMarkdownParser`, `NoteGrouping`, `UserInitials`, `UserValidation`) are fine to
 call from Web.
 
@@ -110,9 +111,11 @@ screen until they sign in.
   stays where the user clicked unless it's rebuilt — bump an `@key` (`_securityVersion` in `Settings.razor`,
   `_listVersion` in `ChecklistPanel`).
 
-**Data Protection keys are persisted next to the database** (`{DB_PATH's directory}/keys/`,
-`Program.cs`). They sign the auth cookie; at the default (ephemeral container filesystem) every
-restart regenerates them and silently signs everyone out.
+**Data Protection keys are persisted at `DATA_PROTECTION_KEYS_PATH`** (`Program.cs`), defaulting to
+a `keys` folder beside `NOTES_PATH` — this reproduces the old `{DB_PATH's directory}/keys/` location
+for both existing defaults, since a possibly-remote PostgreSQL means there's no longer a "next to
+the database" directory to derive from. They sign the auth cookie; at the default (ephemeral
+container filesystem) every restart regenerates them and silently signs everyone out.
 
 ## Authentication and users
 
@@ -123,7 +126,7 @@ restart regenerates them and silently signs everyone out.
   seeded at startup by `HostExtensions.InitializeSetupStateAsync` from "does any `UserAccount`
   exist"). There is no auto-created default user.
 - OIDC (`OIDC_AUTHORITY`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`/`OIDC_DISPLAY_NAME`, read into
-  `OidcOptions` like `NOTES_PATH`/`DB_PATH`/`TZ`) works alongside password login. Provisioning is
+  `OidcOptions` like `NOTES_PATH`/`POSTGRES_CONNECTION_STRING`/`TZ`) works alongside password login. Provisioning is
   admin-gated: an admin pre-creates the account with an `Email`, and the first OIDC login for that
   email links it (`OidcAccountLinker`, **unlinked** accounts only — never relinks or auto-creates).
   Password login can be disabled in Settings → Security once OIDC is configured;
@@ -132,8 +135,12 @@ restart regenerates them and silently signs everyone out.
   `IsValidEmail` via `[GeneratedRegex]`). Enforced in two layers: `EfUserRepository.CreateUserAsync`
   throws `InvalidUsernameException`/`InvalidEmailException` so every creation path is covered, and
   `/setup` and the "Add user" form check up front so the error shows beside the form. Usernames
-  must be lowercase (the NOCASE column already makes lookups case-insensitive, but mixed-case input
-  would render inconsistently). Email is mandatory at `/setup` (checked in `Setup.razor`, not the
+  must be lowercase (a non-deterministic ICU collation, `jnotes_case_insensitive` — `JNotesDbContext`'s
+  PostgreSQL equivalent of SQLite's NOCASE — already makes lookups case-insensitive, but mixed-case
+  input would render inconsistently; note Npgsql's four-argument `HasCollation(name, locale, provider,
+  deterministic)` and EF Core's one-argument relational `HasCollation`, which sets the *database*
+  default instead, are both in the `Microsoft.EntityFrameworkCore` namespace, so the wrong overload
+  binds silently). Email is mandatory at `/setup` (checked in `Setup.razor`, not the
   repository — `CreateUserAsync`'s `email` stays nullable for password-only accounts) but only
   format-validated when adding a user. The `/setup` email `<InputText>` deliberately has no
   `type="email"`: native constraint validation would intercept the submit before `UserValidation`
@@ -199,7 +206,7 @@ restart regenerates them and silently signs everyone out.
 
 ## Storage and indexing
 
-**Files are the source of truth; Redis is a derived index.** Notes live at
+**Files are the source of truth; the `NoteIndex*` tables are a derived index.** Notes live at
 `{NotesFolder}/{userId}/{noteId}.md` (`FileSystemNoteFileStore`).
 
 - **Writes go file first, then index** (`NoteService`): a crash leaves an orphaned file the next
@@ -209,7 +216,7 @@ restart regenerates them and silently signs everyone out.
   at startup, from Settings → "Rescan Now", and via the auto-index background service. This is what
   makes hand-edited or externally added/removed `.md` files converge. Deliberately no
   `FileSystemWatcher` (unreliable across Docker bind-mount backends).
-- **`ListAsync`/search read only the Redis index** (never disk); only `GetAsync` reads the file.
+- **`ListAsync`/search read only the index tables** (never disk); only `GetAsync` reads the file.
 - **Deleting a user** never deletes their notes: `INoteFileStore.ArchiveUserFolderAsync` *moves*
   the folder to `{NotesFolder}/deleted/{userId}/` **before** the account row is hard-deleted, so a
   failure at either step leaves the account fully intact or fully deleted, never an index-less
@@ -220,7 +227,7 @@ restart regenerates them and silently signs everyone out.
   (`ListIdsAsync`'s `EnumerateFiles(folder, "*.md")` is non-recursive), unlike the sibling
   `deleted/{userId}/` archive. `NoteService.TrashAsync` deletes the index row immediately —
   otherwise a trashed note is indistinguishable from "removed externally" until the next rescan.
-  There's deliberately **no Redis index for the trash**: `ListTrashAsync` reads the trash folder
+  There's deliberately **no index for the trash**: `ListTrashAsync` reads the trash folder
   directly, skipping a note on `NoteNotFoundException` (purged mid-listing) or `NoteParseException`
   (corrupted). `TrashAsync` stamps mtime explicitly with `File.SetLastWriteTimeUtc` (a same-volume
   move doesn't change it); that stamp is "deleted at" (`GetTrashedAtUtcAsync`). `RestoreAsync`
@@ -229,6 +236,23 @@ restart regenerates them and silently signs everyone out.
   with a `---` block, then YamlDotNet). `NoteMarkdownSerializer` maps it to the `Note` model.
   Timestamps are UTC in storage; `JNotesOptions.TimeZoneId`/`AppTimeZoneProvider` (`TZ` env var)
   affect only *display*.
+- **The index lives in the same PostgreSQL database and schema as users/settings** — one connection
+  string (`POSTGRES_CONNECTION_STRING`), one migration history, one `MigrateAsync()` at startup. The
+  `NoteIndex*` table prefix (`NoteIndexEntries`, `NoteIndexTags`) is the "these are the throwaway,
+  rebuildable ones" marker in `psql` — a schema boundary would add no guarantee `NoteIndexReconciler`
+  doesn't already provide, since the tables can be `TRUNCATE`d and rebuilt from disk at any time.
+- **Tags are a child table (`NoteIndexTags`), not a `jsonb`/`text[]` column**, because search has to
+  match title OR body OR *any tag* with `ILIKE` in one translatable LINQ query —
+  `jsonb_array_elements_text` isn't expressible in LINQ, and Npgsql's `text[]` mapping has no "any
+  element ILIKE" translation. This also makes the exact-tag filter and `GetDistinctTagsAsync` indexed
+  SQL instead of "load every note into memory and filter". (The pre-Redis SQLite index had a join
+  table for the same reason.)
+- **`IndexedFileWriteTimeUtc` is rounded to whole microseconds on both write and compare**
+  (`IndexTimestamp.ToIndexResolution`), because PostgreSQL `timestamptz` has microsecond precision
+  while `File.GetLastWriteTimeUtc` has 100-nanosecond ticks. Without the rounding,
+  `NoteIndexReconciler`'s "unchanged since last indexed" test (`lastIndexed >= currentMtime`) is
+  false for almost every file on almost every rescan — a full re-parse of the whole collection, every
+  time, forever.
 
 ## Notes UI
 
@@ -251,7 +275,7 @@ checklist changes, and `UpdateAsync` funnel through — there's no Save button.
   for free. Trade-off: the note doesn't move in the `UpdatedAt`-sorted list, and its indexed
   `Body` (used by search) stays stale, until a `Metadata` save or a reconciliation pass.
 - `Metadata` (title/tag edits) writes the file **and** reindexes immediately
-  (`RedisNoteIndexRepository.UpsertAsync` replaces the whole hash, tags included).
+  (`PostgresNoteIndexRepository.UpsertAsync` replaces the row and its tag rows, in one transaction).
 
 **`NoteEditor.razor` autosave:** two independent debounces (`AutosaveDebouncer`,
 `Components/Notes/`) for content and metadata, but the actual save is serialized through one
@@ -261,9 +285,13 @@ anything unsaved (navigating away right after typing) so file and index catch up
 
 **Search matches body content**, not just title: `NoteIndexEntry.Body` is a full copy, kept in sync
 by the same file-first-then-index path and reconciler as `Title`, with the `ContentOnly` staleness
-above. `RedisNoteIndexRepository.SearchAsync` loads a user's notes (one hash per note, tags as an
-inline JSON field) and does case-insensitive `Contains` per field (title, body, each tag)
-client-side rather than SQL `LIKE`.
+above. `PostgresNoteIndexRepository.SearchAsync` filters in SQL with `EF.Functions.ILike('%term%')`
+over `Title`/`Body` and an `EXISTS` over `NoteIndexTags` — deliberately `ILIKE`, not
+`tsvector`/`plainto_tsquery`, which would stem words and stop matching partial words (a silent
+search-behavior change this migration was explicit about avoiding). The term is escaped
+(`SqlLikePattern`) so a literal `%`/`_`/`\` in a search doesn't act as a wildcard. `query.Tag` stays
+an exact, case-sensitive match; `GetDistinctTagsAsync` still sorts `Ordinal` in memory, since the
+database's collation would order mixed case differently from `StringComparer.Ordinal`.
 
 **The default notes view groups by relative date.** `NoteGrouping.GroupByRelativeDate` buckets an
 already-`UpdatedAt`-descending list into Today/Yesterday/This week/Last week/This month/Previous,
@@ -471,12 +499,18 @@ Known limitation: two tabs on one note are last-writer-wins (there's no cross-ci
 ## Tests
 
 `tests/JNotes.Tests/`: pure unit tests (`Serialization/`, `Time/`, `Notes/`) and integration tests
-(`Integration/`, `Users/`) that build the real `AddJNotesCore` graph against a temp-file SQLite
-database, a **real Redis** (`localhost:6379`, or `JNOTES_TEST_REDIS_CONNECTION_STRING`; e.g.
-`docker run --rm -p 6379:6379 valkey/valkey`), and a temp folder — not EF Core's in-memory
-provider, so SQLite-specific behavior (e.g. no `ORDER BY DateTimeOffset`, worked around
-client-side in `EfUserRepository.GetAllUsersAsync`) is exercised. No Razor component tests (no
-bUnit); UI changes are verified manually in a browser.
+(`Integration/`, `Users/`) that build the real `AddJNotesCore` graph against a **real PostgreSQL**
+(`JNOTES_TEST_POSTGRES_CONNECTION_STRING`, default `Host=localhost;Port=5432;Database=jnotes;
+Username=jnotes;Password=jnotes`; e.g. `docker run --rm -p 5432:5432 -e POSTGRES_USER=jnotes
+-e POSTGRES_PASSWORD=jnotes -e POSTGRES_DB=jnotes postgres:18-alpine`) and a temp folder — not EF
+Core's in-memory provider, so real PostgreSQL behaviour (the ICU collation, the filtered unique
+indexes, `ILIKE` escaping, the migration itself) is exercised. Each test class creates and drops its
+own `jnotes_test_<guid>` database (`TestPostgresDatabase`) — a whole database, not a schema, so
+migrations run against a virgin database exactly as in production; the configured user needs
+`CREATEDB`. Two Npgsql pooling gotchas the helper handles: `NpgsqlConnection.ClearAllPools()` before
+`DROP DATABASE` (disposing EF's contexts only returns pooled connections, it doesn't close them), and
+`WITH (FORCE)` as the backstop. No Razor component tests (no bUnit); UI changes are verified manually
+in a browser.
 
 `CoreServicesFixture` seeds two users and registers a mutable `TestCurrentUserContext`
 (`ActAsUserA()`/`ActAsUserB()`) in place of the real one, so cross-user isolation is asserted
@@ -503,3 +537,13 @@ is computed from the incomplete early restore and the image ships without
 `_framework/blazor.web.js`, silently breaking all client-side interactivity while `curl` checks
 still look fine. If touching the Dockerfile, verify in a real browser (or at least
 `curl -H "Accept-Encoding: gzip"`), not a plain `curl` health check.
+
+**PostgreSQL's data directory, not just the app's.** `postgres:18`+ images moved `PGDATA` to
+`/var/lib/postgresql/18/docker` and declare the image's `VOLUME` one level up, at
+`/var/lib/postgresql` — mounting `/var/lib/postgresql/data` (the older convention) is **silently
+ignored**: data lands in an anonymous volume and `initdb` re-runs on every container recreate, with
+no error. `docker-compose.yml` mounts the named volume at `/var/lib/postgresql` for this reason.
+Unlike the Redis service PostgreSQL replaced, this volume is **not optional**: PostgreSQL now holds
+user accounts and settings (the `NoteIndex*` tables beside them are still a derived cache, rebuilt on
+"Rescan Now"), which exist nowhere else — `docker compose down -v` deletes them, and a wrong mount
+path silently does the same on every restart.

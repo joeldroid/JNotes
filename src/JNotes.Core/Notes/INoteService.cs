@@ -58,7 +58,7 @@ public interface INoteService
     /// <summary>Moves the note to the trash (file move + index removal) rather than deleting it outright — see <see cref="PurgeAsync"/> for that.</summary>
     Task TrashAsync(Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>Every note currently in the trash, newest-trashed first. Reads the trash folder directly — there's no SQLite index for it.</summary>
+    /// <summary>Every note currently in the trash, newest-trashed first. Reads the trash folder directly — there's no index for it.</summary>
     Task<IReadOnlyList<TrashedNoteSummary>> ListTrashAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Moves a trashed note back out of the trash and re-adds it to the index.</summary>

@@ -10,8 +10,10 @@ services:
       - ./data:/data
     environment:
       - NOTES_PATH=/data/notes
-      - DB_PATH=/data/jnotes.db
-      - REDIS_CONNECTION_STRING=redis:6379
+      # Signs the auth cookie. On the bind mount on purpose: on the container filesystem these are
+      # regenerated on every restart, silently signing everyone out.
+      - DATA_PROTECTION_KEYS_PATH=/data/keys
+      - POSTGRES_CONNECTION_STRING=Host=postgres;Port=5432;Database=jnotes;Username=jnotes;Password=${POSTGRES_PASSWORD:-jnotes}
       # Override by exporting TZ before running compose, or adding TZ=... to a .env file.
       - TZ=${TZ:-UTC}
       # Set to 0 to disable background index reconciliation.
@@ -23,13 +25,43 @@ services:
       # - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
       # - OIDC_DISPLAY_NAME=${OIDC_DISPLAY_NAME:-OIDC}
     depends_on:
-      - redis
+      postgres:
+        # Not just "started": the app migrates the schema before serving traffic, so it needs a
+        # database that's finished initdb. (It also retries for ~20s on its own — see
+        # HostExtensions.MigrateJNotesDatabaseAsync — but waiting properly is cleaner.)
+        condition: service_healthy
     restart: unless-stopped
 
-  redis:
-    image: valkey/valkey:9-alpine
-    # No volume: the note index is a derived cache, rebuilt from the markdown files under
-    # ./data/notes by the reconciliation pass that already runs on every startup — an empty Redis
-    # after a restart is a one-time rescan, never data loss. Add a volume + `--appendonly yes` only
-    # if you want to skip that rescan on a large note collection.
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      - POSTGRES_DB=jnotes
+      - POSTGRES_USER=jnotes
+      # CHANGE THIS for anything reachable beyond your machine: export POSTGRES_PASSWORD=... or put
+      # it in a .env file (gitignored). It has to match the app's POSTGRES_CONNECTION_STRING above.
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-jnotes}
+    volumes:
+      # Unlike the Redis service this replaces, the volume is NOT optional. Redis held only the note
+      # index — a derived cache the startup reconciliation pass rebuilds from ./data/notes, so an
+      # empty Redis was a one-time rescan and never data loss. PostgreSQL now also holds the user
+      # accounts and settings, which exist nowhere else: lose this volume and you re-run /setup and
+      # re-create every user. (The NoteIndex* tables in the same database are still throwaway.)
+      #
+      # Mounted at /var/lib/postgresql, NOT /var/lib/postgresql/data. The postgres:18+ images moved
+      # PGDATA into a version-specific subdirectory (/var/lib/postgresql/18/docker) and declare the
+      # VOLUME one level up. A /var/lib/postgresql/data mount is silently ignored on 18 — the data
+      # goes to an anonymous volume and initdb re-runs on every recreate, with no error at all.
+      #
+      # A named volume rather than a bind mount: a Postgres data directory isn't human-readable
+      # (unlike the notes, which is exactly why those are bind-mounted) and bind-mounted PGDATA has
+      # well-known ownership problems on macOS/Windows. Back it up with pg_dump, not `cp`.
+      - jnotes-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jnotes -d jnotes"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped
+
+volumes:
+  jnotes-pgdata:
