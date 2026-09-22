@@ -111,6 +111,15 @@ pick the admin's username and password — see [Authentication](#authentication)
 
 All of these take effect at startup only — changing one requires an app/container restart.
 
+> **What are the Data Protection keys, and why do they need their own path?** ASP.NET Core signs the
+> auth cookie with them — without persisting them somewhere durable, every restart generates a fresh
+> set and silently signs everyone out (nothing errors; sessions just stop working). They used to be
+> derived from `DB_PATH`'s directory, back when the database was a local SQLite file; a PostgreSQL
+> connection string doesn't point at a local path, so they got their own setting,
+> `DATA_PROTECTION_KEYS_PATH`. Left unset, it falls back to a `keys` folder beside `NOTES_PATH`,
+> reproducing the old default location either way — just make sure wherever it points is on
+> persistent storage, not a container's ephemeral filesystem.
+
 > **Backing up the database?** Use `pg_dump` (e.g.
 > `docker compose exec postgres pg_dump -U jnotes jnotes > jnotes.sql`), not a plain file copy —
 > copying the volume's files while the server is running is not a backup. Your notes themselves are
