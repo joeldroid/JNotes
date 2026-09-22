@@ -19,7 +19,8 @@ public static class HostExtensions
     /// against users' existing databases — safe here because this runs as a single-instance container
     /// with no multi-replica migration race.
     /// The wait exists because EF Core connects lazily: a well-formed but unreachable
-    /// POSTGRES_CONNECTION_STRING would otherwise surface much later, and a cold `docker compose up`
+    /// connection string (assembled from POSTGRES_HOST/PORT/DB/USER/PASSWORD) would otherwise surface
+    /// much later, and a cold `docker compose up`
     /// can reach this line while Postgres is still running initdb. docker-compose.yml also gates the
     /// app on a Postgres healthcheck; this covers `dotnet run` against a just-started container.
     /// A blank connection string is NOT retried — CreateDbContextAsync throws straight out of the
@@ -45,7 +46,7 @@ public static class HostExtensions
             if (attempt >= MaxDatabaseConnectAttempts)
             {
                 throw new InvalidOperationException(
-                    $"Could not reach PostgreSQL after {MaxDatabaseConnectAttempts} attempts — check POSTGRES_CONNECTION_STRING.");
+                    $"Could not reach PostgreSQL after {MaxDatabaseConnectAttempts} attempts — check POSTGRES_HOST/POSTGRES_PORT/POSTGRES_DB/POSTGRES_USER/POSTGRES_PASSWORD.");
             }
 
             logger?.LogInformation(

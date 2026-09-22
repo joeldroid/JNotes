@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Npgsql;
 
 namespace JNotes.Core.Data;
 
@@ -13,11 +14,17 @@ public sealed class JNotesDbContextFactory : IDesignTimeDbContextFactory<JNotesD
 {
     public JNotesDbContext CreateDbContext(string[] args)
     {
-        // `dotnet ef migrations add` never connects, so any well-formed string works; reading the env
-        // var first means `dotnet ef database update` can still reach a real database if you want it
-        // to (the app migrates itself at startup, so you normally don't need to).
-        var connectionString = Environment.GetEnvironmentVariable("POSTGRES_CONNECTION_STRING")
-            ?? "Host=localhost;Port=5432;Database=jnotes;Username=jnotes;Password=jnotes";
+        // `dotnet ef migrations add` never connects, so any well-formed string works; reading the
+        // POSTGRES_* env vars first means `dotnet ef database update` can still reach a real database
+        // if you want it to (the app migrates itself at startup, so you normally don't need to).
+        var connectionString = new NpgsqlConnectionStringBuilder
+        {
+            Host = Environment.GetEnvironmentVariable("POSTGRES_HOST") ?? "localhost",
+            Port = int.TryParse(Environment.GetEnvironmentVariable("POSTGRES_PORT"), out var port) ? port : 5432,
+            Database = Environment.GetEnvironmentVariable("POSTGRES_DB") ?? "jnotes",
+            Username = Environment.GetEnvironmentVariable("POSTGRES_USER") ?? "jnotes",
+            Password = Environment.GetEnvironmentVariable("POSTGRES_PASSWORD") ?? "jnotes",
+        }.ConnectionString;
 
         var optionsBuilder = new DbContextOptionsBuilder<JNotesDbContext>()
             .UseNpgsql(connectionString);

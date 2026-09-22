@@ -77,7 +77,8 @@ variable of the same name (`NOTES_PATH`) — this is how `docker-compose.yml` po
 docker run --rm -p 5432:5432 -e POSTGRES_USER=jnotes -e POSTGRES_PASSWORD=jnotes -e POSTGRES_DB=jnotes postgres:18-alpine
 ```
 
-then `appsettings.json`'s default `POSTGRES_CONNECTION_STRING` just works. The index (the
+then `appsettings.json`'s default `POSTGRES_HOST`/`POSTGRES_PORT`/`POSTGRES_DB`/`POSTGRES_USER`/
+`POSTGRES_PASSWORD` just work. The index (the
 `NoteIndex*` tables) is a rebuildable cache: if it's empty (fresh database, truncated tables), the
 startup reconciliation pass rebuilds it from the markdown files, so it needs no backup of its own.
 Reconciliation also runs on a timer (`AUTO_INDEX_INTERVAL_MINUTES`, see below), so externally
@@ -89,7 +90,7 @@ pick the admin's username and password — see [Authentication](#authentication)
 
 > **Upgrading from a SQLite/Redis version of JNotes?** There is no automated migration. Your notes
 > are untouched (they're files), but user accounts and settings do not carry over: point
-> `POSTGRES_CONNECTION_STRING` at an empty database and you'll go through the `/setup` screen
+> `POSTGRES_HOST`/`POSTGRES_DB`/etc. at an empty database and you'll go through the `/setup` screen
 > again. The re-created user gets a **new** user id, so rename `notes/<old-user-id>/` to
 > `notes/<new-user-id>/` (find the new id in Settings → Administration settings) to get the old
 > notes back, then Settings → "Rescan Now". You can delete the old `jnotes.db`/`-wal`/`-shm` files
@@ -100,7 +101,11 @@ pick the admin's username and password — see [Authentication](#authentication)
 | Env var / config key | Default | Purpose |
 | --- | --- | --- |
 | `NOTES_PATH` | `App_Data/notes` (local) / `/data/notes` (Docker) | Folder note markdown files are read from/written to. |
-| `POSTGRES_CONNECTION_STRING` | `Host=localhost;Port=5432;Database=jnotes;Username=jnotes;Password=jnotes` (local) / the compose `postgres` service (Docker) | Npgsql connection string for the one database holding user accounts, settings and the note index. Required — there's no fallback, and a missing or unreachable value fails startup rather than starting degraded. |
+| `POSTGRES_HOST` | `localhost` (local) / `postgres` (Docker, the compose service name) | Host of the one PostgreSQL database holding user accounts, settings and the note index. Required — there's no fallback, and a missing or unreachable database fails startup rather than starting degraded. |
+| `POSTGRES_PORT` | `5432` | PostgreSQL port. |
+| `POSTGRES_DB` | `jnotes` | Database name. |
+| `POSTGRES_USER` | `jnotes` | Database username. |
+| `POSTGRES_PASSWORD` | `jnotes` | Database password. Change this for anything reachable beyond your machine. |
 | `DATA_PROTECTION_KEYS_PATH` | `App_Data/keys` (local) / `/data/keys` (Docker) | Where the keys that sign the auth cookie are stored. Must be on persistent storage — on a container's ephemeral filesystem every restart regenerates them and silently signs everyone out. Defaults to a `keys` folder beside `NOTES_PATH`. |
 | `TZ` | `UTC` | IANA time zone id (e.g. `America/New_York`, `Europe/London`) note timestamps are *displayed* in. Storage is always UTC regardless — this only affects what you see in the UI. |
 | `OIDC_AUTHORITY` | unset | Your OIDC provider's issuer URL. Leave unset to disable OIDC entirely. |

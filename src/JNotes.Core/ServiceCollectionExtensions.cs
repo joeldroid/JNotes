@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace JNotes.Core;
 
@@ -30,23 +31,42 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddJNotesCore(this IServiceCollection services, IConfiguration configuration)
     {
-        // Flat "NOTES_PATH"/"POSTGRES_CONNECTION_STRING"/"TZ" keys rather than a nested section —
-        // these are the exact names the app expects as environment variables (see
-        // Dockerfile/docker-compose.yml), and IConfiguration's indexer already reads plain env vars
-        // by that name with no "__" nesting needed, so appsettings.json declares them the same way
-        // for local dev.
+        // Flat "NOTES_PATH"/"POSTGRES_HOST"/"TZ" keys rather than a nested section — these are the
+        // exact names the app expects as environment variables (see Dockerfile/docker-compose.yml),
+        // and IConfiguration's indexer already reads plain env vars by that name with no "__" nesting
+        // needed, so appsettings.json declares them the same way for local dev.
         services.Configure<JNotesOptions>(options =>
         {
             options.NotesFolderPath = configuration["NOTES_PATH"] ?? options.NotesFolderPath;
             options.TimeZoneId = configuration["TZ"] ?? options.TimeZoneId;
-            options.PostgresConnectionString = configuration["POSTGRES_CONNECTION_STRING"] ?? options.PostgresConnectionString;
+            options.PostgresHost = configuration["POSTGRES_HOST"] ?? options.PostgresHost;
+            options.PostgresPort = int.TryParse(configuration["POSTGRES_PORT"], out var port) ? port : options.PostgresPort;
+            options.PostgresDatabase = configuration["POSTGRES_DB"] ?? options.PostgresDatabase;
+            options.PostgresUsername = configuration["POSTGRES_USER"] ?? options.PostgresUsername;
+            options.PostgresPassword = configuration["POSTGRES_PASSWORD"] ?? options.PostgresPassword;
+            // POSTGRES_HOST/PORT/DB/USER/PASSWORD split out (rather than one POSTGRES_CONNECTION_STRING)
+            // so a docker-compose setup can share the same plain values with the `postgres` service
+            // instead of hand-building an Npgsql connection string. Built here, not read directly, so
+            // it's still one string by the time DbContextFactory needs it; CoreServicesFixture and the
+            // other test fixtures set PostgresConnectionString directly afterwards, which overrides this.
+            if (!string.IsNullOrWhiteSpace(options.PostgresHost))
+            {
+                options.PostgresConnectionString = new NpgsqlConnectionStringBuilder
+                {
+                    Host = options.PostgresHost,
+                    Port = options.PostgresPort ?? 5432,
+                    Database = options.PostgresDatabase,
+                    Username = options.PostgresUsername,
+                    Password = options.PostgresPassword,
+                }.ConnectionString;
+            }
             // Parsed (not just "?? default") because the raw string needs validating/clamping — see AutoIndexInterval.
             options.AutoIndexIntervalMinutes = AutoIndexInterval.ParseMinutes(configuration["AUTO_INDEX_INTERVAL_MINUTES"]);
         });
 
         // Same flat-env-var pattern for OIDC — optional, unset means "not configured" (see
         // OidcOptions.IsConfigured). ClientSecret is a secret, but this app has never had a
-        // separate secrets mechanism (POSTGRES_CONNECTION_STRING etc. work the same way) — never logged.
+        // separate secrets mechanism (POSTGRES_PASSWORD etc. work the same way) — never logged.
         services.Configure<OidcOptions>(options =>
         {
             options.Authority = configuration["OIDC_AUTHORITY"] ?? options.Authority;
@@ -65,7 +85,7 @@ public static class ServiceCollectionExtensions
             if (string.IsNullOrWhiteSpace(jnotesOptions.PostgresConnectionString))
             {
                 throw new InvalidOperationException(
-                    "POSTGRES_CONNECTION_STRING is required — JNotes keeps user accounts, settings and the note index in PostgreSQL.");
+                    "POSTGRES_HOST (with POSTGRES_DB/POSTGRES_USER/POSTGRES_PASSWORD) is required — JNotes keeps user accounts, settings and the note index in PostgreSQL.");
             }
 
             options.UseNpgsql(jnotesOptions.PostgresConnectionString);

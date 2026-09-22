@@ -3,7 +3,7 @@ namespace JNotes.Core.Users;
 /// <summary>
 /// Populated from the flat "OIDC_AUTHORITY"/"OIDC_CLIENT_ID"/"OIDC_CLIENT_SECRET"/"OIDC_DISPLAY_NAME"
 /// configuration keys — same env-var-style pattern <see cref="JNotesOptions"/> already uses for
-/// "NOTES_PATH"/"POSTGRES_CONNECTION_STRING"/"TZ" (see <see cref="ServiceCollectionExtensions.AddJNotesCore"/>).
+/// "NOTES_PATH"/"POSTGRES_HOST"/"TZ" (see <see cref="ServiceCollectionExtensions.AddJNotesCore"/>).
 /// </summary>
 /// <remarks>
 /// Lives in Core (not Web-only) deliberately: both <c>SettingsService</c> (to refuse disabling

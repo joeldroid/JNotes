@@ -126,7 +126,7 @@ container filesystem) every restart regenerates them and silently signs everyone
   seeded at startup by `HostExtensions.InitializeSetupStateAsync` from "does any `UserAccount`
   exist"). There is no auto-created default user.
 - OIDC (`OIDC_AUTHORITY`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`/`OIDC_DISPLAY_NAME`, read into
-  `OidcOptions` like `NOTES_PATH`/`POSTGRES_CONNECTION_STRING`/`TZ`) works alongside password login. Provisioning is
+  `OidcOptions` like `NOTES_PATH`/`POSTGRES_HOST`/`TZ`) works alongside password login. Provisioning is
   admin-gated: an admin pre-creates the account with an `Email`, and the first OIDC login for that
   email links it (`OidcAccountLinker`, **unlinked** accounts only — never relinks or auto-creates).
   Password login can be disabled in Settings → Security once OIDC is configured;
@@ -237,7 +237,10 @@ container filesystem) every restart regenerates them and silently signs everyone
   Timestamps are UTC in storage; `JNotesOptions.TimeZoneId`/`AppTimeZoneProvider` (`TZ` env var)
   affect only *display*.
 - **The index lives in the same PostgreSQL database and schema as users/settings** — one connection
-  string (`POSTGRES_CONNECTION_STRING`), one migration history, one `MigrateAsync()` at startup. The
+  string (assembled from `POSTGRES_HOST`/`POSTGRES_PORT`/`POSTGRES_DB`/`POSTGRES_USER`/
+  `POSTGRES_PASSWORD` — split out, rather than one `POSTGRES_CONNECTION_STRING`, so a docker-compose
+  setup can share plain host/port/db/user/password values with the `postgres` service instead of
+  hand-building a connection string), one migration history, one `MigrateAsync()` at startup. The
   `NoteIndex*` table prefix (`NoteIndexEntries`, `NoteIndexTags`) is the "these are the throwaway,
   rebuildable ones" marker in `psql` — a schema boundary would add no guarantee `NoteIndexReconciler`
   doesn't already provide, since the tables can be `TRUNCATE`d and rebuilt from disk at any time.

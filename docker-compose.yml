@@ -13,7 +13,16 @@ services:
       # Signs the auth cookie. On the bind mount on purpose: on the container filesystem these are
       # regenerated on every restart, silently signing everyone out.
       - DATA_PROTECTION_KEYS_PATH=/data/keys
-      - POSTGRES_CONNECTION_STRING=Host=postgres;Port=5432;Database=jnotes;Username=jnotes;Password=${POSTGRES_PASSWORD:-jnotes}
+      # Split into host/port/db/user/password (rather than one connection string) so the same
+      # POSTGRES_DB/POSTGRES_USER/POSTGRES_PASSWORD values below can be shared with the `postgres`
+      # service's own environment instead of hand-building/duplicating a connection string.
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-jnotes}
+      - POSTGRES_USER=${POSTGRES_USER:-jnotes}
+      # CHANGE THIS for anything reachable beyond your machine: export POSTGRES_PASSWORD=... or put
+      # it in a .env file (gitignored). It's shared with the `postgres` service below.
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-jnotes}
       # Override by exporting TZ before running compose, or adding TZ=... to a .env file.
       - TZ=${TZ:-UTC}
       # Set to 0 to disable background index reconciliation.
@@ -35,10 +44,10 @@ services:
   postgres:
     image: postgres:18-alpine
     environment:
-      - POSTGRES_DB=jnotes
-      - POSTGRES_USER=jnotes
-      # CHANGE THIS for anything reachable beyond your machine: export POSTGRES_PASSWORD=... or put
-      # it in a .env file (gitignored). It has to match the app's POSTGRES_CONNECTION_STRING above.
+      # Same values as the jnotes service above — kept as separate lines (not YAML anchors) so each
+      # service's env block stays readable on its own.
+      - POSTGRES_DB=${POSTGRES_DB:-jnotes}
+      - POSTGRES_USER=${POSTGRES_USER:-jnotes}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-jnotes}
     volumes:
       # Unlike the Redis service this replaces, the volume is NOT optional. Redis held only the note
@@ -57,7 +66,9 @@ services:
       # well-known ownership problems on macOS/Windows. Back it up with pg_dump, not `cp`.
       - jnotes-pgdata:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U jnotes -d jnotes"]
+      # $POSTGRES_USER/$POSTGRES_DB are shell-expanded inside the container, from the environment
+      # block above — not compose variable substitution — so this still works if you override them.
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 10
