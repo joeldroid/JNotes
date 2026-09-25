@@ -21,9 +21,8 @@
             <div class="auth-alert auth-alert-error" role="alert">@_error</div>
         }
         <div class="auth-field">
-            <label for="username">Username</label>
+            <label for="username">Username (Lowercase only)</label>
             <InputText id="username" class="auth-input" @bind-Value="Model!.Username" autofocus />
-            <div class="auth-hint">Lowercase only.</div>
         </div>
         <div class="auth-field">
             <label for="email">Email</label>

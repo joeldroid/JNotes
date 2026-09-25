@@ -68,3 +68,4 @@ nunit-*.xml
 **/TestStore
 **/v18
 **/FileContentIndex
+.vs

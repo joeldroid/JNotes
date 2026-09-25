@@ -220,7 +220,7 @@
                         {
                             <MudAlert Severity="Severity.Error" Dense="true">@_createUserError</MudAlert>
                         }
-                        <MudTextField @bind-Value="_newUser.Username" For="() => _newUser.Username" Label="Username" HelperText="Lowercase only."
+                        <MudTextField @bind-Value="_newUser.Username" For="() => _newUser.Username" Label="Username (Lowercase only)"
                                       Variant="Variant.Outlined" Margin="Margin.Dense" />
                         <MudSelect T="UserRole" @bind-Value="_newUser.Role" Label="Role" Variant="Variant.Outlined" Margin="Margin.Dense">
                             <MudSelectItem T="UserRole" Value="UserRole.Member">Member</MudSelectItem>
