@@ -63,3 +63,8 @@ nunit-*.xml
 **.idea/
 **.DS_Store
 *.user
+*.config
+.vs/JNotes.slnx/DesignTimeBuild/.dtbcache.v2
+**/TestStore
+**/v18
+**/FileContentIndex
