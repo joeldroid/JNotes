@@ -1,0 +1,41 @@
+# Throwaway PostgreSQL for the integration tests (tests/JNotes.Tests). Not the app's database —
+# that's docker-compose.yml.
+#
+#   docker compose -f docker-compose.test.yml up -d --wait
+#   dotnet test JNotes.slnx
+#   docker compose -f docker-compose.test.yml down
+#
+# Matches the tests' default connection string, so no env var is needed:
+#   Host=localhost;Port=5432;Database=jnotes;Username=jnotes;Password=jnotes
+# (override with JNOTES_TEST_POSTGRES_CONNECTION_STRING if you change anything below).
+
+# Explicit project name so this never shares a project (and "orphan container" warnings) with the
+# app's docker-compose.yml, which would otherwise default to the same folder name.
+name: jnotes-test
+
+services:
+  jnotes_test:
+    container_name: jnotes_test
+    image: postgres:18-alpine
+    ports:
+      # Bound to localhost only. Change the left side if 5432 is taken (e.g. a local PostgreSQL),
+      # and update JNOTES_TEST_POSTGRES_CONNECTION_STRING to match.
+      - "127.0.0.1:5432:5432"
+    environment:
+      - POSTGRES_DB=jnotes
+      # POSTGRES_USER is the superuser, which satisfies the tests' CREATEDB requirement: each test
+      # class creates and drops its own jnotes_test_<guid> database.
+      - POSTGRES_USER=jnotes
+      - POSTGRES_PASSWORD=jnotes
+    # Everything is recreated per test class, so nothing here needs to survive a restart. tmpfs
+    # keeps it in RAM (faster) and leaves no volume behind. Mounted at /var/lib/postgresql, not
+    # /var/lib/postgresql/data: postgres:18+ keeps PGDATA in a versioned subdirectory under it.
+    tmpfs:
+      - /var/lib/postgresql
+    # The tests create/drop many databases; fsync buys durability that throwaway data doesn't need.
+    command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
