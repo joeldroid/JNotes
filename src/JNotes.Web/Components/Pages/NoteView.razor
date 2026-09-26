@@ -39,7 +39,7 @@ else
                 @if (PdfExportOptions.Value.IsEnabled)
                 {
                     @* A plain new-tab anchor to /notes/{id}/pdf (not an @onclick): the PDF reflects the file at click time, so checklist changes made on this page are included. *@
-                    <MudButton Href="@($"/notes/{_note.Id}/pdf")" Target="_blank" Rel="noopener" Variant="Variant.Outlined"
+                    <MudButton Href="@($"/notes/{Id}/pdf")" Target="_blank" Rel="noopener" Variant="Variant.Outlined"
                                StartIcon="@Icons.Material.Outlined.PictureAsPdf" title="Export as PDF (opens in a new tab)">Export PDF</MudButton>
                 }
                 <MudButton Variant="Variant.Outlined" Color="Color.Error" title="Move to Trash" Disabled="_isDeleting"
