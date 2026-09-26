@@ -1,11 +1,13 @@
 using JNotes.Core;
 using JNotes.Core.Data;
+using JNotes.Core.Export;
 using JNotes.Core.Images;
 using JNotes.Core.Users;
 using JNotes.Web;
 using JNotes.Web.Auth;
 using JNotes.Web.Components;
 using JNotes.Web.Components.Layout;
+using JNotes.Web.Export;
 using JNotes.Web.Images;
 using JNotes.Web.Indexing;
 using JNotes.Web.Theme;
@@ -14,6 +16,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MudBlazor.Services;
 
@@ -27,6 +30,9 @@ builder.Services.AddHostedService<AutoIndexBackgroundService>();
 builder.Services.AddHostedService<ImageCleanupBackgroundService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserContext, AuthenticatedCurrentUserContext>();
+// Same Core-interface, Web-implementation split as ICurrentUserContext: the PDF's static assets are Web's
+// wwwroot. Registered always (even with the feature off) so Development's ValidateOnBuild can resolve NoteExportService.
+builder.Services.AddSingleton<IPdfExportAssetSource, WebRootPdfExportAssetSource>();
 
 // Persisted alongside the notes (the same bind-mounted volume in Docker) rather than the
 // container's ephemeral filesystem — without this, the keys used to sign the auth cookie are
@@ -165,6 +171,18 @@ app.MapGet("/images/{fileName}", async (string fileName, IImageService images, H
     context.Response.Headers.XContentTypeOptions = "nosniff";
     return Results.Stream(image.Stream, image.ContentType);
 }).RequireAuthorization();
+
+// Optional PDF export: mapped only when GOTENBERG_URL is valid, so with the feature off the route simply 404s like any unknown URL.
+var pdfExport = app.Services.GetRequiredService<IOptions<PdfExportOptions>>().Value;
+if (pdfExport.IsEnabled)
+{
+    app.MapNotePdfExport();
+}
+else if (!string.IsNullOrWhiteSpace(pdfExport.GotenbergUrl))
+{
+    // Never log the URL itself; it may contain credentials.
+    app.Logger.LogWarning("GOTENBERG_URL is set but isn't an absolute http(s) URL — PDF export is disabled.");
+}
 
 app.MapPost("/logout", async (HttpContext context) =>
 {

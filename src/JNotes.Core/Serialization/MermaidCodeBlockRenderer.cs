@@ -16,6 +16,9 @@ namespace JNotes.Core.Serialization;
 /// </summary>
 public sealed class MermaidCodeBlockRenderer : CodeBlockRenderer
 {
+    /// <summary>The exact opening tag written for a mermaid block (also what the PDF builder looks for).</summary>
+    public const string OpeningTag = "<pre class=\"mermaid\">";
+
     private const string MermaidInfo = "mermaid";
 
     protected override void Write(HtmlRenderer renderer, CodeBlock obj)
@@ -23,7 +26,7 @@ public sealed class MermaidCodeBlockRenderer : CodeBlockRenderer
         if (obj is FencedCodeBlock fenced &&
             string.Equals(fenced.Info?.Trim(), MermaidInfo, StringComparison.OrdinalIgnoreCase))
         {
-            renderer.Write("<pre class=\"mermaid\">");
+            renderer.Write(OpeningTag);
             renderer.WriteLeafRawLines(obj, writeEndOfLines: true, escape: true);
             renderer.WriteLine("</pre>");
             return;

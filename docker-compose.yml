@@ -33,6 +33,10 @@ services:
       # - OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
       # - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
       # - OIDC_DISPLAY_NAME=${OIDC_DISPLAY_NAME:-OIDC}
+      # Optional PDF export (an "Export PDF" button on each note). Off unless GOTENBERG_URL is set. To turn
+      # it on, add BOTH lines to a .env file:  COMPOSE_PROFILES=pdf  (starts the gotenberg service below)
+      # and  GOTENBERG_URL=http://gotenberg:3000  (tells the app where it is). See README.md's "PDF export".
+      - GOTENBERG_URL=${GOTENBERG_URL:-}
     depends_on:
       postgres:
         # Not just "started": the app migrates the schema before serving traffic, so it needs a
@@ -72,6 +76,26 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
+
+  gotenberg:
+    # Chromium-based HTML -> PDF converter, used only by the optional PDF export. Behind the "pdf"
+    # profile so a plain `docker compose up` never starts it. No `ports:` on purpose: only the jnotes
+    # service (same compose network) talks to it, and Gotenberg has no authentication of its own.
+    image: gotenberg/gotenberg:8
+    profiles: ["pdf"]
+    command:
+      - gotenberg
+      # JNotes sends everything the page needs (HTML, images, fonts, mermaid) inside the request, so
+      # Chromium never needs the network: only the request's own temp files may load. Stops a note
+      # (e.g. an <img> in a mermaid label) from making Gotenberg fetch URLs on your internal network.
+      - "--chromium-allow-list=^file:///tmp/.*"
+    healthcheck:
+      # curl ships in the image for exactly this.
+      test: ["CMD", "curl", "--silent", "--fail", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped
 
 volumes:

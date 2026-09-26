@@ -13,6 +13,7 @@ see [Authentication](#authentication) below for that flow, adding more users, an
 
 - **Text notes** — free-form markdown, edited with a live preview, with `mermaid` code blocks rendered as diagrams (toolbar buttons insert a starter flow chart), and images inserted with the **Image** button or by pasting one (PNG, JPEG, GIF or WebP, up to 10 MB).
 - **Checklist notes** — markdown task lists (`- [ ] item`) rendered as interactive checkboxes. Add items and group them into categories (markdown `##` headings) from the note view or the editor without touching markdown; checking an item moves it below the unchecked ones in its category.
+- **PDF export (optional)** — an **Export PDF** button on a note opens it as a light-themed A4 PDF (images, diagrams and checklists included), rendered by a [Gotenberg](https://gotenberg.dev) container. Off unless `GOTENBERG_URL` is set.
 - **Multi-user with real accounts** — admin-created users, each with their own notes and settings;
   sign in with a password, OIDC, or both.
 - **Portable storage** — every note is `notes/<user-id>/<id>.md` with a small YAML front matter
@@ -35,7 +36,7 @@ tests/
 
 `JNotes.Web` never touches the filesystem or EF Core/PostgreSQL directly — it only consumes
 `INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
-`IUserManagementService`, and `IImageService` from `JNotes.Core`. This is enforced at build time via
+`IUserManagementService`, `IImageService`, and `INoteExportService` from `JNotes.Core`. This is enforced at build time via
 `Microsoft.CodeAnalysis.BannedApiAnalyzers` (`src/JNotes.Web/BannedSymbols.txt`).
 
 ### Styling
@@ -112,6 +113,7 @@ pick the admin's username and password — see [Authentication](#authentication)
 | `OIDC_CLIENT_ID` | unset | OIDC client id registered with your provider. |
 | `OIDC_CLIENT_SECRET` | unset | OIDC client secret. All three `OIDC_*` values must be set for OIDC to be offered. |
 | `OIDC_DISPLAY_NAME` | `OIDC` | Label on the "Sign in with …" button on the login page. |
+| `GOTENBERG_URL` | unset | Base URL of a [Gotenberg 8](https://gotenberg.dev) service (e.g. `http://gotenberg:3000`) used to render note PDFs. Leave unset to disable PDF export entirely — no button, and `/notes/{id}/pdf` returns 404. Must be an absolute http(s) URL; anything else logs a warning and leaves it off. |
 | `AUTO_INDEX_INTERVAL_MINUTES` | `5` | How often the background pass reconciles every user's note index against the files on disk. `0` disables it (the startup pass and Settings → "Rescan Now" still work). |
 
 All of these take effect at startup only — changing one requires an app/container restart.
@@ -174,6 +176,19 @@ note above) — there's no automated migration.
 > can't write to `./data` on your host (uncommon, but possible with some Docker Engine/Linux
 > setups), fix host-side permissions with `chmod -R a+rwX ./data` or run
 > `sudo chown -R $(id -u):$(id -g) ./data` before starting the container.
+
+### PDF export (optional)
+
+The `gotenberg` service in `docker-compose.yml` sits behind a compose profile, so it only runs if you ask for it. To enable PDF export, create a `.env` file next to `docker-compose.yml` with:
+
+```
+COMPOSE_PROFILES=pdf
+GOTENBERG_URL=http://gotenberg:3000
+```
+
+then `docker compose up -d --build`. Gotenberg isn't published to the host; only JNotes talks to it. It runs a headless Chromium, so budget a few hundred MB of RAM. If it's stopped, the button still shows but the new tab explains the PDF service isn't reachable. The PDF is always light-themed, whatever your theme. Mermaid diagrams are rendered in the PDF. Images from other websites appear as links rather than being downloaded.
+
+Running locally instead: `docker run --rm -p 3000:3000 gotenberg/gotenberg:8`, then start JNotes with `GOTENBERG_URL=http://localhost:3000`.
 
 ## Authentication
 

@@ -1,8 +1,10 @@
 @page "/notes/{Id:guid}"
 @attribute [Authorize]
+@using Microsoft.Extensions.Options
 @inject INoteService NoteService
 @inject NavigationManager NavigationManager
 @inject IAppTimeZoneProvider TimeZoneProvider
+@inject IOptions<PdfExportOptions> PdfExportOptions
 
 <PageTitle>@(_note?.Title is { Length: > 0 } title ? title : "Note")</PageTitle>
 
@@ -31,9 +33,15 @@ else
                     </div>
                 }
             </div>
-            <MudStack Row="true" Spacing="2" Class="flex-shrink-0">
+            <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" Class="flex-shrink-0">
                 <MudButton Href="@($"/notes/{_note.Id}/edit")" Variant="Variant.Filled" Color="Color.Primary"
                            StartIcon="@Icons.Material.Filled.Edit">Edit</MudButton>
+                @if (PdfExportOptions.Value.IsEnabled)
+                {
+                    @* A plain new-tab anchor to /notes/{id}/pdf (not an @onclick): the PDF reflects the file at click time, so checklist changes made on this page are included. *@
+                    <MudButton Href="@($"/notes/{_note.Id}/pdf")" Target="_blank" Rel="noopener" Variant="Variant.Outlined"
+                               StartIcon="@Icons.Material.Outlined.PictureAsPdf" title="Export as PDF (opens in a new tab)">Export PDF</MudButton>
+                }
                 <MudButton Variant="Variant.Outlined" Color="Color.Error" title="Move to Trash" Disabled="_isDeleting"
                            StartIcon="@Icons.Material.Outlined.DeleteOutline" OnClick="TrashAsync">Delete</MudButton>
             </MudStack>

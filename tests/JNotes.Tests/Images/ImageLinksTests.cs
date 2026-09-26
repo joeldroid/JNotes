@@ -23,6 +23,16 @@ public class ImageLinksTests
     }
 
     [Fact]
+    public void ToStoredFileName_returns_the_name_only_for_an_exact_stored_image_link()
+    {
+        Assert.Equal(Stored, ImageLinks.ToStoredFileName("images/" + Stored));
+        Assert.Null(ImageLinks.ToStoredFileName("images/../" + Stored));
+        Assert.Null(ImageLinks.ToStoredFileName("pictures/" + Stored));
+        Assert.Null(ImageLinks.ToStoredFileName("https://example.com/images/" + Stored));
+        Assert.Null(ImageLinks.ToStoredFileName("/images/" + Stored));
+    }
+
+    [Fact]
     public void ToServedUrl_rewrites_only_an_exact_stored_image_link()
     {
         Assert.Equal("/images/" + Stored, ImageLinks.ToServedUrl("images/" + Stored));

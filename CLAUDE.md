@@ -40,15 +40,17 @@ docker compose up --build   # production-shaped: what Docker actually runs, not 
 
 **Web never touches the filesystem or EF Core/PostgreSQL directly** — only Core's interfaces
 (`INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
-`IUserManagementService`, `IImageService`, `IImageCleanupService`). Enforced at build time: `Microsoft.CodeAnalysis.BannedApiAnalyzers`
+`IUserManagementService`, `IImageService`, `IImageCleanupService`, `INoteExportService`). Enforced at build time: `Microsoft.CodeAnalysis.BannedApiAnalyzers`
 (`src/JNotes.Web/BannedSymbols.txt`) bans `System.IO.File`/`Directory`, `DbContext`, and Npgsql's
 `NpgsqlConnection`/`NpgsqlDataSource` in Web. Pure static Core
 helpers (`ChecklistMarkdownParser`, `NoteGrouping`, `UserInitials`, `UserValidation`) are fine to
 call from Web.
 
 All Core DI wiring is in `JNotes.Core/ServiceCollectionExtensions.AddJNotesCore`, **except**
-`ICurrentUserContext`: declared in Core, registered in Web's `Program.cs`, because its only
-implementation needs `IHttpContextAccessor` (an ASP.NET Core hosting type Core doesn't depend on).
+`ICurrentUserContext` and `IPdfExportAssetSource`: declared in Core, registered in Web's `Program.cs`, because
+`ICurrentUserContext`'s only implementation needs `IHttpContextAccessor` (an ASP.NET Core hosting type Core
+doesn't depend on) and the latter's files (mermaid and Roboto) are Web's `wwwroot`, read through
+`IWebHostEnvironment.WebRootFileProvider`.
 Web's auth wiring (cookie/OIDC handlers, `[Authorize]`/`AuthorizeRouteView`, sign-in/out) lives in
 `JNotes.Web/Auth/` for the same reason. Any service needing a hosting-layer dependency follows
 this pattern: interface in Core, implementation + registration in Web.
@@ -517,6 +519,20 @@ ordinary content debounce and save gate. `NoteView` has no autosave, so its pane
 `INoteService` checklist methods.
 Known limitation: two tabs on one note are last-writer-wins (there's no cross-circuit locking).
 
+## PDF export (optional)
+
+**Off unless `GOTENBERG_URL` is set** (`PdfExportOptions`, read in `AddJNotesCore` like `OIDC_*`; `IsEnabled` needs an absolute http(s) URL). Both halves check it: `NoteView` renders the **Export PDF** button only when enabled, and `Program.cs` maps `GET /notes/{id:guid}/pdf` only when enabled. With it off, the route is simply unmapped (404), not a handler that refuses.
+
+**A plain anchor to a minimal-API endpoint, not an `@onclick`.** Only a real HTTP response can hand the browser a file. The button is `Href` + `Target="_blank"`: Blazor's router ignores anchors with a non-`_self` target, so the browser does a real GET with the cookie. The endpoint (`Export/NotePdfEndpoints.cs`) returns `Content-Disposition: inline` with a title-derived name (`PdfFileName`), so the PDF opens in the new tab and "Save" proposes that name. It resolves `INoteExportService` in an ordinary request scope, where `HttpContext` always exists, so the `ICurrentUserContext` gotcha doesn't apply. The ownership check is the usual one: `INoteService.GetAsync` only reads the caller's folder, so another user's id is a 404. If Gotenberg is down or errors, `GotenbergPdfRenderer` throws `PdfRenderingException` and the endpoint returns **503 with its own small HTML page**. It needs a body, or `UseStatusCodePagesWithReExecute` would show "Not found".
+
+**Gotenberg's HTML route with a self-contained document, never its URL route.** Gotenberg has no cookie, and our pages are interactive circuits in the user's (dark) theme. `NotePdfDocumentBuilder` (pure static) builds `index.html` with an inline light stylesheet (`Export/note-pdf.css`, an embedded resource with literal colours, no `--mud-*` variables). Everything the page loads is sent as a flat sibling file in the same multipart request: stored images (read through `IImageService`, so per-user), the vendored Roboto `.woff2` files (the Gotenberg image has no Roboto), and `mermaid.min.js` only when a diagram exists.
+
+**Nothing user-controlled may make Chromium fetch.** `PdfMarkdownRenderer` shares `MarkdownRenderer.CreateBaseBuilder()` (tables, `DisableHtml`, mermaid) but not `ImageLinkMarkdownExtension`. It rewrites only `images/<stored name>` to the bare file name, and turns every other image (external URL, `data:`, odd path) into a plain link. As a second layer, compose starts Gotenberg with `--chromium-allow-list=^file:///tmp/.*`, because mermaid's sanitizer still allows an `<img>` inside a label.
+
+**Mermaid renders inside Gotenberg's Chromium**, light theme, `securityLevel: 'strict'`, with the same parse-then-render and error fallback as `mermaid-preview.js`. An inline script sets `window.jnotesPdfReady` once fonts and diagrams are done, and Gotenberg's `waitForExpression` waits for it. If the flag never flips, Gotenberg's own 30 s timeout answers 503. Checklists are static HTML mirroring `ChecklistPanel`: items only, grouped by heading, with CSS-drawn boxes.
+
+Compose: the `gotenberg` service sits behind the `pdf` profile, with no published port, and `jnotes` has no `depends_on` on it (that would break a plain `up` with the profile off). The app always gets `GOTENBERG_URL=${GOTENBERG_URL:-}`, which is empty (off) unless `.env` sets it.
+
 ## Tests
 
 `tests/JNotes.Tests/`: pure unit tests (`Serialization/`, `Time/`, `Notes/`) and integration tests
@@ -538,6 +554,8 @@ in a browser.
 through `NoteService` itself. `Users/EfUserRepositoryTests` and `UserManagementServiceTests` build
 their own provider because they need things the fixture doesn't expose (`ISetupStateProvider`,
 `IUserManagementService`); the latter covers move-before-delete, including idempotency on retry.
+`CoreServicesFixture` also swaps in `RecordingPdfRenderer`/`StubPdfExportAssetSource` and enables
+`PdfExportOptions`, so `NoteExportService` runs without Gotenberg.
 
 ## CSS
 

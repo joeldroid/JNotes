@@ -21,7 +21,14 @@ public static class ImageLinks
     /// The URL to render for a markdown image URL, or <c>null</c> to leave it alone — only an exact
     /// <c>images/{valid stored name}</c> is rewritten, so external URLs and anything odd pass through untouched.
     /// </summary>
-    public static string? ToServedUrl(string markdownUrl)
+    public static string? ToServedUrl(string markdownUrl) =>
+        ToStoredFileName(markdownUrl) is { } fileName ? ServedPrefix + fileName : null;
+
+    /// <summary>
+    /// The stored file name in a markdown image URL, or <c>null</c> — only an exact
+    /// <c>images/{valid stored name}</c> qualifies.
+    /// </summary>
+    public static string? ToStoredFileName(string markdownUrl)
     {
         if (!markdownUrl.StartsWith(RelativePrefix, StringComparison.Ordinal))
         {
@@ -29,7 +36,7 @@ public static class ImageLinks
         }
 
         var fileName = markdownUrl[RelativePrefix.Length..];
-        return ImageFormat.IsStoredFileName(fileName) ? ServedPrefix + fileName : null;
+        return ImageFormat.IsStoredFileName(fileName) ? fileName : null;
     }
 
     private static string ToAltText(string originalFileName)

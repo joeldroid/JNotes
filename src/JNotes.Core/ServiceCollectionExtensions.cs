@@ -1,4 +1,5 @@
 using JNotes.Core.Data;
+using JNotes.Core.Export;
 using JNotes.Core.Images;
 using JNotes.Core.Indexing;
 using JNotes.Core.Notes;
@@ -21,11 +22,12 @@ namespace JNotes.Core;
 /// this (plus <see cref="HostExtensions"/>) — it never registers a <see cref="DbContext"/> or
 /// file-store implementation itself, which is what keeps Web from having a reason to reach past
 /// <c>INoteService</c>/<c>ISettingsService</c>/<c>INoteIndexReconciler</c>/<c>IUserRepository</c>/
-/// <c>IUserManagementService</c>/<c>IImageService</c> into Core's internals. One deliberate exception:
-/// <c>ICurrentUserContext</c> is declared in Core but registered by <c>JNotes.Web</c> itself, not
-/// here — its only implementation needs <c>IHttpContextAccessor</c>, an ASP.NET Core hosting type
-/// Core has never depended on. Web's own auth wiring (cookie/OIDC handlers, sign-in/out) lives
-/// there for the same reason.
+/// <c>IUserManagementService</c>/<c>IImageService</c>/<c>INoteExportService</c> into Core's internals.
+/// Two deliberate exceptions: <c>ICurrentUserContext</c> and <c>IPdfExportAssetSource</c> are declared
+/// in Core but registered by <c>JNotes.Web</c> itself, not here — the former's only implementation
+/// needs <c>IHttpContextAccessor</c>, an ASP.NET Core hosting type Core has never depended on; the
+/// latter's files (mermaid, Roboto) are Web's <c>wwwroot</c>. Web's own auth wiring (cookie/OIDC
+/// handlers, sign-in/out) lives there for the same reason.
 /// </summary>
 public static class ServiceCollectionExtensions
 {
@@ -74,6 +76,20 @@ public static class ServiceCollectionExtensions
             options.ClientSecret = configuration["OIDC_CLIENT_SECRET"] ?? options.ClientSecret;
             options.DisplayName = configuration["OIDC_DISPLAY_NAME"] ?? options.DisplayName;
         });
+
+        // Optional PDF export — same flat-env-var pattern; unset/invalid GOTENBERG_URL means off (PdfExportOptions.IsEnabled).
+        services.Configure<PdfExportOptions>(options => options.GotenbergUrl = configuration["GOTENBERG_URL"] ?? options.GotenbergUrl);
+        services.AddHttpClient<IPdfRenderer, GotenbergPdfRenderer>((sp, client) =>
+        {
+            if (sp.GetRequiredService<IOptions<PdfExportOptions>>().Value.GotenbergBaseUri is { } baseUri)
+            {
+                client.BaseAddress = baseUri;
+            }
+
+            client.Timeout = GotenbergPdfRenderer.Timeout;
+        });
+        services.AddScoped<INoteExportService, NoteExportService>();
+        // IPdfExportAssetSource is intentionally NOT registered here — like ICurrentUserContext, JNotes.Web does (its files are Web's wwwroot).
 
         services.AddDbContextFactory<JNotesDbContext>((sp, options) =>
         {

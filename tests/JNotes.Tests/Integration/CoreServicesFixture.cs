@@ -1,5 +1,6 @@
 using JNotes.Core;
 using JNotes.Core.Data;
+using JNotes.Core.Export;
 using JNotes.Core.Indexing;
 using JNotes.Core.Notes;
 using JNotes.Core.Serialization;
@@ -38,7 +39,8 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
         TestPostgresDatabase database,
         TestCurrentUserContext currentUserContext,
         Guid userAId,
-        Guid userBId)
+        Guid userBId,
+        RecordingPdfRenderer pdfRenderer)
     {
         _provider = provider;
         _scope = scope;
@@ -48,6 +50,7 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
         _currentUserContext = currentUserContext;
         UserAId = userAId;
         UserBId = userBId;
+        PdfRenderer = pdfRenderer;
     }
 
     public string NotesFolder { get; }
@@ -58,6 +61,11 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
     public Guid UserAId { get; }
 
     public Guid UserBId { get; }
+
+    /// <summary>Stands in for Gotenberg; <see cref="INoteExportService"/> renders through it.</summary>
+    public RecordingPdfRenderer PdfRenderer { get; }
+
+    public INoteExportService NoteExportService => _scope.ServiceProvider.GetRequiredService<INoteExportService>();
 
     public INoteService NoteService => _scope.ServiceProvider.GetRequiredService<INoteService>();
 
@@ -99,6 +107,12 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
         // AddJNotesCore deliberately doesn't register this (see its doc comment) — normally
         // JNotes.Web does, backed by a cookie; here a simple mutable stub stands in.
         services.AddSingleton<ICurrentUserContext>(currentUserContext);
+        // PDF export: enabled, but rendered by a recording stub instead of Gotenberg (the last IPdfRenderer
+        // registration wins over AddJNotesCore's typed HttpClient), with stub assets instead of Web's wwwroot.
+        services.Configure<PdfExportOptions>(o => o.GotenbergUrl = "http://gotenberg.test:3000");
+        var pdfRenderer = new RecordingPdfRenderer();
+        services.AddSingleton<IPdfRenderer>(pdfRenderer);
+        services.AddSingleton<IPdfExportAssetSource, StubPdfExportAssetSource>();
 
         var provider = services.BuildServiceProvider();
         await provider.MigrateJNotesDatabaseAsync();
@@ -109,7 +123,7 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
         var userB = await userRepository.CreateUserAsync("user-b", UserRole.Member, email: null, password: "password123");
         currentUserContext.UserId = userA.Id; // default to acting as user A
 
-        return new CoreServicesFixture(provider, scope, rootDir, notesFolder, database, currentUserContext, userA.Id, userB.Id);
+        return new CoreServicesFixture(provider, scope, rootDir, notesFolder, database, currentUserContext, userA.Id, userB.Id, pdfRenderer);
     }
 
     public async ValueTask DisposeAsync()
