@@ -40,7 +40,7 @@ docker compose up --build   # production-shaped: what Docker actually runs, not 
 
 **Web never touches the filesystem or EF Core/PostgreSQL directly** — only Core's interfaces
 (`INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
-`IUserManagementService`, `IImageService`, `IImageCleanupService`, `INoteExportService`). Enforced at build time: `Microsoft.CodeAnalysis.BannedApiAnalyzers`
+`IUserManagementService`, `IImageService`, `IImageCleanupService`, `INoteExportService`, `INoteAutoTagService`). Enforced at build time: `Microsoft.CodeAnalysis.BannedApiAnalyzers`
 (`src/JNotes.Web/BannedSymbols.txt`) bans `System.IO.File`/`Directory`, `DbContext`, and Npgsql's
 `NpgsqlConnection`/`NpgsqlDataSource` in Web. Pure static Core
 helpers (`ChecklistMarkdownParser`, `NoteGrouping`, `UserInitials`, `UserValidation`) are fine to
@@ -533,6 +533,18 @@ Known limitation: two tabs on one note are last-writer-wins (there's no cross-ci
 
 Compose: the `gotenberg` service sits behind the `pdf` profile, with no published port, and `jnotes` has no `depends_on` on it (that would break a plain `up` with the profile off). The app always gets `GOTENBERG_URL=${GOTENBERG_URL:-}`, which is empty (off) unless `.env` sets it.
 
+## Auto-tagging (optional)
+
+**Off unless `AUTO_TAG_ENABLED` is truthy (`true`/`1`/`yes`/`on`) and `OLLAMA_URL` is a valid absolute http(s) URL** (`AutoTagOptions.IsEnabled`, which reuses `PdfExportOptions.ParseBaseUri`; also `OLLAMA_MODEL`, default `phi4`, and `OLLAMA_TIMEOUT_SECONDS`, default 120, clamped 10..600). `NoteEditor` renders the **Auto-tag** button only when enabled; `Program.cs` just logs the state (never the URL). Editor only — deliberately no `NoteView` button and **no auto-run on save** (autosave fires every 500–800 ms and an LLM call takes seconds to minutes).
+
+**Layering mirrors PDF export**, in `JNotes.Core/Tagging/`: `ITagModelClient`/`OllamaTagModelClient` (typed `HttpClient`, `POST /api/chat`, non-streaming, a JSON-schema `format`, `num_ctx` 8192; failures become `AutoTagException` with user-safe text, details only in the log, never note content); `INoteAutoTagService` (implicit current user, only to read the user's tag vocabulary through `INoteService`); pure static `AutoTagPromptBuilder` (body capped at 12,000 chars, image links reduced to alt text), `AutoTagResponseParser` and `AutoTagNormalizer`. Web never talks to Ollama.
+
+**The service takes content, not a note id, and writes nothing.** The editor's note may be an unsaved draft (`Id = Guid.Empty`) or ahead of its file by a debounce. `NoteEditor.AutoTagAsync` merges the result into the *current* `_note.Tags` with `TagList.AddTags` and calls `OnTagsChanged`, so persistence is the ordinary `Metadata`-scope autosave (which reindexes `NoteIndexTags`/`NoteIndexUserTags`), and a draft only writes on Save. The editor instance is reused across notes, so `_autoTagCts` is cancelled in `OnParametersSetAsync`/`DisposeAsync` and the result is dropped unless `ReferenceEquals(_note, target)`.
+
+**Normalisation** (`AutoTagNormalizer`): lowercase kebab-case, generic tags (`note`, `todo`, `checklist`, …) dropped, at most 5, skipping tags already on the note by `Key` (case/`-`/`_`/space-insensitive). A tag matching one in the user's vocabulary takes *their* spelling, because `NoteIndexUserTags` and the tag filter are case-sensitive and "Work"/"work" would otherwise split.
+
+Compose: the optional `ollama` service sits behind the `ollama` profile (no published port, named `ollama-models` volume, no `depends_on` from `jnotes`), and `jnotes` gets `extra_hosts: host.docker.internal:host-gateway` so an Ollama on a Linux host is reachable.
+
 ## Tests
 
 `tests/JNotes.Tests/`: pure unit tests (`Serialization/`, `Time/`, `Notes/`) and integration tests
@@ -555,7 +567,8 @@ through `NoteService` itself. `Users/EfUserRepositoryTests` and `UserManagementS
 their own provider because they need things the fixture doesn't expose (`ISetupStateProvider`,
 `IUserManagementService`); the latter covers move-before-delete, including idempotency on retry.
 `CoreServicesFixture` also swaps in `RecordingPdfRenderer`/`StubPdfExportAssetSource` and enables
-`PdfExportOptions`, so `NoteExportService` runs without Gotenberg.
+`PdfExportOptions`, so `NoteExportService` runs without Gotenberg. It likewise swaps in
+`RecordingTagModelClient` and enables `AutoTagOptions`, so `NoteAutoTagService` runs without Ollama.
 
 ## CSS
 

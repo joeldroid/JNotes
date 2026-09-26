@@ -2,6 +2,7 @@ using JNotes.Core;
 using JNotes.Core.Data;
 using JNotes.Core.Export;
 using JNotes.Core.Images;
+using JNotes.Core.Tagging;
 using JNotes.Core.Users;
 using JNotes.Web;
 using JNotes.Web.Auth;
@@ -182,6 +183,18 @@ else if (!string.IsNullOrWhiteSpace(pdfExport.GotenbergUrl))
 {
     // Never log the URL itself; it may contain credentials.
     app.Logger.LogWarning("GOTENBERG_URL is set but isn't an absolute http(s) URL — PDF export is disabled.");
+}
+
+// Optional auto-tagging: nothing to map (the editor calls INoteAutoTagService over the circuit), so just say what state it's in.
+var autoTag = app.Services.GetRequiredService<IOptions<AutoTagOptions>>().Value;
+if (autoTag.IsEnabled)
+{
+    app.Logger.LogInformation("Auto-tagging is enabled (Ollama model {Model}).", autoTag.Model);
+}
+else if (autoTag.Enabled)
+{
+    // Never log the URL itself.
+    app.Logger.LogWarning("AUTO_TAG_ENABLED is set but OLLAMA_URL isn't an absolute http(s) URL — auto-tagging is disabled.");
 }
 
 app.MapPost("/logout", async (HttpContext context) =>

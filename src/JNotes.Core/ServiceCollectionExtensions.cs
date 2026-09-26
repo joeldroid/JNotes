@@ -6,6 +6,7 @@ using JNotes.Core.Notes;
 using JNotes.Core.Serialization;
 using JNotes.Core.Settings;
 using JNotes.Core.Storage;
+using JNotes.Core.Tagging;
 using JNotes.Core.Time;
 using JNotes.Core.Users;
 using Microsoft.AspNetCore.Identity;
@@ -22,7 +23,7 @@ namespace JNotes.Core;
 /// this (plus <see cref="HostExtensions"/>) — it never registers a <see cref="DbContext"/> or
 /// file-store implementation itself, which is what keeps Web from having a reason to reach past
 /// <c>INoteService</c>/<c>ISettingsService</c>/<c>INoteIndexReconciler</c>/<c>IUserRepository</c>/
-/// <c>IUserManagementService</c>/<c>IImageService</c>/<c>INoteExportService</c> into Core's internals.
+/// <c>IUserManagementService</c>/<c>IImageService</c>/<c>INoteExportService</c>/<c>INoteAutoTagService</c> into Core's internals.
 /// Two deliberate exceptions: <c>ICurrentUserContext</c> and <c>IPdfExportAssetSource</c> are declared
 /// in Core but registered by <c>JNotes.Web</c> itself, not here — the former's only implementation
 /// needs <c>IHttpContextAccessor</c>, an ASP.NET Core hosting type Core has never depended on; the
@@ -90,6 +91,30 @@ public static class ServiceCollectionExtensions
         });
         services.AddScoped<INoteExportService, NoteExportService>();
         // IPdfExportAssetSource is intentionally NOT registered here — like ICurrentUserContext, JNotes.Web does (its files are Web's wwwroot).
+
+        // Optional Ollama auto-tagging — off unless AUTO_TAG_ENABLED is truthy AND OLLAMA_URL is a valid http(s) URL (AutoTagOptions.IsEnabled).
+        services.Configure<AutoTagOptions>(options =>
+        {
+            options.Enabled = AutoTagOptions.ParseFlag(configuration["AUTO_TAG_ENABLED"]);
+            options.OllamaUrl = configuration["OLLAMA_URL"] ?? options.OllamaUrl;
+            if (!string.IsNullOrWhiteSpace(configuration["OLLAMA_MODEL"]))
+            {
+                options.Model = configuration["OLLAMA_MODEL"]!.Trim();
+            }
+
+            options.Timeout = AutoTagOptions.ParseTimeout(configuration["OLLAMA_TIMEOUT_SECONDS"]);
+        });
+        services.AddHttpClient<ITagModelClient, OllamaTagModelClient>((sp, client) =>
+        {
+            var autoTag = sp.GetRequiredService<IOptions<AutoTagOptions>>().Value;
+            if (autoTag.OllamaBaseUri is { } baseUri)
+            {
+                client.BaseAddress = baseUri;
+            }
+
+            client.Timeout = autoTag.Timeout;
+        });
+        services.AddScoped<INoteAutoTagService, NoteAutoTagService>();
 
         services.AddDbContextFactory<JNotesDbContext>((sp, options) =>
         {

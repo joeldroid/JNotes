@@ -5,6 +5,7 @@ using JNotes.Core.Indexing;
 using JNotes.Core.Notes;
 using JNotes.Core.Serialization;
 using JNotes.Core.Storage;
+using JNotes.Core.Tagging;
 using JNotes.Core.Users;
 using JNotes.Tests.Infrastructure;
 using JNotes.Tests.TestDoubles;
@@ -40,7 +41,8 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
         TestCurrentUserContext currentUserContext,
         Guid userAId,
         Guid userBId,
-        RecordingPdfRenderer pdfRenderer)
+        RecordingPdfRenderer pdfRenderer,
+        RecordingTagModelClient tagModel)
     {
         _provider = provider;
         _scope = scope;
@@ -51,6 +53,7 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
         UserAId = userAId;
         UserBId = userBId;
         PdfRenderer = pdfRenderer;
+        TagModel = tagModel;
     }
 
     public string NotesFolder { get; }
@@ -64,6 +67,11 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
 
     /// <summary>Stands in for Gotenberg; <see cref="INoteExportService"/> renders through it.</summary>
     public RecordingPdfRenderer PdfRenderer { get; }
+
+    /// <summary>Stands in for Ollama; <see cref="INoteAutoTagService"/> asks it for tags.</summary>
+    public RecordingTagModelClient TagModel { get; }
+
+    public INoteAutoTagService NoteAutoTagService => _scope.ServiceProvider.GetRequiredService<INoteAutoTagService>();
 
     public INoteExportService NoteExportService => _scope.ServiceProvider.GetRequiredService<INoteExportService>();
 
@@ -113,6 +121,14 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
         var pdfRenderer = new RecordingPdfRenderer();
         services.AddSingleton<IPdfRenderer>(pdfRenderer);
         services.AddSingleton<IPdfExportAssetSource, StubPdfExportAssetSource>();
+        // Auto-tagging: enabled, but answered by a recording stub instead of Ollama (last ITagModelClient registration wins over the typed HttpClient).
+        services.Configure<AutoTagOptions>(o =>
+        {
+            o.Enabled = true;
+            o.OllamaUrl = "http://ollama.test:11434";
+        });
+        var tagModel = new RecordingTagModelClient();
+        services.AddSingleton<ITagModelClient>(tagModel);
 
         var provider = services.BuildServiceProvider();
         await provider.MigrateJNotesDatabaseAsync();
@@ -123,7 +139,7 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
         var userB = await userRepository.CreateUserAsync("user-b", UserRole.Member, email: null, password: "password123");
         currentUserContext.UserId = userA.Id; // default to acting as user A
 
-        return new CoreServicesFixture(provider, scope, rootDir, notesFolder, database, currentUserContext, userA.Id, userB.Id, pdfRenderer);
+        return new CoreServicesFixture(provider, scope, rootDir, notesFolder, database, currentUserContext, userA.Id, userB.Id, pdfRenderer, tagModel);
     }
 
     public async ValueTask DisposeAsync()
