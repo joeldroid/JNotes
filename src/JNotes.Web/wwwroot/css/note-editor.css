@@ -19,6 +19,18 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
+
+    /* MudFileUpload's wrapper is a taller flex column than the button it holds, which throws off
+       align-items: center. Dissolve it so the Image button is a direct flex item, and match the
+       button groups' 13px text so the heights agree. */
+    & .mud-file-upload {
+        display: contents;
+
+        & .mud-button-root {
+            font-size: 0.8125rem;
+            line-height: 1.75;
+        }
+    }
 }
 
 .jn-editor-fields {

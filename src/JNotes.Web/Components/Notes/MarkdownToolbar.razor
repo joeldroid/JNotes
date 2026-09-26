@@ -21,7 +21,7 @@
     <MudFileUpload T="IBrowserFile" Accept="image/png,image/jpeg,image/gif,image/webp"
                    OnFilesChanged="OnImageChosenAsync" Disabled="ImageBusy">
         <CustomContent Context="upload">
-            <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default" Disabled="ImageBusy"
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" Disabled="ImageBusy"
                        StartIcon="@Icons.Material.Filled.Image"
                        title="Insert an image (you can also paste one into the note)"
                        OnClick="() => OpenPickerAsync(upload)">
