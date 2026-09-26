@@ -1,0 +1,75 @@
+@* Injects nothing on purpose: the routed page owns every INoteService call and hands suggestions in via SuggestTags. *@
+<div class="jn-tag-input">
+    <div class="jn-tags">
+        @foreach (var tag in Tags)
+        {
+            var current = tag;
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" OnClose="@(_ => RemoveAsync(current))">@current</MudChip>
+        }
+    </div>
+    <MudAutocomplete @ref="_autocomplete" @key="_inputVersion" T="string" Value="_selected" ValueChanged="OnSelectedAsync"
+                     SearchFunc="SearchAsync" DebounceInterval="250" MaxItems="11" MinCharacters="0"
+                     ResetValueOnEmptyText="true" CoerceText="false" CoerceValue="false" SelectValueOnTab="true"
+                     Placeholder="Add a tag…" aria-label="Tags" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true">
+        <ItemTemplate Context="item">@(item == _newTagCandidate ? $"Add new tag “{item}”" : item)</ItemTemplate>
+    </MudAutocomplete>
+    <MudText Typo="Typo.caption" Color="Color.Secondary">Enter or Tab adds a tag · × removes one</MudText>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<string> Tags { get; set; } = [];
+
+    [Parameter] public EventCallback<IReadOnlyList<string>> TagsChanged { get; set; }
+
+    /// <summary>Suggestions for the typed text, excluding the given (already added) tags.</summary>
+    [Parameter, EditorRequired] public Func<string?, IReadOnlyCollection<string>, CancellationToken, Task<IReadOnlyList<string>>> SuggestTags { get; set; } = default!;
+
+    private MudAutocomplete<string>? _autocomplete;
+    private string? _selected;
+    // The typed text offered as a pseudo-item "Add new tag …"; null when there's nothing new to add.
+    private string? _newTagCandidate;
+    // @key on the input: bump it to rebuild the autocomplete if ClearAsync ever proves flaky.
+    private int _inputVersion = 0;
+
+    private async Task<IEnumerable<string>> SearchAsync(string? value, CancellationToken token)
+    {
+        var typed = value?.Trim() ?? "";
+        try
+        {
+            var suggestions = await SuggestTags(typed, Tags, token);
+
+            _newTagCandidate = TagList.ParseInput(typed).Count > 0
+                && !suggestions.Contains(typed, StringComparer.OrdinalIgnoreCase)
+                && !Tags.Contains(typed, StringComparer.OrdinalIgnoreCase)
+                    ? typed
+                    : null;
+
+            return _newTagCandidate is null ? suggestions : suggestions.Append(_newTagCandidate);
+        }
+        catch (OperationCanceledException)
+        {
+            return [];
+        }
+    }
+
+    private async Task OnSelectedAsync(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        var next = TagList.AddTags(Tags, TagList.ParseInput(value));
+        await TagsChanged.InvokeAsync(next);
+
+        // Reset so the input is empty and ready for the next tag.
+        _selected = null;
+        if (_autocomplete is not null)
+        {
+            await _autocomplete.ClearAsync();
+            await _autocomplete.FocusAsync();
+        }
+    }
+
+    private Task RemoveAsync(string tag) => TagsChanged.InvokeAsync(TagList.RemoveTag(Tags, tag));
+}

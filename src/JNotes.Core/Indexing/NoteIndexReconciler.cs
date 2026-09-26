@@ -92,6 +92,10 @@ public sealed class NoteIndexReconciler : INoteIndexReconciler
             removed++;
         }
 
+        // Heals a truncated or drifted NoteIndexUserTags even when every file is unchanged: the mtime skip
+        // above would otherwise never touch it.
+        await _indexRepository.RebuildUserTagsAsync(userId, cancellationToken);
+
         return new ReconciliationResult(added, updated, removed, errors);
     }
 }

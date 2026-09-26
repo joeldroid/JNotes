@@ -26,6 +26,9 @@ public sealed class NoteService : INoteService
     public Task<IReadOnlyList<string>> GetDistinctTagsAsync(CancellationToken cancellationToken = default) =>
         _indexRepository.GetDistinctTagsAsync(_currentUser.UserId, cancellationToken);
 
+    public Task<IReadOnlyList<string>> SuggestTagsAsync(string? term, IReadOnlyCollection<string> exclude, int limit = 10, CancellationToken cancellationToken = default) =>
+        _indexRepository.SuggestTagsAsync(_currentUser.UserId, term, exclude, limit, cancellationToken);
+
     public Task<Note> GetAsync(Guid id, CancellationToken cancellationToken = default) =>
         _fileStore.ReadAsync(_currentUser.UserId, id, cancellationToken);
 

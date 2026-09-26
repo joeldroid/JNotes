@@ -22,6 +22,9 @@ public sealed class JNotesDbContext(DbContextOptions<JNotesDbContext> options) :
 
     public DbSet<NoteIndexTag> NoteIndexTags => Set<NoteIndexTag>();
 
+    /// <summary>Derived per-user distinct-tag projection of <see cref="NoteIndexTags"/> — see <see cref="NoteIndexUserTag"/>.</summary>
+    public DbSet<NoteIndexUserTag> NoteIndexUserTags => Set<NoteIndexUserTag>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // PostgreSQL's equivalent of SQLite's NOCASE: a non-deterministic ICU collation makes both the
@@ -85,6 +88,14 @@ public sealed class JNotesDbContext(DbContextOptions<JNotesDbContext> options) :
                 .WithMany()
                 .HasForeignKey(e => e.NoteIndexEntryId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<NoteIndexUserTag>(entity =>
+        {
+            entity.ToTable("NoteIndexUserTags");
+            // Default (deterministic, case-sensitive) collation on purpose, matching NoteIndexTags.Tag and
+            // the exact tag filter: "Work" and "work" stay two rows. No FK to Users (see NoteIndexEntries).
+            entity.HasKey(e => new { e.UserId, e.Tag });
         });
     }
 }

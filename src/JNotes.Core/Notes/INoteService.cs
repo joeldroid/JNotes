@@ -14,6 +14,9 @@ public interface INoteService
 
     Task<IReadOnlyList<string>> GetDistinctTagsAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>The current user's previously used tags matching <paramref name="term"/> (case-insensitive; prefix matches first; empty term = most used), excluding <paramref name="exclude"/> case-insensitively. Index-only.</summary>
+    Task<IReadOnlyList<string>> SuggestTagsAsync(string? term, IReadOnlyCollection<string> exclude, int limit = 10, CancellationToken cancellationToken = default);
+
     /// <summary>Reads the full note, including body, from its file.</summary>
     Task<Note> GetAsync(Guid id, CancellationToken cancellationToken = default);
 

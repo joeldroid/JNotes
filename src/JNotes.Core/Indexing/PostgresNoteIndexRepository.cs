@@ -6,10 +6,12 @@ namespace JNotes.Core.Indexing;
 
 /// <inheritdoc cref="INoteIndexRepository"/>
 /// <remarks>
-/// Schema: one NoteIndexEntries row per note (see <see cref="NoteIndexEntry"/>) plus one
-/// NoteIndexTags row per tag (see <see cref="NoteIndexTag"/>), in the same PostgreSQL database as
+/// Schema: one NoteIndexEntries row per note (see <see cref="NoteIndexEntry"/>), one
+/// NoteIndexTags row per tag (see <see cref="NoteIndexTag"/>), and one NoteIndexUserTags row per
+/// (user, distinct tag) (see <see cref="NoteIndexUserTag"/>, a projection of NoteIndexTags kept in
+/// sync inside the same transaction), in the same PostgreSQL database as
 /// users/settings — one connection string, one migration history, one MigrateAsync at startup. The
-/// index is still a rebuildable cache (see <see cref="NoteIndexReconciler"/>), so truncating both
+/// index is still a rebuildable cache (see <see cref="NoteIndexReconciler"/>), so truncating these
 /// tables is never a correctness problem, only a one-time rescan.
 /// Text search is ILIKE '%term%', not to_tsvector/plainto_tsquery: it has to keep matching exactly
 /// what the Redis implementation's case-insensitive Contains matched, partial words included.
@@ -85,11 +87,9 @@ public sealed class PostgresNoteIndexRepository : INoteIndexRepository
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
-        var tags = await (from t in db.NoteIndexTags.AsNoTracking()
-                          join e in db.NoteIndex.AsNoTracking() on t.NoteIndexEntryId equals e.Id
-                          where e.UserId == userId
-                          select t.Tag)
-            .Distinct()
+        var tags = await db.NoteIndexUserTags.AsNoTracking()
+            .Where(u => u.UserId == userId)
+            .Select(u => u.Tag)
             .ToListAsync(cancellationToken);
 
         // Sorted in memory, exactly as the Redis version did: ORDER BY in SQL would use the database's
@@ -106,11 +106,18 @@ public sealed class PostgresNoteIndexRepository : INoteIndexRepository
         // none.
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
+        // The tags this note carried before, so their NoteIndexUserTags rows can be recomputed too.
+        var oldTags = await db.NoteIndexTags
+            .Where(t => t.NoteIndexEntryId == entry.Id)
+            .Select(t => t.Tag)
+            .ToListAsync(cancellationToken);
+
         await db.NoteIndexTags
             .Where(t => t.NoteIndexEntryId == entry.Id)
             .ExecuteDeleteAsync(cancellationToken);
 
         var existing = await db.NoteIndex.FirstOrDefaultAsync(e => e.Id == entry.Id, cancellationToken);
+        var previousUserId = existing?.UserId;
         // Rounded to the store's own resolution so what comes back out of GetIndexedFileWriteTimesAsync
         // equals what went in — see IndexTimestamp.
         var indexedWriteTime = IndexTimestamp.ToIndexResolution(entry.IndexedFileWriteTimeUtc);
@@ -152,18 +159,41 @@ public sealed class PostgresNoteIndexRepository : INoteIndexRepository
         }
 
         await db.SaveChangesAsync(cancellationToken);
+
+        // All the tags, not just the changed ones: LastUsedAt depends on this entry's UpdatedAt.
+        var affectedTags = oldTags.Concat(tags).Distinct(StringComparer.Ordinal).ToArray();
+        await RecomputeUserTagsAsync(db, entry.UserId, affectedTags, cancellationToken);
+        if (previousUserId is { } oldUserId && oldUserId != entry.UserId)
+        {
+            // Can't happen with GUID ids in practice, but the entry changed owner: the old owner's rows shrink.
+            await RecomputeUserTagsAsync(db, oldUserId, affectedTags, cancellationToken);
+        }
+
         await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task DeleteAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
         // Scoped by userId as well as id, so one user's id can never delete another's row (the Redis
         // version deleted the hash by note id alone and only the set membership was user-scoped).
-        // No-ops when nothing matches. The tags cascade.
+        // No-ops when nothing matches (the tag read is empty and the recompute returns immediately).
+        // The tags cascade.
+        var tags = await (from t in db.NoteIndexTags
+                          join e in db.NoteIndex on t.NoteIndexEntryId equals e.Id
+                          where e.Id == noteId && e.UserId == userId
+                          select t.Tag)
+            .Distinct()
+            .ToArrayAsync(cancellationToken);
+
         await db.NoteIndex
             .Where(e => e.Id == noteId && e.UserId == userId)
             .ExecuteDeleteAsync(cancellationToken);
+
+        await RecomputeUserTagsAsync(db, userId, tags, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyDictionary<Guid, DateTimeOffset>> GetIndexedFileWriteTimesAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -173,5 +203,97 @@ public sealed class PostgresNoteIndexRepository : INoteIndexRepository
             .Where(e => e.UserId == userId)
             .Select(e => new { e.Id, e.IndexedFileWriteTimeUtc })
             .ToDictionaryAsync(x => x.Id, x => x.IndexedFileWriteTimeUtc, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<string>> SuggestTagsAsync(Guid userId, string? term, IReadOnlyCollection<string> exclude, int limit, CancellationToken cancellationToken = default)
+    {
+        limit = Math.Clamp(limit, 1, 50);
+        var excluded = exclude.Select(x => x.Trim().ToLowerInvariant()).Where(x => x.Length > 0).Distinct().ToArray();
+
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+
+        var tags = db.NoteIndexUserTags.AsNoTracking()
+            .Where(u => u.UserId == userId && !excluded.Contains(u.Tag.ToLower()));
+
+        var trimmed = term?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return await tags
+                .OrderByDescending(u => u.NoteCount)
+                .ThenByDescending(u => u.LastUsedAt)
+                .ThenBy(u => u.Tag)
+                .Select(u => u.Tag)
+                .Take(limit)
+                .ToListAsync(cancellationToken);
+        }
+
+        var contains = SqlLikePattern.ContainsPattern(trimmed);
+        var prefix = SqlLikePattern.Escape(trimmed) + "%";
+        return await tags
+            .Where(u => EF.Functions.ILike(u.Tag, contains, SqlLikePattern.EscapeString))
+            // Prefix matches before mere contains matches, then most-used, then most recent.
+            .OrderBy(u => EF.Functions.ILike(u.Tag, prefix, SqlLikePattern.EscapeString) ? 0 : 1)
+            .ThenByDescending(u => u.NoteCount)
+            .ThenByDescending(u => u.LastUsedAt)
+            .ThenBy(u => u.Tag)
+            .Select(u => u.Tag)
+            .Take(limit)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task RebuildUserTagsAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        await db.NoteIndexUserTags
+            .Where(u => u.UserId == userId)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        // ON CONFLICT is race-safe against a concurrent UpsertAsync recomputing the same tag.
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO "NoteIndexUserTags" ("UserId","Tag","NoteCount","LastUsedAt")
+            SELECT e."UserId", t."Tag", COUNT(DISTINCT e."Id"), MAX(e."UpdatedAt")
+            FROM "NoteIndexTags" t JOIN "NoteIndexEntries" e ON e."Id" = t."NoteIndexEntryId"
+            WHERE e."UserId" = {userId}
+            GROUP BY e."UserId", t."Tag"
+            ON CONFLICT ("UserId","Tag") DO UPDATE
+              SET "NoteCount" = EXCLUDED."NoteCount", "LastUsedAt" = EXCLUDED."LastUsedAt"
+            """, cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Recomputes <paramref name="userId"/>'s NoteIndexUserTags rows for just <paramref name="tags"/> from
+    /// NoteIndexTags/NoteIndexEntries, on <paramref name="db"/>'s current transaction. Upserts with
+    /// ON CONFLICT rather than delete-then-insert so two circuits saving notes that share a tag can't hit a
+    /// primary-key violation.
+    /// </summary>
+    private static async Task RecomputeUserTagsAsync(JNotesDbContext db, Guid userId, string[] tags, CancellationToken cancellationToken)
+    {
+        if (tags.Length == 0)
+        {
+            return;
+        }
+
+        // Tags no note of this user carries any more.
+        await db.Database.ExecuteSqlAsync($"""
+            DELETE FROM "NoteIndexUserTags" u
+            WHERE u."UserId" = {userId} AND u."Tag" = ANY({tags})
+              AND NOT EXISTS (SELECT 1 FROM "NoteIndexTags" t
+                              JOIN "NoteIndexEntries" e ON e."Id" = t."NoteIndexEntryId"
+                              WHERE e."UserId" = {userId} AND t."Tag" = u."Tag")
+            """, cancellationToken);
+
+        await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO "NoteIndexUserTags" ("UserId","Tag","NoteCount","LastUsedAt")
+            SELECT e."UserId", t."Tag", COUNT(DISTINCT e."Id"), MAX(e."UpdatedAt")
+            FROM "NoteIndexTags" t JOIN "NoteIndexEntries" e ON e."Id" = t."NoteIndexEntryId"
+            WHERE e."UserId" = {userId} AND t."Tag" = ANY({tags})
+            GROUP BY e."UserId", t."Tag"
+            ON CONFLICT ("UserId","Tag") DO UPDATE
+              SET "NoteCount" = EXCLUDED."NoteCount", "LastUsedAt" = EXCLUDED."LastUsedAt"
+            """, cancellationToken);
     }
 }

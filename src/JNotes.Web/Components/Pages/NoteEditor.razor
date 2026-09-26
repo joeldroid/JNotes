@@ -31,9 +31,9 @@ else
             <MudTextField @bind-Value="_note.Title" @bind-Value:after="OnMetadataEdited" Immediate="true"
                           Placeholder="Untitled note" aria-label="Title" Variant="Variant.Outlined" Margin="Margin.Dense"
                           Typo="Typo.h6" Error="@(_titleError is not null)" ErrorText="@_titleError" />
-            <MudTextField @bind-Value="_tagsText" @bind-Value:after="OnMetadataEdited" Immediate="true"
-                          Placeholder="tags, comma, separated" aria-label="Tags" Variant="Variant.Outlined" Margin="Margin.Dense"
-                          Class="mt-2" />
+            <div class="mt-2">
+                <TagInput Tags="_note.Tags" TagsChanged="OnTagsChanged" SuggestTags="SuggestTagsAsync" />
+            </div>
         </div>
         <div class="jn-editor-actions">
             <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
@@ -92,7 +92,6 @@ else
     private bool _draftSaved;
     private string? _saveError;
     private string? _titleError;
-    private string _tagsText = "";
 
     // Content and metadata autosave debounce independently (typing in the body shouldn't wait on
     // title/tags edits or vice versa), but both ultimately write the same file, so the actual save
@@ -113,7 +112,7 @@ else
     private bool HasDraftContent =>
         IsNew && !_draftSaved && _note is not null
         && (!string.IsNullOrWhiteSpace(_note.Title)
-            || !string.IsNullOrWhiteSpace(_tagsText)
+            || _note.Tags.Count > 0
             || !string.IsNullOrWhiteSpace(_note.Body));
 
     private string SaveStatusText => IsNew
@@ -139,7 +138,6 @@ else
 
             var now = DateTimeOffset.UtcNow;
             _note = new Note { Id = Guid.Empty, Title = "", Type = type, Tags = [], CreatedAt = now, UpdatedAt = now, Body = "" };
-            _tagsText = "";
             _hasUnsavedChanges = false;
             _draftSaved = false;
             return;
@@ -148,7 +146,6 @@ else
         try
         {
             _note = await NoteService.GetAsync(Id);
-            _tagsText = string.Join(", ", _note.Tags);
             _hasUnsavedChanges = false;
         }
         catch (NoteNotFoundException)
@@ -168,11 +165,6 @@ else
 
     private void OnMetadataEdited()
     {
-        // Keep _note.Tags in sync with the raw input immediately (not just at save time) — a
-        // content-only autosave firing while a tag edit is mid-debounce still writes *some*
-        // current snapshot of Tags to the file (the file format has no partial write), so it
-        // should be the freshest one, not whatever was last actually saved.
-        _note!.Tags = ParseTags();
         _hasUnsavedChanges = true;
         _titleError = null;
         if (!IsNew)
@@ -181,8 +173,20 @@ else
         }
     }
 
-    private string[] ParseTags() =>
-        _tagsText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    private void OnTagsChanged(IReadOnlyList<string> tags)
+    {
+        // Pushed into _note.Tags immediately (not just at save time) — a content-only autosave firing
+        // while a tag edit is mid-debounce still writes *some* current snapshot of Tags to the file (the
+        // file format has no partial write), so it should be the freshest one, not whatever was last
+        // actually saved.
+        _note!.Tags = tags;
+        OnMetadataEdited();
+    }
+
+    // The page owns the INoteService call (resolved from its first lifecycle method, see the
+    // ICurrentUserContext gotcha); TagInput only receives this delegate.
+    private Task<IReadOnlyList<string>> SuggestTagsAsync(string? term, IReadOnlyCollection<string> exclude, CancellationToken ct) =>
+        NoteService.SuggestTagsAsync(term, exclude, 10, ct);
 
     /// <summary>
     /// The single path every autosave of an existing note — either scope — goes through, so the
@@ -246,7 +250,7 @@ else
         _saveError = null;
         try
         {
-            var created = await NoteService.CreateAsync(_note.Type, title, ParseTags(), _note.Body);
+            var created = await NoteService.CreateAsync(_note.Type, title, _note.Tags, _note.Body);
 
             // Cleared before navigating so the leave-guard doesn't block Save's own navigation.
             _draftSaved = true;

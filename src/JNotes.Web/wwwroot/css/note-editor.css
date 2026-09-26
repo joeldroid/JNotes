@@ -37,6 +37,16 @@
     min-width: min(15rem, 100%);
 }
 
+.jn-tag-input {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+
+    & .jn-tags:empty {
+        display: none;
+    }
+}
+
 .jn-editor-actions {
     display: flex;
     flex-direction: column;

@@ -27,4 +27,10 @@ public interface INoteIndexRepository
 
     /// <summary>Every one of <paramref name="userId"/>'s indexed note ids and the file mtime each was last indexed at — the reconciler's "D" set.</summary>
     Task<IReadOnlyDictionary<Guid, DateTimeOffset>> GetIndexedFileWriteTimesAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    /// <summary>Case-insensitive contains match over <paramref name="userId"/>'s distinct tags; prefix matches first, then by note count / last use.</summary>
+    Task<IReadOnlyList<string>> SuggestTagsAsync(Guid userId, string? term, IReadOnlyCollection<string> exclude, int limit, CancellationToken cancellationToken = default);
+
+    /// <summary>Recomputes every NoteIndexUserTags row for <paramref name="userId"/> from NoteIndexTags/NoteIndexEntries.</summary>
+    Task RebuildUserTagsAsync(Guid userId, CancellationToken cancellationToken = default);
 }
