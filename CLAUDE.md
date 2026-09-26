@@ -250,6 +250,24 @@ container filesystem) every restart regenerates them and silently signs everyone
   element ILIKE" translation. This also makes the exact-tag filter and `GetDistinctTagsAsync` indexed
   SQL instead of "load every note into memory and filter". (The pre-Redis SQLite index had a join
   table for the same reason.)
+- **`NoteIndexUserTags` is a per-user distinct-tag projection of `NoteIndexTags`** (`UserId`, `Tag`,
+  `NoteCount` = distinct indexed notes carrying it, `LastUsedAt` = max `UpdatedAt` of them), backing tag
+  auto-suggest (`INoteService.SuggestTagsAsync`, the `TagInput` component) and `GetDistinctTagsAsync`. It
+  is a derived cache like the rest of `NoteIndex*` and safe to `TRUNCATE`.
+  `PostgresNoteIndexRepository.UpsertAsync`/`DeleteAsync` recompute only the affected tags (old ∪ new) in
+  the same transaction as the `NoteIndexTags` write, using `INSERT … ON CONFLICT DO UPDATE` so two circuits
+  sharing a tag can't hit a PK violation. `RescanAsync` ends with `RebuildUserTagsAsync(userId)`, so a
+  truncated or drifted table heals even when every file is unchanged (the mtime skip would otherwise never
+  touch it). The key `(UserId, Tag)` uses the default deterministic collation, so "Work" and "work" stay two
+  rows (matching `NoteIndexTags` and the exact tag filter). Matching is case-insensitive `ILIKE`, prefix
+  matches first, then `NoteCount`, then `LastUsedAt`. No FK to Users (like `NoteIndexEntries`); trashed
+  notes contribute no tags because they have no index row; a `ContentOnly` save never touches it (the same
+  staleness trade-off as `Body`). Suggestions are scoped by `ICurrentUserContext` inside `NoteService`, so
+  a page can't ask for another user's tags. In the editor, `TagInput` (`Components/Notes/`, injects
+  nothing — `NoteEditor` passes a `SuggestTags` delegate) shows tags as chips plus a
+  `MudAutocomplete<string>`; typed text that matches no suggestion is offered last as "Add new tag …",
+  so every add goes through `ValueChanged`, and a comma-separated entry adds several tags (`TagList`, pure
+  static). The list page's Tag filter stays a `MudSelect`: it's an exact filter, not free text.
 - **`IndexedFileWriteTimeUtc` is rounded to whole microseconds on both write and compare**
   (`IndexTimestamp.ToIndexResolution`), because PostgreSQL `timestamptz` has microsecond precision
   while `File.GetLastWriteTimeUtc` has 100-nanosecond ticks. Without the rounding,
