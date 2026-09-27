@@ -163,15 +163,27 @@ container filesystem) every restart regenerates them and silently signs everyone
   `type="email"`: native constraint validation would intercept the submit before `UserValidation`
   runs and hide JNotes's own message.
 - **Profile editing** goes through one entry point,
-  `IUserManagementService.UpdateProfileAsync(targetUserId, requestingUserId, ...)`, used by both
-  `Profile.razor` (self-edit) and the admin section of `Settings.razor`. FirstName/LastName: your
-  own, or anyone's if Admin. **Email is Admin-only, enforced in Core** (`InvalidOperationException`
-  for a Member) as well as by the disabled input — a client that skips the UI mustn't get through.
-  `NavMenu` shows `FirstName ?? Username`, re-queried on each circuit init (not cached in cookie
-  claims, which would go stale), so both profile pages force a full reload after saving to refresh
-  that sibling component.
+  `IUserManagementService.UpdateProfileAsync(targetUserId, requestingUserId, ...)`, used by both the
+  "Account" card in `Settings.razor`'s "App settings" (self-edit — there is no separate `/profile`
+  page) and the admin section of the same page. FirstName/LastName: your own, or anyone's if Admin.
+  **Email is Admin-only, enforced in Core** (`InvalidOperationException` for a Member) as well as by
+  the disabled input — a client that skips the UI mustn't get through. `NavMenu` shows
+  `FirstName ?? Username`, re-queried on each circuit init (not cached in cookie claims, which would
+  go stale), so a self-edit save forces a full reload of `/settings` to refresh that sibling
+  component.
+- **Self-service password change requires the current password; admin reset doesn't.**
+  `ChangePassword.razor` (`/settings/change-password`, its own page rather than an inline field in
+  the Account card, so a mistyped current password doesn't fail silently next to unrelated profile
+  state) re-verifies via `IUserRepository.VerifyPasswordAsync(username, currentPassword)` before
+  calling the same `SetPasswordAsync` the admin's reset-password dialog uses — the admin path
+  deliberately skips this check, since knowing the current password isn't and shouldn't be a
+  precondition for an admin resetting someone else's. An OIDC-only account (no `PasswordHash` yet)
+  skips the current-password field entirely, since there's nothing to verify against — this is then
+  "set a password" rather than "change" one. The Account card's "Change password" button is just a
+  link to this page.
 - **Settings and user management share one page, split by role, not by route.** `Settings.razor`
-  (`/settings`, `[Authorize]`) shows "App settings" (your own password) to everyone and
+  (`/settings`, `[Authorize]`) shows "App settings" (your own Account — name, email, save-profile,
+  and a link to change your password) to everyone and
   "Administration settings" (Security, Storage, Index, user table, add/edit/delete user) inside
   `<AuthorizeView Roles="Admin">`. Markup gating only stops *rendering*, not fetching into a
   Member's circuit state, so `OnInitializedAsync` checks `IsInRole(nameof(UserRole.Admin))` before
@@ -193,9 +205,10 @@ container filesystem) every restart regenerates them and silently signs everyone
   is below md (`IBrowserViewportService`).
 - **Account widget:** avatar initials from `UserInitials.Compute` (pure static: `FirstName[0]` +
   `LastName[0]` if both, else first two letters of first name, then username; max 2 chars).
-  Clicking toggles a `MudCollapse` (`_accountOpen`) with "My Profile" and "Sign out" (a plain
+  Clicking toggles a `MudCollapse` (`_accountOpen`) with just "Sign out" (a plain
   `<form method="post" action="/logout">` with a `MudButton ButtonType="Submit"`, never an
-  `OnClick`); `/profile` has no top-level nav entry.
+  `OnClick`) — profile editing lives in `/settings`'s Account card instead, so there is no
+  top-level nav entry for it.
 - **Order:** Search, All Notes, divider, New Text Note, New Checklist Note, divider, Settings, Trash (the
   dividers are `MudDivider`s inside the same `AuthorizeView` as the New-note links). Icons are MudBlazor's
   built-in `Icons.Material.*` (compiled SVG path strings — no icon font, no network). The vendored UI

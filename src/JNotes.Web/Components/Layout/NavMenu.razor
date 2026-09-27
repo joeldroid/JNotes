@@ -47,9 +47,6 @@
                 <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Class="@(_accountOpen ? "jn-chevron jn-chevron-open" : "jn-chevron")" />
             </button>
             <MudCollapse Expanded="_accountOpen">
-                <MudNavMenu Dense="true" Class="mt-1">
-                    <MudNavLink Href="/profile" Icon="@Icons.Material.Outlined.Person">My Profile</MudNavLink>
-                </MudNavMenu>
                 @* Stays a plain form POST — SignOutAsync writes Set-Cookie, so it can't be an @onclick in the circuit. *@
                 <form method="post" action="/logout" class="jn-signout">
                     <AntiforgeryToken />
