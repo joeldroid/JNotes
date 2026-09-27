@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -31,6 +31,20 @@ namespace JNotes.Core.Data.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_NoteIndexEntries", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "NoteIndexUserTags",
+                columns: table => new
+                {
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Tag = table.Column<string>(type: "text", nullable: false),
+                    NoteCount = table.Column<int>(type: "integer", nullable: false),
+                    LastUsedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_NoteIndexUserTags", x => new { x.UserId, x.Tag });
                 });
 
             migrationBuilder.CreateTable(
@@ -79,6 +93,28 @@ namespace JNotes.Core.Data.Migrations
                         name: "FK_NoteIndexTags_NoteIndexEntries_NoteIndexEntryId",
                         column: x => x.NoteIndexEntryId,
                         principalTable: "NoteIndexEntries",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "NoteAutoTagAttempts",
+                columns: table => new
+                {
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    NoteId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Outcome = table.Column<string>(type: "text", nullable: false),
+                    FailureCount = table.Column<int>(type: "integer", nullable: false),
+                    LastAttemptUtc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    RetryAfterUtc = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_NoteAutoTagAttempts", x => new { x.UserId, x.NoteId });
+                    table.ForeignKey(
+                        name: "FK_NoteAutoTagAttempts_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -138,7 +174,13 @@ namespace JNotes.Core.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
+                name: "NoteAutoTagAttempts");
+
+            migrationBuilder.DropTable(
                 name: "NoteIndexTags");
+
+            migrationBuilder.DropTable(
+                name: "NoteIndexUserTags");
 
             migrationBuilder.DropTable(
                 name: "Settings");
