@@ -40,7 +40,7 @@ docker compose up --build   # production-shaped: what Docker actually runs, not 
 
 **Web never touches the filesystem or EF Core/PostgreSQL directly** — only Core's interfaces
 (`INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
-`IUserManagementService`, `IImageService`, `IImageCleanupService`, `INoteExportService`, `INoteAutoTagService`). Enforced at build time: `Microsoft.CodeAnalysis.BannedApiAnalyzers`
+`IUserManagementService`, `IImageService`, `IImageCleanupService`, `INoteExportService`, `INoteAutoTagger`). Enforced at build time: `Microsoft.CodeAnalysis.BannedApiAnalyzers`
 (`src/JNotes.Web/BannedSymbols.txt`) bans `System.IO.File`/`Directory`, `DbContext`, and Npgsql's
 `NpgsqlConnection`/`NpgsqlDataSource` in Web. Pure static Core
 helpers (`ChecklistMarkdownParser`, `NoteGrouping`, `UserInitials`, `UserValidation`) are fine to
@@ -246,6 +246,8 @@ container filesystem) every restart regenerates them and silently signs everyone
   `NoteIndex*` table prefix (`NoteIndexEntries`, `NoteIndexTags`) is the "these are the throwaway,
   rebuildable ones" marker in `psql` — a schema boundary would add no guarantee `NoteIndexReconciler`
   doesn't already provide, since the tables can be `TRUNCATE`d and rebuilt from disk at any time.
+  `NoteAutoTagAttempts` (the background tagger's memory, see "Auto-tagging") is the one **non-`NoteIndex*`**
+  note-related table, precisely because it is *not* derived: it can't be rebuilt from the files.
 - **Tags are a child table (`NoteIndexTags`), not a `jsonb`/`text[]` column**, because search has to
   match title OR body OR *any tag* with `ILIKE` in one translatable LINQ query —
   `jsonb_array_elements_text` isn't expressible in LINQ, and Npgsql's `text[]` mapping has no "any
@@ -535,15 +537,19 @@ Compose: the `gotenberg` service sits behind the `pdf` profile, with no publishe
 
 ## Auto-tagging (optional)
 
-**Off unless `AUTO_TAG_ENABLED` is truthy (`true`/`1`/`yes`/`on`) and `OLLAMA_URL` is a valid absolute http(s) URL** (`AutoTagOptions.IsEnabled`, which reuses `PdfExportOptions.ParseBaseUri`; also `OLLAMA_MODEL`, default `phi4`, and `OLLAMA_TIMEOUT_SECONDS`, default 120, clamped 10..600). `NoteEditor` renders the **Auto-tag** button only when enabled; `Program.cs` just logs the state (never the URL). Editor only — deliberately no `NoteView` button and **no auto-run on save** (autosave fires every 500–800 ms and an LLM call takes seconds to minutes).
+**Runs whenever `OLLAMA_URL` is a valid absolute http(s) URL — there is no separate flag** (`AutoTagOptions.IsEnabled` = URL via `PdfExportOptions.ParseBaseUri` + a non-blank `OLLAMA_MODEL`, default `phi4`; also `OLLAMA_TIMEOUT_SECONDS` 120 clamped 10..600, `AUTO_TAG_INTERVAL_MINUTES` 10 clamped 1..1440, `AUTO_TAG_BATCH_SIZE` 10 clamped 1..100, all flat keys read in `AddJNotesCore`). `AUTO_TAG_ENABLED` is ignored: `Program.cs` logs one warning if it is still set. `appsettings.json` ships `OLLAMA_URL` empty so dev and tests never auto-enable. There is deliberately no editor/`NoteView` UI and no per-user opt-out (an admin decision; documented in the README's privacy note). `Program.cs` logs the state and never the URL.
 
-**Layering mirrors PDF export**, in `JNotes.Core/Tagging/`: `ITagModelClient`/`OllamaTagModelClient` (typed `HttpClient`, `POST /api/chat`, non-streaming, a JSON-schema `format`, `num_ctx` 8192; failures become `AutoTagException` with user-safe text, details only in the log, never note content); `INoteAutoTagService` (implicit current user, only to read the user's tag vocabulary through `INoteService`); pure static `AutoTagPromptBuilder` (body capped at 12,000 chars, image links reduced to alt text), `AutoTagResponseParser` and `AutoTagNormalizer`. Web never talks to Ollama.
+**Layering**, in `JNotes.Core/Tagging/`: pure static helpers (`AutoTagPromptBuilder`, `AutoTagResponseParser`, `AutoTagNormalizer`, `AutoTagSchedule`, `AutoTagCandidates`); `ITagModelClient`/`OllamaTagModelClient` (typed `HttpClient`, `POST /api/chat`, non-streaming, JSON-schema `format`, `num_ctx` 8192) whose failures are `AutoTagException` with an `AutoTagFailureKind` (`Unavailable`: connection, 5xx incl. 503 overloaded, 429, 404 model missing; `Timeout`; `BadResponse`: garbage, 200 with `error`, other 4xx). The client logs at Debug only, never an exception object (its message carries host:port), and its `HttpClient` has `RemoveAllLoggers()` because the default handler logs the request URL on every call — **the Ollama URL, note text, titles and tags are never logged**. `INoteAutoTagger`/`NoteAutoTagger` (scoped, **explicit `userId`** like `IImageCleanupService`, since its caller has no current user) is driven by `Web/Tagging/AutoTagBackgroundService` — the image-cleanup pattern: one scope per pass, initial 1-minute delay then a `PeriodicTimer`, never rethrows. A pass takes up to `BatchSize` notes across all users (users shuffled, per-user candidates interleaved round-robin), one at a time; it deliberately bypasses `NoteService` (implicit user, and its autosave stamps `UpdatedAt`). Web never talks to Ollama.
 
-**The service takes content, not a note id, and writes nothing.** The editor's note may be an unsaved draft (`Id = Guid.Empty`) or ahead of its file by a debounce. `NoteEditor.AutoTagAsync` merges the result into the *current* `_note.Tags` with `TagList.AddTags` and calls `OnTagsChanged`, so persistence is the ordinary `Metadata`-scope autosave (which reindexes `NoteIndexTags`/`NoteIndexUserTags`), and a draft only writes on Save. The editor instance is reused across notes, so `_autoTagCts` is cancelled in `OnParametersSetAsync`/`DisposeAsync` and the result is dropped unless `ReferenceEquals(_note, target)`.
+**Which notes:** live, indexed notes with **zero tags**, some title or body, and index `UpdatedAt` older than `AutoTagSchedule.MinNoteAge` (10 min), newest first (`PostgresAutoTagStateRepository.GetCandidateNoteIdsAsync`, one `NOT EXISTS` query over `NoteIndexTags` and the attempt table). The index only *nominates*: the file is re-read raw first and the note is deferred if it now has tags, is blank, or its mtime is too recent. Tagged notes are never touched and tags are never added to existing ones. The first enable **backfills** existing untagged notes, throttled by batch and interval; setting `OLLAMA_URL` is the opt-in. Vocabulary is the note owner's own tags (`INoteIndexRepository.SuggestTagsAsync(userId, …)`), so a matching tag takes *their* spelling; normalisation is as before (lowercase kebab-case, generic tags dropped, at most 5).
 
-**Normalisation** (`AutoTagNormalizer`): lowercase kebab-case, generic tags (`note`, `todo`, `checklist`, …) dropped, at most 5, skipping tags already on the note by `Key` (case/`-`/`_`/space-insensitive). A tag matching one in the user's vocabulary takes *their* spelling, because `NoteIndexUserTags` and the tag filter are case-sensitive and "Work"/"work" would otherwise split.
+**`NoteAutoTagAttempts` is not derived and not `NoteIndex*`** (`NoteAutoTagAttempt`, PK `(UserId, NoteId)`, `Outcome` as a string, FK to `Users` with cascade, no FK to the truncatable index). It is the tagger's memory, so it can't be rebuilt from the files: truncating it is safe but re-attempts every untagged note once, including ones whose tags a user removed. One final attempt per note (`Tagged`/`NoTags`/`Skipped`), so tags a user later removes never come back and "nothing useful" isn't retried. Per-note failures (`BadResponse`, `Timeout`, IO/parse) back off 1 h/6 h/24 h/72 h (`AutoTagSchedule.RetryDelay`), and the fifth becomes `GaveUp`. `Unavailable` records nothing and stops the pass (cooldown = the next interval tick); `Timeout` records a failure *and* stops it, so one huge note can't block the queue.
 
-Compose: the optional `ollama` service sits behind the `ollama` profile (no published port, named `ollama-models` volume, no `depends_on` from `jnotes`), and `jnotes` gets `extra_hosts: host.docker.internal:host-gateway` so an Ollama on a Linux host is reachable.
+**Write safety** (all deliberate): (1) the `MinNoteAge` quiet period, because an open editor autosaves its whole in-memory note; (2) a **canonical-format guard** — a note is rewritten only if `Serialize(Deserialize(raw)) == raw`, otherwise it is recorded `Skipped` and never touched, so a background write changes only `tags:` (hand-edited files with extra front-matter keys, CRLF or leading blank body lines are left alone; the serializer would drop or normalise them); (3) `INoteFileStore.ReplaceIfUnchangedAsync`, a compare-and-swap that holds the file `FileShare.None` across read, ordinal compare and write, and returns `false` (nothing written, nothing recorded, retried later) if the text changed while the model ran; a concurrent editor autosave in that window gets an `IOException`; (4) order is file, then `UpsertAsync`, then the attempt row, with `UpdatedAt` **unchanged** (list order, relative-date grouping and `LastUsedAt` don't move) and `IndexedFileWriteTimeUtc` = the post-write mtime, so the reconciler doesn't re-parse the note. Known limitation, documented: an editor left open **idle for more than 10 minutes** on an untagged note, then edited, overwrites the auto-tags (last-writer-wins, as everywhere else); the note stays `Tagged`.
+
+**Status card:** Settings → Administration → "Auto-tagging" (read-only; no "Run now" button, since a pass can take minutes) reads the in-memory `AutoTagStatus` singleton (last pass, tagged since startup, "Ollama unavailable since …" with a URL-free reason). It resets on restart and doesn't update live. Logging is state-transition only: one Warning when it becomes unavailable, Information when it recovers, a pass summary at Information only when something happened.
+
+Compose: the optional `ollama` service sits behind the `ollama` profile (no published port, named `ollama-models` volume, no `depends_on` from `jnotes`), and `jnotes` gets `extra_hosts: host.docker.internal:host-gateway` so an Ollama on a Linux host is reachable; `AUTO_TAG_INTERVAL_MINUTES`/`AUTO_TAG_BATCH_SIZE` are passed through with their defaults.
 
 ## Tests
 
@@ -561,6 +567,21 @@ migrations run against a virgin database exactly as in production; the configure
 `WITH (FORCE)` as the backstop. No Razor component tests (no bUnit); UI changes are verified manually
 in a browser.
 
+**Use the standing debug containers, and never remove them.** `docker-compose.debug.yml` (project
+`jnotes-debug`) defines the instances used for running tests and manual checks on this machine:
+`jnotes-debug-db` (PostgreSQL, `localhost:5432`, `jnotes`/`jnotes` — the tests' default connection
+string, so no `docker run` is needed), `jnotes-debug-pdf` (Gotenberg, `localhost:3000`) and
+`jnotes-debug-ollama` (Ollama, `localhost:11434`, model pulled with
+`docker exec jnotes-debug-ollama ollama pull phi4`). They are the user's debugging environment: don't
+stop, remove, recreate or `down` them (or `down -v` their volumes), and don't run `docker compose up` for
+the whole file — start just the one service needed (`up -d jnotes-debug-ollama`), since recreating
+`jnotes-debug-db` wipes its tmpfs. The first two were created from a separate copy of the file, so a
+whole-project `up` may recreate them. Tests only create/drop their own `jnotes_test_<guid>` databases;
+the `jnotes` database is the user's real dev database. For a manual run of the app, point
+`POSTGRES_DB` and `NOTES_PATH` at a throwaway database/folder rather than the user's — background
+auto-tagging (set `OLLAMA_URL`) rewrites the tags of *every* untagged note it finds, so never enable it
+against real notes with a stub or a test model.
+
 `CoreServicesFixture` seeds two users and registers a mutable `TestCurrentUserContext`
 (`ActAsUserA()`/`ActAsUserB()`) in place of the real one, so cross-user isolation is asserted
 through `NoteService` itself. `Users/EfUserRepositoryTests` and `UserManagementServiceTests` build
@@ -568,7 +589,7 @@ their own provider because they need things the fixture doesn't expose (`ISetupS
 `IUserManagementService`); the latter covers move-before-delete, including idempotency on retry.
 `CoreServicesFixture` also swaps in `RecordingPdfRenderer`/`StubPdfExportAssetSource` and enables
 `PdfExportOptions`, so `NoteExportService` runs without Gotenberg. It likewise swaps in
-`RecordingTagModelClient` and enables `AutoTagOptions`, so `NoteAutoTagService` runs without Ollama.
+`RecordingTagModelClient` (with an `OnCall` hook) and a `TestTimeProvider` and sets `OLLAMA_URL`, so `NoteAutoTagger` runs without Ollama and backoff is testable. No hosted services run in tests.
 
 ## CSS
 

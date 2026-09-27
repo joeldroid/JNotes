@@ -11,8 +11,10 @@ namespace JNotes.Core.Tagging;
 /// <summary>
 /// Calls Ollama's non-streaming <c>POST /api/chat</c> with a JSON-schema <c>format</c>, so the reply is
 /// (on a current Ollama) always <c>{"tags": [...]}</c>. A typed <see cref="HttpClient"/> whose
-/// <see cref="HttpClient.BaseAddress"/> and timeout come from <see cref="AutoTagOptions"/>. Never logs the
-/// prompt or the note content — only the model name and status codes.
+/// <see cref="HttpClient.BaseAddress"/> and timeout come from <see cref="AutoTagOptions"/>. Its caller is
+/// the background tagger, which reports state changes itself, so everything here logs at Debug — and
+/// never the prompt, the note content, the URL or an exception object (its message can carry host:port),
+/// only the model name and status codes. Failures are classified with <see cref="AutoTagFailureKind"/>.
 /// </summary>
 public sealed class OllamaTagModelClient(
     HttpClient http,
@@ -48,7 +50,7 @@ public sealed class OllamaTagModelClient(
             if (!response.IsSuccessStatusCode)
             {
                 var error = await ReadErrorAsync(response, cancellationToken);
-                logger.LogWarning(
+                logger.LogDebug(
                     "Ollama returned {StatusCode} for model {Model}: {Error}", (int)response.StatusCode, model, error);
 
                 // Ollama answers 404 with "model '…' not found" when it hasn't been pulled.
@@ -56,36 +58,42 @@ public sealed class OllamaTagModelClient(
                     && error.Contains("model", StringComparison.OrdinalIgnoreCase))
                 {
                     throw new AutoTagException(
-                        $"The tagging model '{model}' isn't available on the Ollama server (run `ollama pull {model}`).");
+                        $"The tagging model '{model}' isn't available on the Ollama server (run `ollama pull {model}`).",
+                        AutoTagFailureKind.Unavailable);
                 }
 
-                throw new AutoTagException($"The tagging service returned {(int)response.StatusCode}.");
+                // 5xx (incl. 503 "overloaded") and 429 are the server's state, not the note's; another 4xx means this request was refused.
+                var kind = (int)response.StatusCode >= 500 || (int)response.StatusCode == 429
+                    ? AutoTagFailureKind.Unavailable
+                    : AutoTagFailureKind.BadResponse;
+                throw new AutoTagException($"The tagging service returned {(int)response.StatusCode}.", kind);
             }
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken);
             var chat = JsonSerializer.Deserialize<ChatResponse>(json);
             if (chat?.Error is { Length: > 0 } modelError)
             {
-                logger.LogWarning("Ollama reported an error for model {Model}: {Error}", model, Snippet(modelError));
-                throw new AutoTagException("The tagging service returned an error.");
+                logger.LogDebug("Ollama reported an error for model {Model}: {Error}", model, Snippet(modelError));
+                throw new AutoTagException("The tagging service returned an error.", AutoTagFailureKind.BadResponse);
             }
 
             return AutoTagResponseParser.Parse(chat?.Message?.Content);
         }
         catch (JsonException ex)
         {
-            logger.LogWarning(ex, "Ollama's reply for model {Model} wasn't valid JSON.", model);
-            throw new AutoTagException(UnexpectedResponse, ex);
+            logger.LogDebug("Ollama's reply for model {Model} wasn't valid JSON.", model);
+            throw new AutoTagException(UnexpectedResponse, AutoTagFailureKind.BadResponse, ex);
         }
         catch (HttpRequestException ex)
         {
-            logger.LogWarning(ex, "Ollama couldn't be reached.");
-            throw new AutoTagException("The tagging service couldn't be reached.", ex);
+            // Not the exception itself: its message includes host:port.
+            logger.LogDebug("Ollama couldn't be reached ({Error}).", ex.HttpRequestError);
+            throw new AutoTagException("The tagging service couldn't be reached.", AutoTagFailureKind.Unavailable, ex);
         }
         catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
         {
-            logger.LogWarning(ex, "Ollama timed out.");
-            throw new AutoTagException("The tagging service timed out.", ex);
+            logger.LogDebug("Ollama timed out.");
+            throw new AutoTagException("The tagging service timed out.", AutoTagFailureKind.Timeout, ex);
         }
     }
 

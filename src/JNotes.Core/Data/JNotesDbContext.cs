@@ -25,6 +25,12 @@ public sealed class JNotesDbContext(DbContextOptions<JNotesDbContext> options) :
     /// <summary>Derived per-user distinct-tag projection of <see cref="NoteIndexTags"/> — see <see cref="NoteIndexUserTag"/>.</summary>
     public DbSet<NoteIndexUserTag> NoteIndexUserTags => Set<NoteIndexUserTag>();
 
+    /// <summary>
+    /// The background tagger's per-note attempt log — see <see cref="NoteAutoTagAttempt"/>. NOT a derived cache
+    /// (unlike NoteIndex*): it can't be rebuilt from the files, hence the different name.
+    /// </summary>
+    public DbSet<NoteAutoTagAttempt> NoteAutoTagAttempts => Set<NoteAutoTagAttempt>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // PostgreSQL's equivalent of SQLite's NOCASE: a non-deterministic ICU collation makes both the
@@ -96,6 +102,20 @@ public sealed class JNotesDbContext(DbContextOptions<JNotesDbContext> options) :
             // Default (deterministic, case-sensitive) collation on purpose, matching NoteIndexTags.Tag and
             // the exact tag filter: "Work" and "work" stay two rows. No FK to Users (see NoteIndexEntries).
             entity.HasKey(e => new { e.UserId, e.Tag });
+        });
+
+        modelBuilder.Entity<NoteAutoTagAttempt>(entity =>
+        {
+            entity.ToTable("NoteAutoTagAttempts");
+            entity.HasKey(e => new { e.UserId, e.NoteId });
+            // Stored as the enum's name, like UserAccount.Role.
+            entity.Property(e => e.Outcome).HasConversion<string>();
+            // Cascades with the account, like UserSetting. Deliberately no FK to NoteIndexEntries (the index is
+            // truncatable, this table isn't) and no NoteIndex* prefix: this is not a derived cache.
+            entity.HasOne<UserAccount>()
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

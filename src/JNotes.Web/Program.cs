@@ -11,6 +11,7 @@ using JNotes.Web.Components.Layout;
 using JNotes.Web.Export;
 using JNotes.Web.Images;
 using JNotes.Web.Indexing;
+using JNotes.Web.Tagging;
 using JNotes.Web.Theme;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -29,6 +30,9 @@ builder.Services.AddJNotesCore(builder.Configuration);
 builder.Services.AddHostedService<AutoIndexBackgroundService>();
 // Periodic unused-image cleanup — unlike the above, the interval is an admin setting in the app (default 7 days, 0 = off).
 builder.Services.AddHostedService<ImageCleanupBackgroundService>();
+// Background Ollama auto-tagging — runs only when OLLAMA_URL is set (AutoTagOptions.IsEnabled).
+builder.Services.AddSingleton<AutoTagStatus>();
+builder.Services.AddHostedService<AutoTagBackgroundService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserContext, AuthenticatedCurrentUserContext>();
 // Same Core-interface, Web-implementation split as ICurrentUserContext: the PDF's static assets are Web's
@@ -185,16 +189,24 @@ else if (!string.IsNullOrWhiteSpace(pdfExport.GotenbergUrl))
     app.Logger.LogWarning("GOTENBERG_URL is set but isn't an absolute http(s) URL — PDF export is disabled.");
 }
 
-// Optional auto-tagging: nothing to map (the editor calls INoteAutoTagService over the circuit), so just say what state it's in.
+// Optional auto-tagging: nothing to map (AutoTagBackgroundService does the work), so just say what state it's in.
 var autoTag = app.Services.GetRequiredService<IOptions<AutoTagOptions>>().Value;
 if (autoTag.IsEnabled)
 {
-    app.Logger.LogInformation("Auto-tagging is enabled (Ollama model {Model}).", autoTag.Model);
+    app.Logger.LogInformation(
+        "Auto-tagging is enabled: Ollama model {Model}, every {IntervalMinutes} minute(s), up to {BatchSize} note(s) per pass.",
+        autoTag.Model, autoTag.IntervalMinutes, autoTag.BatchSize);
 }
-else if (autoTag.Enabled)
+else if (!string.IsNullOrWhiteSpace(autoTag.OllamaUrl))
 {
     // Never log the URL itself.
-    app.Logger.LogWarning("AUTO_TAG_ENABLED is set but OLLAMA_URL isn't an absolute http(s) URL — auto-tagging is disabled.");
+    app.Logger.LogWarning("OLLAMA_URL is set but isn't an absolute http(s) URL — auto-tagging is disabled.");
+}
+
+// The old on/off flag is gone; anyone who set it to false expecting "off" needs to hear that.
+if (builder.Configuration["AUTO_TAG_ENABLED"] is not null)
+{
+    app.Logger.LogWarning("AUTO_TAG_ENABLED is no longer used; auto-tagging runs whenever OLLAMA_URL is set.");
 }
 
 app.MapPost("/logout", async (HttpContext context) =>

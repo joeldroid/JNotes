@@ -250,4 +250,98 @@ public class FileSystemNoteFileStoreTests : IAsyncLifetime
     {
         await _store.PurgeAsync(_userId, Guid.NewGuid());
     }
+
+    [Fact]
+    public async Task ReadRawAsync_returns_the_exact_written_text()
+    {
+        var note = NewNote();
+        await _store.WriteAsync(_userId, note);
+
+        var raw = await _store.ReadRawAsync(_userId, note.Id);
+
+        Assert.Equal(await File.ReadAllTextAsync(NotePath(note.Id)), raw);
+        Assert.Equal(new NoteMarkdownSerializer().Serialize(note), raw);
+    }
+
+    [Fact]
+    public async Task ReadRawAsync_throws_NoteNotFoundException_when_no_file_exists()
+    {
+        await Assert.ThrowsAsync<NoteNotFoundException>(() => _store.ReadRawAsync(_userId, Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task ReplaceIfUnchangedAsync_writes_the_replacement_when_the_text_is_unchanged()
+    {
+        var serializer = new NoteMarkdownSerializer();
+        var note = NewNote();
+        await _store.WriteAsync(_userId, note);
+        var raw = await _store.ReadRawAsync(_userId, note.Id);
+
+        // Shorter than the original (fewer tags, shorter body), so a missing truncate would leave a stale tail behind.
+        var replacement = NewNote(note.Id);
+        replacement.Tags = [];
+        replacement.Body = "x";
+
+        Assert.True(await _store.ReplaceIfUnchangedAsync(_userId, note.Id, raw, replacement));
+
+        var expectedBytes = new System.Text.UTF8Encoding(false).GetBytes(serializer.Serialize(replacement));
+        Assert.Equal(expectedBytes, await File.ReadAllBytesAsync(NotePath(note.Id))); // exact, and no BOM
+    }
+
+    [Fact]
+    public async Task ReplaceIfUnchangedAsync_leaves_the_file_alone_when_the_text_differs()
+    {
+        var note = NewNote();
+        await _store.WriteAsync(_userId, note);
+        var before = await File.ReadAllBytesAsync(NotePath(note.Id));
+        var replacement = NewNote(note.Id);
+        replacement.Body = "something else";
+
+        Assert.False(await _store.ReplaceIfUnchangedAsync(_userId, note.Id, "not what is on disk", replacement));
+
+        Assert.Equal(before, await File.ReadAllBytesAsync(NotePath(note.Id)));
+    }
+
+    [Fact]
+    public async Task ReplaceIfUnchangedAsync_returns_false_when_the_file_is_missing()
+    {
+        var note = NewNote();
+
+        Assert.False(await _store.ReplaceIfUnchangedAsync(_userId, note.Id, "anything", note));
+        Assert.False(File.Exists(NotePath(note.Id)));
+    }
+
+    [Fact]
+    public async Task ReplaceIfUnchangedAsync_only_sees_the_given_users_folder()
+    {
+        var note = NewNote();
+        await _store.WriteAsync(_userId, note);
+        var raw = await _store.ReadRawAsync(_userId, note.Id);
+        var before = await File.ReadAllBytesAsync(NotePath(note.Id));
+
+        Assert.False(await _store.ReplaceIfUnchangedAsync(Guid.NewGuid(), note.Id, raw, NewNote(note.Id)));
+
+        Assert.Equal(before, await File.ReadAllBytesAsync(NotePath(note.Id)));
+    }
+
+    [Fact]
+    public async Task ReplaceIfUnchangedAsync_throws_and_writes_nothing_while_another_handle_has_the_file_open()
+    {
+        var note = NewNote();
+        await _store.WriteAsync(_userId, note);
+        var raw = await _store.ReadRawAsync(_userId, note.Id);
+        var before = await File.ReadAllBytesAsync(NotePath(note.Id));
+        var replacement = NewNote(note.Id);
+        replacement.Body = "changed";
+
+        // Like an editor's in-flight autosave: a permissive handle, which FileShare.None must still refuse.
+        await using (var other = new FileStream(NotePath(note.Id), FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite))
+        {
+            await Assert.ThrowsAsync<IOException>(() => _store.ReplaceIfUnchangedAsync(_userId, note.Id, raw, replacement));
+        }
+
+        Assert.Equal(before, await File.ReadAllBytesAsync(NotePath(note.Id)));
+    }
+
+    private string NotePath(Guid noteId) => Path.Combine(_tempDir, _userId.ToString(), $"{noteId}.md");
 }

@@ -4,8 +4,8 @@ namespace JNotes.Core.Indexing;
 
 /// <summary>
 /// Thin CRUD over the note index (PostgreSQL — see <see cref="PostgresNoteIndexRepository"/>) — no
-/// file I/O. <c>NoteService</c> and <c>NoteIndexReconciler</c> are the only callers; everything else
-/// goes through them.
+/// file I/O. <c>NoteService</c>, <c>NoteIndexReconciler</c> and <c>NoteAutoTagger</c> (explicit userId, no
+/// current user) are the only callers; everything else goes through them.
 /// </summary>
 /// <remarks>
 /// Every method takes an explicit <c>userId</c> (or, for <see cref="UpsertAsync"/>, reads it off

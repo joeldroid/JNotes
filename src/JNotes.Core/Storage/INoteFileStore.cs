@@ -23,11 +23,24 @@ public interface INoteFileStore
     /// <exception cref="Serialization.NoteParseException">The file exists but its front matter can't be parsed.</exception>
     Task<Note> ReadAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default);
 
+    /// <summary>The exact text of the note's file, unparsed.</summary>
+    /// <exception cref="NoteNotFoundException">No file exists for <paramref name="noteId"/>.</exception>
+    Task<string> ReadRawAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default);
+
     /// <summary>The ids of every note file <paramref name="userId"/> currently has on disk, in no particular order.</summary>
     Task<IReadOnlyList<Guid>> ListIdsAsync(Guid userId, CancellationToken cancellationToken = default);
 
     /// <summary>Creates or overwrites the file for <paramref name="userId"/>'s <paramref name="note"/>.<see cref="Note.Id"/>.</summary>
     Task WriteAsync(Guid userId, Note note, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// A compare-and-swap for background writers: overwrites the file with <paramref name="replacement"/>
+    /// only if its current text is exactly <paramref name="expectedContent"/> (ordinal), holding an
+    /// exclusive handle across the read, compare and write. Returns <c>false</c> — writing nothing — if the
+    /// file is missing or its text differs, i.e. somebody changed it since the caller read it.
+    /// </summary>
+    /// <exception cref="IOException">Another handle has the file open (a sharing violation); nothing was written.</exception>
+    Task<bool> ReplaceIfUnchangedAsync(Guid userId, Guid noteId, string expectedContent, Note replacement, CancellationToken cancellationToken = default);
 
     /// <summary>No-ops if the file doesn't exist.</summary>
     Task DeleteAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default);

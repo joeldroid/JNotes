@@ -28,7 +28,7 @@ public class OllamaTagModelClientTests
 
         return new OllamaTagModelClient(
             client,
-            Options.Create(new AutoTagOptions { Enabled = true, OllamaUrl = "http://ollama.test:11434" }),
+            Options.Create(new AutoTagOptions { OllamaUrl = "http://ollama.test:11434" }),
             NullLogger<OllamaTagModelClient>.Instance);
     }
 
@@ -70,33 +70,52 @@ public class OllamaTagModelClientTests
         var ex = await Assert.ThrowsAsync<AutoTagException>(() => Create(handler).GenerateTagsAsync(Prompt));
 
         Assert.Contains("ollama pull phi4", ex.Message);
+        Assert.Equal(AutoTagFailureKind.Unavailable, ex.Kind);
     }
 
-    [Fact]
-    public async Task A_server_error_throws_AutoTagException()
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError, "500")]
+    [InlineData(HttpStatusCode.ServiceUnavailable, "503")]
+    [InlineData(HttpStatusCode.TooManyRequests, "429")]
+    public async Task A_server_side_error_is_Unavailable(HttpStatusCode status, string code)
     {
-        var handler = new FakeHandler { Status = HttpStatusCode.InternalServerError, Body = """{"error":"boom"}""" };
+        var handler = new FakeHandler { Status = status, Body = """{"error":"boom"}""" };
 
         var ex = await Assert.ThrowsAsync<AutoTagException>(() => Create(handler).GenerateTagsAsync(Prompt));
 
-        Assert.Contains("500", ex.Message);
+        Assert.Contains(code, ex.Message);
+        Assert.Equal(AutoTagFailureKind.Unavailable, ex.Kind);
     }
 
     [Fact]
-    public async Task A_connection_failure_throws_AutoTagException()
+    public async Task Another_client_error_is_a_BadResponse()
+    {
+        var handler = new FakeHandler { Status = HttpStatusCode.BadRequest, Body = """{"error":"bad"}""" };
+
+        var ex = await Assert.ThrowsAsync<AutoTagException>(() => Create(handler).GenerateTagsAsync(Prompt));
+
+        Assert.Equal(AutoTagFailureKind.BadResponse, ex.Kind);
+    }
+
+    [Fact]
+    public async Task A_connection_failure_is_Unavailable()
     {
         var handler = new FakeHandler { Throw = new HttpRequestException("refused") };
 
-        await Assert.ThrowsAsync<AutoTagException>(() => Create(handler).GenerateTagsAsync(Prompt));
+        var ex = await Assert.ThrowsAsync<AutoTagException>(() => Create(handler).GenerateTagsAsync(Prompt));
+
+        Assert.Equal(AutoTagFailureKind.Unavailable, ex.Kind);
     }
 
     [Fact]
-    public async Task A_timeout_throws_AutoTagException()
+    public async Task A_timeout_is_a_Timeout()
     {
         var handler = new FakeHandler { Delay = TimeSpan.FromSeconds(5), Body = OkBody };
 
-        await Assert.ThrowsAsync<AutoTagException>(() =>
+        var ex = await Assert.ThrowsAsync<AutoTagException>(() =>
             Create(handler, timeout: TimeSpan.FromMilliseconds(100)).GenerateTagsAsync(Prompt));
+
+        Assert.Equal(AutoTagFailureKind.Timeout, ex.Kind);
     }
 
     [Fact]
@@ -121,19 +140,23 @@ public class OllamaTagModelClientTests
     [InlineData("""{"message":{"role":"assistant","content":"{\"foo\":1}"}}""")]
     [InlineData("""{"done":true}""")]
     [InlineData("this is not json")]
-    public async Task An_unusable_reply_throws_AutoTagException(string body)
+    public async Task An_unusable_reply_is_a_BadResponse(string body)
     {
         var handler = new FakeHandler { Body = body };
 
-        await Assert.ThrowsAsync<AutoTagException>(() => Create(handler).GenerateTagsAsync(Prompt));
+        var ex = await Assert.ThrowsAsync<AutoTagException>(() => Create(handler).GenerateTagsAsync(Prompt));
+
+        Assert.Equal(AutoTagFailureKind.BadResponse, ex.Kind);
     }
 
     [Fact]
-    public async Task A_200_carrying_an_error_field_throws_AutoTagException()
+    public async Task A_200_carrying_an_error_field_is_a_BadResponse()
     {
         var handler = new FakeHandler { Body = """{"error":"x"}""" };
 
-        await Assert.ThrowsAsync<AutoTagException>(() => Create(handler).GenerateTagsAsync(Prompt));
+        var ex = await Assert.ThrowsAsync<AutoTagException>(() => Create(handler).GenerateTagsAsync(Prompt));
+
+        Assert.Equal(AutoTagFailureKind.BadResponse, ex.Kind);
     }
 
     private sealed class FakeHandler : HttpMessageHandler

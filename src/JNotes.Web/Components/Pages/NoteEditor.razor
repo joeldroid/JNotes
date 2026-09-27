@@ -2,10 +2,7 @@
 @page "/notes/new/{TypeName}"
 @attribute [Authorize]
 @implements IAsyncDisposable
-@using Microsoft.Extensions.Options
 @inject INoteService NoteService
-@inject INoteAutoTagService AutoTagService
-@inject IOptions<AutoTagOptions> AutoTagOptions
 @inject NavigationManager NavigationManager
 @inject IAppTimeZoneProvider TimeZoneProvider
 @inject IDialogService DialogService
@@ -36,22 +33,6 @@ else
                           Typo="Typo.h6" Error="@(_titleError is not null)" ErrorText="@_titleError" />
             <div class="mt-2">
                 <TagInput Tags="_note.Tags" TagsChanged="OnTagsChanged" SuggestTags="SuggestTagsAsync" />
-                @if (AutoTagOptions.Value.IsEnabled)
-                {
-                    <div class="jn-auto-tag">
-                        <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Outlined.AutoAwesome"
-                                   Disabled="@(_isAutoTagging || !HasTaggableContent)" OnClick="AutoTagAsync"
-                                   title="Suggest tags from this note's content with the local AI model">@(_isAutoTagging ? "Suggesting tags…" : "Auto-tag")</MudButton>
-                        @if (_isAutoTagging)
-                        {
-                            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
-                        }
-                        @if (_autoTagMessage is not null)
-                        {
-                            <MudText Typo="Typo.caption" Color="@(_autoTagFailed ? Color.Error : Color.Secondary)">@_autoTagMessage</MudText>
-                        }
-                    </div>
-                }
             </div>
         </div>
         <div class="jn-editor-actions">
@@ -112,13 +93,6 @@ else
     private string? _saveError;
     private string? _titleError;
 
-    // Auto-tag: one call at a time. The CTS is cancelled when the page moves to another note (this
-    // instance is reused) or is disposed, so a slow model reply never lands on the wrong note.
-    private bool _isAutoTagging;
-    private string? _autoTagMessage;
-    private bool _autoTagFailed;
-    private CancellationTokenSource? _autoTagCts;
-
     // Content and metadata autosave debounce independently (typing in the body shouldn't wait on
     // title/tags edits or vice versa), but both ultimately write the same file, so the actual save
     // execution is serialized through one gate rather than risking two overlapping writes.
@@ -145,18 +119,11 @@ else
         ? _isSaving ? "Saving…" : "Not saved yet"
         : _isSaving ? "Saving…" : _hasUnsavedChanges ? "Unsaved changes" : "All changes saved";
 
-    private bool HasTaggableContent =>
-        _note is not null && (!string.IsNullOrWhiteSpace(_note.Title) || !string.IsNullOrWhiteSpace(_note.Body));
-
     protected override async Task OnParametersSetAsync()
     {
         _notFound = false;
         _saveError = null;
         _titleError = null;
-        _autoTagCts?.Cancel();
-        _isAutoTagging = false;
-        _autoTagMessage = null;
-        _autoTagFailed = false;
 
         if (IsNew)
         {
@@ -220,74 +187,6 @@ else
     // ICurrentUserContext gotcha); TagInput only receives this delegate.
     private Task<IReadOnlyList<string>> SuggestTagsAsync(string? term, IReadOnlyCollection<string> exclude, CancellationToken ct) =>
         NoteService.SuggestTagsAsync(term, exclude, 10, ct);
-
-    /// <summary>
-    /// Asks the model for tags and adds them to the chips through <see cref="OnTagsChanged"/>, so an
-    /// existing note persists via the ordinary metadata debounce and a draft only on Save. The service
-    /// takes the in-memory content (a draft has no file, an existing note may be ahead of its file) and
-    /// writes nothing itself.
-    /// </summary>
-    private async Task AutoTagAsync()
-    {
-        if (_note is null || _isAutoTagging)
-        {
-            return;
-        }
-
-        var target = _note;
-        _autoTagCts?.Cancel();
-        _autoTagCts?.Dispose();
-        _autoTagCts = new CancellationTokenSource();
-        var token = _autoTagCts.Token;
-
-        _isAutoTagging = true;
-        _autoTagMessage = null;
-        _autoTagFailed = false;
-        try
-        {
-            var suggested = await AutoTagService.GenerateTagsAsync(target.Type, target.Title, target.Body, target.Tags, token);
-
-            // The page moved to another note (this instance is reused) while the model was thinking.
-            if (token.IsCancellationRequested || !ReferenceEquals(_note, target))
-            {
-                return;
-            }
-
-            // Merged into the tags as they are *now*, so ones typed during the call are kept.
-            var merged = TagList.AddTags(target.Tags, suggested);
-            if (merged.Count == target.Tags.Count)
-            {
-                _autoTagMessage = "No new tags suggested.";
-            }
-            else
-            {
-                _autoTagMessage = $"Added {string.Join(", ", merged.Skip(target.Tags.Count))} · × removes any you don't want";
-                OnTagsChanged(merged);
-            }
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-            // Navigated away or disposed — nothing to report.
-        }
-        catch (AutoTagException ex)
-        {
-            _autoTagMessage = ex.Message;
-            _autoTagFailed = true;
-        }
-        catch (Exception ex)
-        {
-            _autoTagMessage = $"Auto-tag failed: {ex.Message}";
-            _autoTagFailed = true;
-        }
-        finally
-        {
-            // Not if the page has moved on: OnParametersSetAsync already reset the flag, and a newer call may own it.
-            if (!token.IsCancellationRequested)
-            {
-                _isAutoTagging = false;
-            }
-        }
-    }
 
     /// <summary>
     /// The single path every autosave of an existing note — either scope — goes through, so the
@@ -414,8 +313,6 @@ else
 
     public async ValueTask DisposeAsync()
     {
-        _autoTagCts?.Cancel();
-        _autoTagCts?.Dispose();
         _contentDebouncer.Dispose();
         _metadataDebouncer.Dispose();
 

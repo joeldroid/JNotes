@@ -23,6 +23,32 @@ namespace JNotes.Core.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("JNotes.Core.Data.NoteAutoTagAttempt", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("NoteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("FailureCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("LastAttemptUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("RetryAfterUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId", "NoteId");
+
+                    b.ToTable("NoteAutoTagAttempts", (string)null);
+                });
+
             modelBuilder.Entity("JNotes.Core.Data.NoteIndexTag", b =>
                 {
                     b.Property<Guid>("NoteIndexEntryId")
@@ -181,6 +207,15 @@ namespace JNotes.Core.Data.Migrations
                         .IsDescending(false, true);
 
                     b.ToTable("NoteIndexEntries", (string)null);
+                });
+
+            modelBuilder.Entity("JNotes.Core.Data.NoteAutoTagAttempt", b =>
+                {
+                    b.HasOne("JNotes.Core.Data.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("JNotes.Core.Data.NoteIndexTag", b =>

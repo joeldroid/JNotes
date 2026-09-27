@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text;
 using JNotes.Core.Models;
 using JNotes.Core.Serialization;
 using JNotes.Core.Settings;
@@ -29,6 +30,17 @@ public sealed class FileSystemNoteFileStore : INoteFileStore
         return _serializer.Deserialize(content);
     }
 
+    public async Task<string> ReadRawAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default)
+    {
+        var path = await ResolvePathAsync(userId, noteId, cancellationToken);
+        if (!File.Exists(path))
+        {
+            throw new NoteNotFoundException(noteId);
+        }
+
+        return await File.ReadAllTextAsync(path, cancellationToken);
+    }
+
     public async Task<IReadOnlyList<Guid>> ListIdsAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         var folder = await ResolveFolderAsync(userId, cancellationToken);
@@ -51,6 +63,44 @@ public sealed class FileSystemNoteFileStore : INoteFileStore
         var path = await ResolvePathAsync(userId, note.Id, cancellationToken);
         var content = _serializer.Serialize(note);
         await File.WriteAllTextAsync(path, content, cancellationToken);
+    }
+
+    public async Task<bool> ReplaceIfUnchangedAsync(
+        Guid userId, Guid noteId, string expectedContent, Note replacement, CancellationToken cancellationToken = default)
+    {
+        var path = await ResolvePathAsync(userId, noteId, cancellationToken);
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            // FileShare.None: nobody else can write between the compare and the write. A concurrent
+            // writer gets an IOException instead of a lost update, which the callers already handle.
+            await using var stream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None, 4096, useAsync: true);
+
+            using (var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 4096, leaveOpen: true))
+            {
+                var current = await reader.ReadToEndAsync(cancellationToken);
+                if (!string.Equals(current, expectedContent, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+            }
+
+            stream.SetLength(0); // also rewinds the position to 0
+            // UTF-8 without a BOM, exactly what File.WriteAllTextAsync (WriteAsync above) produces.
+            await using var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), bufferSize: 4096, leaveOpen: true);
+            await writer.WriteAsync(_serializer.Serialize(replacement).AsMemory(), cancellationToken);
+            await writer.FlushAsync(cancellationToken);
+            await stream.FlushAsync(cancellationToken);
+            return true;
+        }
+        catch (FileNotFoundException)
+        {
+            return false; // deleted or trashed between the exists check and the open
+        }
     }
 
     public async Task DeleteAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default)

@@ -42,7 +42,8 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
         Guid userAId,
         Guid userBId,
         RecordingPdfRenderer pdfRenderer,
-        RecordingTagModelClient tagModel)
+        RecordingTagModelClient tagModel,
+        TestTimeProvider clock)
     {
         _provider = provider;
         _scope = scope;
@@ -54,6 +55,7 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
         UserBId = userBId;
         PdfRenderer = pdfRenderer;
         TagModel = tagModel;
+        Clock = clock;
     }
 
     public string NotesFolder { get; }
@@ -68,10 +70,15 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
     /// <summary>Stands in for Gotenberg; <see cref="INoteExportService"/> renders through it.</summary>
     public RecordingPdfRenderer PdfRenderer { get; }
 
-    /// <summary>Stands in for Ollama; <see cref="INoteAutoTagService"/> asks it for tags.</summary>
+    /// <summary>Stands in for Ollama; <see cref="INoteAutoTagger"/> asks it for tags.</summary>
     public RecordingTagModelClient TagModel { get; }
 
-    public INoteAutoTagService NoteAutoTagService => _scope.ServiceProvider.GetRequiredService<INoteAutoTagService>();
+    /// <summary>The clock <see cref="INoteAutoTagger"/> reads (a <c>TimeProvider</c> registered after <c>AddJNotesCore</c>, so it wins over its <c>TryAdd</c>).</summary>
+    public TestTimeProvider Clock { get; }
+
+    public INoteAutoTagger NoteAutoTagger => _scope.ServiceProvider.GetRequiredService<INoteAutoTagger>();
+
+    public IAutoTagStateRepository AutoTagState => _scope.ServiceProvider.GetRequiredService<IAutoTagStateRepository>();
 
     public INoteExportService NoteExportService => _scope.ServiceProvider.GetRequiredService<INoteExportService>();
 
@@ -122,13 +129,12 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
         services.AddSingleton<IPdfRenderer>(pdfRenderer);
         services.AddSingleton<IPdfExportAssetSource, StubPdfExportAssetSource>();
         // Auto-tagging: enabled, but answered by a recording stub instead of Ollama (last ITagModelClient registration wins over the typed HttpClient).
-        services.Configure<AutoTagOptions>(o =>
-        {
-            o.Enabled = true;
-            o.OllamaUrl = "http://ollama.test:11434";
-        });
+        services.Configure<AutoTagOptions>(o => o.OllamaUrl = "http://ollama.test:11434");
         var tagModel = new RecordingTagModelClient();
         services.AddSingleton<ITagModelClient>(tagModel);
+        // A movable clock in place of TimeProvider.System, so the tagger's backoff windows can be crossed without waiting.
+        var clock = new TestTimeProvider();
+        services.AddSingleton<TimeProvider>(clock);
 
         var provider = services.BuildServiceProvider();
         await provider.MigrateJNotesDatabaseAsync();
@@ -139,7 +145,7 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
         var userB = await userRepository.CreateUserAsync("user-b", UserRole.Member, email: null, password: "password123");
         currentUserContext.UserId = userA.Id; // default to acting as user A
 
-        return new CoreServicesFixture(provider, scope, rootDir, notesFolder, database, currentUserContext, userA.Id, userB.Id, pdfRenderer, tagModel);
+        return new CoreServicesFixture(provider, scope, rootDir, notesFolder, database, currentUserContext, userA.Id, userB.Id, pdfRenderer, tagModel, clock);
     }
 
     public async ValueTask DisposeAsync()

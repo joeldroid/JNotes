@@ -37,14 +37,15 @@ services:
       # it on, add BOTH lines to a .env file:  COMPOSE_PROFILES=pdf  (starts the gotenberg service below)
       # and  GOTENBERG_URL=http://gotenberg:3000  (tells the app where it is). See README.md's "PDF export".
       - GOTENBERG_URL=${GOTENBERG_URL:-}
-      # Optional AI auto-tagging with a local Ollama (an "Auto-tag" button in the note editor). Off unless
-      # AUTO_TAG_ENABLED=true and OLLAMA_URL is set; see README.md's "Auto-tagging". Ollama on the host:
+      # Optional background AI auto-tagging with Ollama. Runs only when OLLAMA_URL is set: untagged notes are
+      # tagged every AUTO_TAG_INTERVAL_MINUTES, up to AUTO_TAG_BATCH_SIZE per pass. Ollama on the host:
       # OLLAMA_URL=http://host.docker.internal:11434. Bundled service: COMPOSE_PROFILES=ollama and
-      # OLLAMA_URL=http://ollama:11434.
-      - AUTO_TAG_ENABLED=${AUTO_TAG_ENABLED:-false}
+      # OLLAMA_URL=http://ollama:11434. See README.md's "Auto-tagging".
       - OLLAMA_URL=${OLLAMA_URL:-}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-phi4}
       - OLLAMA_TIMEOUT_SECONDS=${OLLAMA_TIMEOUT_SECONDS:-120}
+      - AUTO_TAG_INTERVAL_MINUTES=${AUTO_TAG_INTERVAL_MINUTES:-10}
+      - AUTO_TAG_BATCH_SIZE=${AUTO_TAG_BATCH_SIZE:-10}
     extra_hosts:
       # Lets the container reach an Ollama running on the host as host.docker.internal. Linux needs this
       # line; Docker Desktop (Windows/Mac) already provides the name, so it's harmless there.
@@ -111,7 +112,7 @@ services:
     restart: unless-stopped
 
   ollama:
-    # Optional bundled Ollama, used only by auto-tagging. Behind the "ollama" profile so a plain
+    # Optional bundled Ollama, used only by background auto-tagging. Behind the "ollama" profile so a plain
     # `docker compose up` never starts it, and jnotes has no depends_on on it (that would break a plain
     # `up` with the profile off). No `ports:` on purpose: only the jnotes service talks to it, and Ollama
     # has no authentication of its own. Pull the model once:  docker compose exec ollama ollama pull phi4

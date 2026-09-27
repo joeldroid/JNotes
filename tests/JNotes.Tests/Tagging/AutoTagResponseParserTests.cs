@@ -41,6 +41,8 @@ public class AutoTagResponseParserTests
     [InlineData(null)]
     public void Anything_else_throws_AutoTagException(string? content)
     {
-        Assert.Throws<AutoTagException>(() => AutoTagResponseParser.Parse(content));
+        var ex = Assert.Throws<AutoTagException>(() => AutoTagResponseParser.Parse(content));
+
+        Assert.Equal(AutoTagFailureKind.BadResponse, ex.Kind);
     }
 }

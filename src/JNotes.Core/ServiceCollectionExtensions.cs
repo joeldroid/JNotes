@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Npgsql;
 
@@ -23,7 +24,7 @@ namespace JNotes.Core;
 /// this (plus <see cref="HostExtensions"/>) — it never registers a <see cref="DbContext"/> or
 /// file-store implementation itself, which is what keeps Web from having a reason to reach past
 /// <c>INoteService</c>/<c>ISettingsService</c>/<c>INoteIndexReconciler</c>/<c>IUserRepository</c>/
-/// <c>IUserManagementService</c>/<c>IImageService</c>/<c>INoteExportService</c>/<c>INoteAutoTagService</c> into Core's internals.
+/// <c>IUserManagementService</c>/<c>IImageService</c>/<c>INoteExportService</c>/<c>INoteAutoTagger</c> into Core's internals.
 /// Two deliberate exceptions: <c>ICurrentUserContext</c> and <c>IPdfExportAssetSource</c> are declared
 /// in Core but registered by <c>JNotes.Web</c> itself, not here — the former's only implementation
 /// needs <c>IHttpContextAccessor</c>, an ASP.NET Core hosting type Core has never depended on; the
@@ -92,10 +93,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<INoteExportService, NoteExportService>();
         // IPdfExportAssetSource is intentionally NOT registered here — like ICurrentUserContext, JNotes.Web does (its files are Web's wwwroot).
 
-        // Optional Ollama auto-tagging — off unless AUTO_TAG_ENABLED is truthy AND OLLAMA_URL is a valid http(s) URL (AutoTagOptions.IsEnabled).
+        // Optional background Ollama auto-tagging — off unless OLLAMA_URL is a valid http(s) URL (AutoTagOptions.IsEnabled).
         services.Configure<AutoTagOptions>(options =>
         {
-            options.Enabled = AutoTagOptions.ParseFlag(configuration["AUTO_TAG_ENABLED"]);
             options.OllamaUrl = configuration["OLLAMA_URL"] ?? options.OllamaUrl;
             if (!string.IsNullOrWhiteSpace(configuration["OLLAMA_MODEL"]))
             {
@@ -103,6 +103,8 @@ public static class ServiceCollectionExtensions
             }
 
             options.Timeout = AutoTagOptions.ParseTimeout(configuration["OLLAMA_TIMEOUT_SECONDS"]);
+            options.IntervalMinutes = AutoTagOptions.ParseIntervalMinutes(configuration["AUTO_TAG_INTERVAL_MINUTES"]);
+            options.BatchSize = AutoTagOptions.ParseBatchSize(configuration["AUTO_TAG_BATCH_SIZE"]);
         });
         services.AddHttpClient<ITagModelClient, OllamaTagModelClient>((sp, client) =>
         {
@@ -113,8 +115,14 @@ public static class ServiceCollectionExtensions
             }
 
             client.Timeout = autoTag.Timeout;
-        });
-        services.AddScoped<INoteAutoTagService, NoteAutoTagService>();
+        })
+        // The default handler logs the full request URL at Information on every call; the Ollama URL must never be logged.
+        .RemoveAllLoggers();
+        services.TryAddSingleton(TimeProvider.System);
+        // Not derived from the files, unlike the NoteIndex* tables — see NoteAutoTagAttempt.
+        services.AddSingleton<IAutoTagStateRepository, PostgresAutoTagStateRepository>();
+        // Scoped like IImageCleanupService: the singleton hosted service that drives it makes a scope per pass.
+        services.AddScoped<INoteAutoTagger, NoteAutoTagger>();
 
         services.AddDbContextFactory<JNotesDbContext>((sp, options) =>
         {

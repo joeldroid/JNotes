@@ -1,3 +1,5 @@
+> **Superseded** by the background auto-tagging redesign (the editor button was removed; see CLAUDE.md 'Auto-tagging'). Kept for history.
+
 # Plan: Optional "Auto-tag" of notes using a local Ollama (phi4) instance
 
 ## Summary

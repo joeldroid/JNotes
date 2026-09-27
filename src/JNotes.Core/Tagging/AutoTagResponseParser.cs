@@ -20,7 +20,7 @@ public static partial class AutoTagResponseParser
         var text = content?.Trim();
         if (string.IsNullOrEmpty(text))
         {
-            throw new AutoTagException(UnexpectedResponse);
+            throw new AutoTagException(UnexpectedResponse, AutoTagFailureKind.BadResponse);
         }
 
         if (FenceRegex().Match(text) is { Success: true } fence)
@@ -47,10 +47,10 @@ public static partial class AutoTagResponseParser
         }
         catch (JsonException ex)
         {
-            throw new AutoTagException(UnexpectedResponse, ex);
+            throw new AutoTagException(UnexpectedResponse, AutoTagFailureKind.BadResponse, ex);
         }
 
-        throw new AutoTagException(UnexpectedResponse);
+        throw new AutoTagException(UnexpectedResponse, AutoTagFailureKind.BadResponse);
     }
 
     private static List<string> Strings(JsonElement array) =>

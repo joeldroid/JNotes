@@ -14,7 +14,7 @@ see [Authentication](#authentication) below for that flow, adding more users, an
 - **Text notes** — free-form markdown, edited with a live preview, with `mermaid` code blocks rendered as diagrams (toolbar buttons insert a starter flow chart), and images inserted with the **Image** button or by pasting one (PNG, JPEG, GIF or WebP, up to 10 MB).
 - **Checklist notes** — markdown task lists (`- [ ] item`) rendered as interactive checkboxes. Add items and group them into categories (markdown `##` headings) from the note view or the editor without touching markdown; checking an item moves it below the unchecked ones in its category.
 - **PDF export (optional)** — an **Export PDF** button on a note opens it as a light-themed A4 PDF (images, diagrams and checklists included), rendered by a [Gotenberg](https://gotenberg.dev) container. Off unless `GOTENBERG_URL` is set.
-- **Auto-tagging (optional)** — an **Auto-tag** button in the editor asks a local [Ollama](https://ollama.com) model (Microsoft's `phi4` by default) to suggest tags from the note's content and adds them. Off unless `AUTO_TAG_ENABLED=true` and `OLLAMA_URL` is set.
+- **Auto-tagging (optional)** — when `OLLAMA_URL` points at an [Ollama](https://ollama.com) server, a background task tags notes that have no tags using a local model (Microsoft's `phi4` by default). It never changes tags you've written.
 - **Multi-user with real accounts** — admin-created users, each with their own notes and settings;
   sign in with a password, OIDC, or both.
 - **Portable storage** — every note is `notes/<user-id>/<id>.md` with a small YAML front matter
@@ -37,7 +37,7 @@ tests/
 
 `JNotes.Web` never touches the filesystem or EF Core/PostgreSQL directly — it only consumes
 `INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
-`IUserManagementService`, `IImageService`, `INoteExportService`, and `INoteAutoTagService` from `JNotes.Core`. This is enforced at build time via
+`IUserManagementService`, `IImageService`, `INoteExportService`, and `INoteAutoTagger` from `JNotes.Core`. This is enforced at build time via
 `Microsoft.CodeAnalysis.BannedApiAnalyzers` (`src/JNotes.Web/BannedSymbols.txt`).
 
 ### Styling
@@ -115,10 +115,11 @@ pick the admin's username and password — see [Authentication](#authentication)
 | `OIDC_CLIENT_SECRET` | unset | OIDC client secret. All three `OIDC_*` values must be set for OIDC to be offered. |
 | `OIDC_DISPLAY_NAME` | `OIDC` | Label on the "Sign in with …" button on the login page. |
 | `GOTENBERG_URL` | unset | Base URL of a [Gotenberg 8](https://gotenberg.dev) service (e.g. `http://gotenberg:3000`) used to render note PDFs. Leave unset to disable PDF export entirely — no button, and `/notes/{id}/pdf` returns 404. Must be an absolute http(s) URL; anything else logs a warning and leaves it off. |
-| `AUTO_TAG_ENABLED` | `false` | Turns on the editor's **Auto-tag** button. Only `true`, `1`, `yes` or `on` (any case) enable it, and it also needs a valid `OLLAMA_URL`. See [Auto-tagging with Ollama](#auto-tagging-with-ollama-optional). |
-| `OLLAMA_URL` | unset | Base URL of an [Ollama](https://ollama.com) server (e.g. `http://localhost:11434`). Must be an absolute http(s) URL; if `AUTO_TAG_ENABLED` is on but this is anything else, a warning is logged and auto-tagging stays off. Note text is sent to this address. |
+| `OLLAMA_URL` | unset | Base URL of an [Ollama](https://ollama.com) server (e.g. `http://localhost:11434`); enables background auto-tagging. Must be an absolute http(s) URL, otherwise a warning is logged and it stays off; every user's untagged note text is sent here. See [Auto-tagging with Ollama](#auto-tagging-with-ollama-optional). |
 | `OLLAMA_MODEL` | `phi4` | The Ollama model used to suggest tags (e.g. `phi4-mini`, or a pinned `phi4:14b`). It must already be pulled on the server. |
 | `OLLAMA_TIMEOUT_SECONDS` | `120` | How long to wait for the model before giving up (10–600). A big model on CPU, or a cold model load, can be slow. |
+| `AUTO_TAG_INTERVAL_MINUTES` | `10` | Minutes between background auto-tagging passes (1–1440). |
+| `AUTO_TAG_BATCH_SIZE` | `10` | Most notes tagged per pass, across all users (1–100). |
 | `AUTO_INDEX_INTERVAL_MINUTES` | `5` | How often the background pass reconciles every user's note index against the files on disk. `0` disables it (the startup pass and Settings → "Rescan Now" still work). |
 
 All of these take effect at startup only — changing one requires an app/container restart.
@@ -197,12 +198,23 @@ Running locally instead: `docker run --rm -p 3000:3000 gotenberg/gotenberg:8`, t
 
 ### Auto-tagging with Ollama (optional)
 
-The editor's **Auto-tag** button sends the note's title and body to a local [Ollama](https://ollama.com) model, which suggests up to 5 tags; they're added to the note's tags and you can remove any with ×. It's off unless `AUTO_TAG_ENABLED=true` and `OLLAMA_URL` is a valid http(s) URL, and then the button appears in the editor for both text and checklist notes. The default model is Microsoft's `phi4` (14B, about 9 GB on disk).
+A background task sends notes that have **no tags** to a local [Ollama](https://ollama.com) model, which suggests 1–5 tags. It runs only when `OLLAMA_URL` is a valid http(s) URL; there is no separate on/off setting (to turn it off, leave `OLLAMA_URL` unset — the old `AUTO_TAG_ENABLED` variable is ignored, with a startup warning if it is still set). The default model is Microsoft's `phi4` (14B, about 9 GB on disk).
+
+**What gets tagged.**
+
+- Only notes with no tags at all, for every user. It reuses the spelling of tags that user already has, and writes new ones in lowercase kebab-case.
+- Only notes left unchanged for 10 minutes, newest first. Existing untagged notes are backfilled gradually: at most `AUTO_TAG_BATCH_SIZE` notes per `AUTO_TAG_INTERVAL_MINUTES` (10 notes every 10 minutes by default).
+- Each note gets one attempt. If Ollama answers badly for a note it is retried after 1 h, 6 h, 24 h and 72 h, then given up on. If Ollama itself is down, the pass just stops and tries again on the next interval.
+- It never changes tags you've written, and it doesn't change a note's "Last updated" time or its place in the list.
+- Notes you edited outside JNotes in a non-standard format (extra front-matter keys, Windows line endings) are skipped, so a background write never rewrites anything but the tags.
+- If you remove tags the tagger added, they stay removed.
+- An editor left open for more than 10 minutes on an untagged note can overwrite the new tags with its next save.
+
+Settings → Administration has a read-only **Auto-tagging** card showing the current state and the last pass. Ollama unloads the model after 5 idle minutes, so the first note of a pass may load it cold, which counts toward `OLLAMA_TIMEOUT_SECONDS`.
 
 **Ollama on the Docker host.** Run `ollama pull phi4`, then create a `.env` file next to `docker-compose.yml` with:
 
 ```
-AUTO_TAG_ENABLED=true
 OLLAMA_URL=http://host.docker.internal:11434
 ```
 
@@ -212,17 +224,14 @@ On Linux, Ollama listens on `127.0.0.1` only by default, so set `OLLAMA_HOST=0.0
 
 ```
 COMPOSE_PROFILES=ollama
-AUTO_TAG_ENABLED=true
 OLLAMA_URL=http://ollama:11434
 ```
 
 (use `COMPOSE_PROFILES=pdf,ollama` if you also want PDF export), then `docker compose up -d --build` and pull the model once with `docker compose exec ollama ollama pull phi4`. Budget about 9 GB of disk and enough RAM or VRAM for a 14B model; on CPU only it is slow, so consider raising `OLLAMA_TIMEOUT_SECONDS`. Ollama isn't published to the host, and GPU passthrough isn't configured in the compose file (see the [Ollama Docker docs](https://docs.ollama.com/docker)).
 
-**Running locally.** Start Ollama, then run JNotes with `AUTO_TAG_ENABLED=true` (PowerShell: `$env:AUTO_TAG_ENABLED="true"`); `appsettings.json` already points `OLLAMA_URL` at `http://localhost:11434`.
+**Running locally.** Start Ollama, then run JNotes with `OLLAMA_URL` set (PowerShell: `$env:OLLAMA_URL="http://localhost:11434"`); `appsettings.json` ships it empty, so nothing is sent anywhere until you set it.
 
-**Privacy.** Note text is sent only to `OLLAMA_URL`, and JNotes doesn't log it. If that address is a remote or cloud host, your note text leaves your machine.
-
-**Behaviour.** It only adds tags, never removes them; it prefers tags you already use (matching their spelling) and writes new ones in lowercase kebab-case. Only the first ~12,000 characters of a long note are sent. For an existing note the added tags are saved like any other edit; for a new note nothing is saved until you press Save.
+**Privacy.** Once `OLLAMA_URL` is set, tagging is automatic and covers every user's untagged notes; there is no per-user opt-out, so it is an admin decision. Note text is sent only to `OLLAMA_URL`, and JNotes doesn't log it (or the URL). If that address is a remote or cloud host, your note text leaves your machine. Only the first ~12,000 characters of a long note are sent.
 
 ## Authentication
 

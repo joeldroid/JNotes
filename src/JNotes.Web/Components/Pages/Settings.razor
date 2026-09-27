@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @using System.ComponentModel.DataAnnotations
 @using JNotes.Core
+@using JNotes.Web.Tagging
 @using Microsoft.Extensions.Options
 @inject ISettingsService SettingsService
 @inject INoteIndexReconciler Reconciler
@@ -13,6 +14,8 @@
 @inject ICurrentUserContext CurrentUser
 @inject IOptions<OidcOptions> OidcOptionsAccessor
 @inject IOptions<JNotesOptions> JNotesOptionsAccessor
+@inject IOptions<AutoTagOptions> AutoTagOptionsAccessor
+@inject AutoTagStatus AutoTagStatus
 @inject NavigationManager NavigationManager
 @inject ThemeState Theme
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -162,6 +165,40 @@
                         <div class="jn-alert-detail">Cleanup failed for @cleanup.UsersFailed user(s) — see the server log.</div>
                     }
                 </MudAlert>
+            }
+        </MudPaper>
+
+        <MudPaper Outlined="true" Class="jn-settings-card">
+            <MudText Typo="Typo.subtitle1" HtmlTag="h3" Class="mb-1">Auto-tagging</MudText>
+            @if (!AutoTagOptionsAccessor.Value.IsEnabled)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Off. Set OLLAMA_URL to tag untagged notes automatically with a local Ollama model.
+                </MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
+                    Every @AutoTagOptionsAccessor.Value.IntervalMinutes minute(s), up to @AutoTagOptionsAccessor.Value.BatchSize untagged
+                    note(s) per pass are sent to the Ollama model <code class="jn-code">@AutoTagOptionsAccessor.Value.Model</code> and tagged.
+                    Notes changed in the last @((int)AutoTagSchedule.MinNoteAge.TotalMinutes) minutes wait. Tags you've written are never
+                    changed, and each note is tried once.
+                </MudText>
+                <MudText Class="mb-1">
+                    <strong>Last pass:</strong>
+                    @(_autoTagStatus.IsRunning
+                        ? "running now"
+                        : _autoTagStatus.LastPassFinishedUtc is { } lastPass
+                            ? $"{TimeZoneProvider.ToAppTimeZone(lastPass):f}, {_autoTagStatus.LastPassTagged} tagged"
+                            : "not yet")
+                </MudText>
+                <MudText Class="mb-1"><strong>Tagged since startup:</strong> @_autoTagStatus.TaggedSinceStartup</MudText>
+                @if (_autoTagStatus.UnavailableReason is { } unavailableReason)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                        Ollama unavailable@(_autoTagStatus.UnavailableSinceUtc is { } since ? $" since {TimeZoneProvider.ToAppTimeZone(since):f}" : ""): @unavailableReason
+                    </MudAlert>
+                }
             }
         </MudPaper>
 
@@ -321,6 +358,9 @@
     private AllUsersImageCleanupResult? _imageCleanupResult;
     private string? _imageCleanupError;
 
+    // A snapshot taken at page load (admins only): the card doesn't update live.
+    private AutoTagStatusSnapshot _autoTagStatus = new(false, null, 0, 0, null, null);
+
     private bool _passwordAuthEnabled;
     private OidcOptions _oidc = new();
     private string? _securityError;
@@ -367,6 +407,7 @@
             await RefreshCountAsync();
             _imageCleanupDays = await SettingsService.GetImageCleanupIntervalDaysAsync();
             _imageCleanupLastRun = await SettingsService.GetImageCleanupLastRunUtcAsync();
+            _autoTagStatus = AutoTagStatus.Snapshot;
 
             _oidc = OidcOptionsAccessor.Value;
             _passwordAuthEnabled = await SettingsService.GetPasswordAuthEnabledAsync();

@@ -64,3 +64,29 @@ services:
       timeout: 5s
       retries: 3
     restart: unless-stopped
+
+  jnotes-debug-ollama:
+    # Real Ollama for trying background auto-tagging (OLLAMA_URL=http://localhost:11434) against an app
+    # run from the host with `dotnet run`. Same image tag as the "ollama" service in docker-compose.yml.
+    # Pull the model once (about 9 GB):  docker exec jnotes-debug-ollama ollama pull phi4
+    # Start ONLY this service so the running db/pdf containers above are left untouched:
+    #   docker compose -f docker-compose.debug.yml up -d jnotes-debug-ollama
+    image: ollama/ollama:0.34.4
+    container_name: jnotes-debug-ollama
+    ports:
+      # Localhost only: Ollama has no authentication of its own.
+      - "127.0.0.1:11434:11434"
+    volumes:
+      # A named volume, unlike the throwaway database above: the pulled model is large and slow to
+      # re-download. Survives `down`; `down -v` deletes it.
+      - jnotes-debug-ollama-models:/root/.ollama
+    # GPU passthrough is host-specific and not configured here; see https://docs.ollama.com/docker
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  jnotes-debug-ollama-models:
