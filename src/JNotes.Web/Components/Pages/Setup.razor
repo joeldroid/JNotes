@@ -5,7 +5,6 @@
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Authentication.Cookies
 @inject IUserRepository UserRepository
-@inject ISetupStateProvider SetupState
 @inject NavigationManager Navigation
 
 <PageTitle>Set up JNotes</PageTitle>
@@ -53,13 +52,10 @@
 
     protected override void OnInitialized()
     {
-        // A bookmarked/stale /setup URL after setup already happened is a no-op, not a way to mint
-        // a second "first admin" — the setup-gate middleware handles the "not yet set up" direction.
-        if (SetupState.IsSetupComplete)
-        {
-            Navigation.NavigateTo("/", forceLoad: true);
-            return;
-        }
+        // The setup-gate middleware (Program.cs) redirects a stale/bookmarked /setup away once an
+        // admin exists — before this component ever renders — so there's no "already complete"
+        // case to guard here. It also owns the opposite "not yet set up" direction, so both
+        // directions live in one place instead of half here and half there.
 
         // [SupplyParameterFromForm] can hand back null (e.g. the first GET, before any POST) — a
         // property initializer wouldn't survive that, so it's assigned here instead.

@@ -134,18 +134,37 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 // Redirects every request to /setup until the first admin exists — no way to use the app (or even
-// see /login) before that. Once true, /setup itself redirects away (see Setup.razor). Requests for
-// a static asset (css/js/fonts/images — anything with a file extension) and the SignalR circuit
-// endpoint are let through untouched, or /setup's own page would render unstyled/non-interactive.
+// see /login) before that — and, symmetrically, redirects a stale/bookmarked /setup away once an
+// admin exists, so it's never a way to mint a second "first admin". Both directions are handled
+// here, in plain middleware, rather than the latter also being attempted as a NavigateTo() inside
+// Setup.razor's OnInitialized: a component-level redirect during static SSR only short-circuits
+// rendering if it fires before the response has started, which this app's page (nested under
+// App.razor's <head>/<Routes> output) cannot rely on — it was silently falling through to render
+// EditForm with a null Model and crashing with "EditForm requires either a Model parameter, or an
+// EditContext parameter". Requests for a static asset (css/js/fonts/images — anything with a file
+// extension) and the SignalR circuit endpoint are let through untouched either way, or /setup's own
+// page would render unstyled/non-interactive.
 app.Use(async (context, next) =>
 {
     var setupState = context.RequestServices.GetRequiredService<ISetupStateProvider>();
     var path = context.Request.Path;
     var isAsset = Path.HasExtension(path.Value) || path.StartsWithSegments("/_blazor");
 
-    if (!setupState.IsSetupComplete && !path.StartsWithSegments("/setup") && !isAsset)
+    if (isAsset)
+    {
+        await next(context);
+        return;
+    }
+
+    if (!setupState.IsSetupComplete && !path.StartsWithSegments("/setup"))
     {
         context.Response.Redirect("/setup");
+        return;
+    }
+
+    if (setupState.IsSetupComplete && path.StartsWithSegments("/setup"))
+    {
+        context.Response.Redirect("/");
         return;
     }
 
