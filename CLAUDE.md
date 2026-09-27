@@ -24,6 +24,8 @@ dotnet format JNotes.slnx --verify-no-changes    # CI-style check
 # Run locally (needs .NET 10 SDK; data under src/JNotes.Web/App_Data/, gitignored)
 dotnet run --project src/JNotes.Web
 dotnet watch --project src/JNotes.Web run       # live-reloads C#, Razor, and wwwroot/css/*.css
+# Both use the FIRST launch profile (`http`, Properties/launchSettings.json), which points at the real
+# `jnotes` database and App_Data/notes — see "Tests" for throwaway-database rules.
 
 # EF Core migrations — startup project is Core, NOT Web: Web deliberately has no EF Core Design reference.
 dotnet ef migrations add <Name> --project src/JNotes.Core --startup-project src/JNotes.Core -o Data/Migrations
@@ -54,6 +56,23 @@ doesn't depend on) and the latter's files (mermaid and Roboto) are Web's `wwwroo
 Web's auth wiring (cookie/OIDC handlers, `[Authorize]`/`AuthorizeRouteView`, sign-in/out) lives in
 `JNotes.Web/Auth/` for the same reason. Any service needing a hosting-layer dependency follows
 this pattern: interface in Core, implementation + registration in Web.
+
+**Configuration is environment variables only.** There is no `appsettings.json`.
+`JNotes.Web/Hosting/EnvironmentOnlyConfiguration.UseEnvironmentVariablesOnly` (called right after
+`WebApplication.CreateBuilder()`, which is deliberately given no `args`) removes every
+`FileConfigurationSource` (JSON files, user secrets) and `CommandLineConfigurationSource`, so a stray or
+re-added `appsettings.json` (or a stale copy in `bin/`) is ignored. It removes those sources rather than
+calling `Sources.Clear()`: `CreateBuilder` also registers the `DOTNET_`/`ASPNETCORE_`-prefixed environment
+providers that supply `urls`/`http_ports`, and clearing them would break Kestrel binding in Docker. The
+Logging defaults (`Default=Information`, `Microsoft.AspNetCore=Warning`) live there too, as the
+lowest-priority in-memory source (not `AddFilter`, which would beat an env override). Local-dev values live
+in `src/JNotes.Web/Properties/launchSettings.json` (committed; the debug DB password is already public; no
+secrets — `OIDC_*` is absent so it comes from the developer's own environment; `OLLAMA_URL` is present and
+empty on purpose). The `http` and `https` profiles' env blocks are duplicated (JSON can't share them) and
+must be edited together. `POSTGRES_HOST`/`POSTGRES_DB`/`POSTGRES_USER` are required
+(`JNotesOptions.GetMissingRequiredPostgresSettings`; the fail-fast error names them); blank counts as unset
+for the string settings. `JNotesDbContextFactory` (design-time, `dotnet ef`) reads `POSTGRES_*` straight
+from the environment and is unaffected.
 
 **Per-user scoping uses two patterns, deliberately.** `INoteFileStore`, `INoteIndexRepository`, and
 `INoteIndexReconciler` take an **explicit** `Guid userId` — the reconciler must run for arbitrary
@@ -537,7 +556,7 @@ Compose: the `gotenberg` service sits behind the `pdf` profile, with no publishe
 
 ## Auto-tagging (optional)
 
-**Runs whenever `OLLAMA_URL` is a valid absolute http(s) URL — there is no separate flag** (`AutoTagOptions.IsEnabled` = URL via `PdfExportOptions.ParseBaseUri` + a non-blank `OLLAMA_MODEL`, default `phi4`; also `OLLAMA_TIMEOUT_SECONDS` 120 clamped 10..600, `AUTO_TAG_INTERVAL_MINUTES` 10 clamped 1..1440, `AUTO_TAG_BATCH_SIZE` 10 clamped 1..100, all flat keys read in `AddJNotesCore`). `AUTO_TAG_ENABLED` is ignored: `Program.cs` logs one warning if it is still set. `appsettings.json` ships `OLLAMA_URL` empty so dev and tests never auto-enable. There is deliberately no editor/`NoteView` UI and no per-user opt-out (an admin decision; documented in the README's privacy note). `Program.cs` logs the state and never the URL.
+**Runs whenever `OLLAMA_URL` is a valid absolute http(s) URL — there is no separate flag** (`AutoTagOptions.IsEnabled` = URL via `PdfExportOptions.ParseBaseUri` + a non-blank `OLLAMA_MODEL`, default `phi4`; also `OLLAMA_TIMEOUT_SECONDS` 120 clamped 10..600, `AUTO_TAG_INTERVAL_MINUTES` 10 clamped 1..1440, `AUTO_TAG_BATCH_SIZE` 10 clamped 1..100, all flat keys read in `AddJNotesCore`). `AUTO_TAG_ENABLED` is ignored: `Program.cs` logs one warning if it is still set. The launch profiles set `OLLAMA_URL` empty and tests pass an empty `ConfigurationBuilder`, so dev and tests never auto-enable. There is deliberately no editor/`NoteView` UI and no per-user opt-out (an admin decision; documented in the README's privacy note). `Program.cs` logs the state and never the URL.
 
 **Layering**, in `JNotes.Core/Tagging/`: pure static helpers (`AutoTagPromptBuilder`, `AutoTagResponseParser`, `AutoTagNormalizer`, `AutoTagSchedule`, `AutoTagCandidates`); `ITagModelClient`/`OllamaTagModelClient` (typed `HttpClient`, `POST /api/chat`, non-streaming, JSON-schema `format`, `num_ctx` 8192) whose failures are `AutoTagException` with an `AutoTagFailureKind` (`Unavailable`: connection, 5xx incl. 503 overloaded, 429, 404 model missing; `Timeout`; `BadResponse`: garbage, 200 with `error`, other 4xx). The client logs at Debug only, never an exception object (its message carries host:port), and its `HttpClient` has `RemoveAllLoggers()` because the default handler logs the request URL on every call — **the Ollama URL, note text, titles and tags are never logged**. `INoteAutoTagger`/`NoteAutoTagger` (scoped, **explicit `userId`** like `IImageCleanupService`, since its caller has no current user) is driven by `Web/Tagging/AutoTagBackgroundService` — the image-cleanup pattern: one scope per pass, initial 1-minute delay then a `PeriodicTimer`, never rethrows. A pass takes up to `BatchSize` notes across all users (users shuffled, per-user candidates interleaved round-robin), one at a time; it deliberately bypasses `NoteService` (implicit user, and its autosave stamps `UpdatedAt`). Web never talks to Ollama.
 

@@ -1,8 +1,8 @@
 namespace JNotes.Core;
 
 /// <summary>
-/// Populated from the flat "NOTES_PATH"/"POSTGRES_HOST"/etc. configuration keys (see
-/// <c>appsettings.json</c>, or the same-named env vars — <see cref="ServiceCollectionExtensions.AddJNotesCore"/>).
+/// Populated from environment variables (flat names, e.g. NOTES_PATH/POSTGRES_HOST) — the only configuration
+/// source; see <see cref="ServiceCollectionExtensions.AddJNotesCore"/> and JNotes.Web's EnvironmentOnlyConfiguration.
 /// </summary>
 public sealed class JNotesOptions
 {
@@ -18,10 +18,10 @@ public sealed class JNotesOptions
     /// <summary>PostgreSQL port, from "POSTGRES_PORT". Defaults to 5432 when unset.</summary>
     public int? PostgresPort { get; set; }
 
-    /// <summary>PostgreSQL database name, from "POSTGRES_DB".</summary>
+    /// <summary>PostgreSQL database name, from "POSTGRES_DB". Required (see <see cref="GetMissingRequiredPostgresSettings"/>).</summary>
     public string? PostgresDatabase { get; set; }
 
-    /// <summary>PostgreSQL username, from "POSTGRES_USER".</summary>
+    /// <summary>PostgreSQL username, from "POSTGRES_USER". Required (see <see cref="GetMissingRequiredPostgresSettings"/>).</summary>
     public string? PostgresUsername { get; set; }
 
     /// <summary>PostgreSQL password, from "POSTGRES_PASSWORD".</summary>
@@ -50,4 +50,30 @@ public sealed class JNotesOptions
     /// <see cref="Indexing.AutoIndexInterval.ParseMinutes"/>.
     /// </summary>
     public int AutoIndexIntervalMinutes { get; set; } = Indexing.AutoIndexInterval.DefaultMinutes;
+
+    /// <summary>
+    /// The environment variable names among POSTGRES_HOST, POSTGRES_DB and POSTGRES_USER (in that order)
+    /// whose value is null or blank. Empty when the connection string can be built from the parts.
+    /// POSTGRES_PASSWORD is deliberately optional (trust/pgpass auth) and POSTGRES_PORT defaults to 5432.
+    /// </summary>
+    public IReadOnlyList<string> GetMissingRequiredPostgresSettings()
+    {
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(PostgresHost))
+        {
+            missing.Add("POSTGRES_HOST");
+        }
+
+        if (string.IsNullOrWhiteSpace(PostgresDatabase))
+        {
+            missing.Add("POSTGRES_DB");
+        }
+
+        if (string.IsNullOrWhiteSpace(PostgresUsername))
+        {
+            missing.Add("POSTGRES_USER");
+        }
+
+        return missing;
+    }
 }

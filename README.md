@@ -68,9 +68,13 @@ dotnet run --project src/JNotes.Web
 dotnet watch --project src/JNotes.Web run
 ```
 
-By default this stores notes under `src/JNotes.Web/App_Data/` (see the `NOTES_PATH` key in
-`appsettings.json`) — gitignored, safe to delete to start fresh. Override it with an environment
-variable of the same name (`NOTES_PATH`) — this is how `docker-compose.yml` points it at `/data`.
+All configuration is environment variables only — there is no `appsettings.json`, and command-line
+arguments are not a configuration source. For local development the launch profiles in
+`src/JNotes.Web/Properties/launchSettings.json` set the variables for you (`dotnet run`,
+`dotnet watch` and Visual Studio F5 all use them). In particular the profile sets
+`NOTES_PATH=App_Data/notes`, so notes are stored under `src/JNotes.Web/App_Data/` — gitignored,
+safe to delete to start fresh. Override any variable in your own environment the same way
+`docker-compose.yml` does (e.g. it points `NOTES_PATH` at `/data`).
 
 **PostgreSQL is required to run at all** — it holds user accounts, settings, and the note index
 (everything `NOTES_PATH`'s files are indexed into for listing/search). Locally, e.g.:
@@ -79,8 +83,8 @@ variable of the same name (`NOTES_PATH`) — this is how `docker-compose.yml` po
 docker run --rm -p 5432:5432 -e POSTGRES_USER=jnotes -e POSTGRES_PASSWORD=jnotes -e POSTGRES_DB=jnotes postgres:18-alpine
 ```
 
-then `appsettings.json`'s default `POSTGRES_HOST`/`POSTGRES_PORT`/`POSTGRES_DB`/`POSTGRES_USER`/
-`POSTGRES_PASSWORD` just work. The index (the
+then the launch profiles in `src/JNotes.Web/Properties/launchSettings.json` already point
+`POSTGRES_HOST`/`POSTGRES_PORT`/`POSTGRES_DB`/`POSTGRES_USER`/`POSTGRES_PASSWORD` at that container. The index (the
 `NoteIndex*` tables) is a rebuildable cache: if it's empty (fresh database, truncated tables), the
 startup reconciliation pass rebuilds it from the markdown files, so it needs no backup of its own.
 Reconciliation also runs on a timer (`AUTO_INDEX_INTERVAL_MINUTES`, see below), so externally
@@ -100,27 +104,37 @@ pick the admin's username and password — see [Authentication](#authentication)
 
 ### Configuration
 
-| Env var / config key | Default | Purpose |
-| --- | --- | --- |
-| `NOTES_PATH` | `App_Data/notes` (local) / `/data/notes` (Docker) | Folder note markdown files are read from/written to. |
-| `POSTGRES_HOST` | `localhost` (local) / `postgres` (Docker, the compose service name) | Host of the one PostgreSQL database holding user accounts, settings and the note index. Required — there's no fallback, and a missing or unreachable database fails startup rather than starting degraded. |
-| `POSTGRES_PORT` | `5432` | PostgreSQL port. |
-| `POSTGRES_DB` | `jnotes` | Database name. |
-| `POSTGRES_USER` | `jnotes` | Database username. |
-| `POSTGRES_PASSWORD` | `jnotes` | Database password. Change this for anything reachable beyond your machine. |
-| `DATA_PROTECTION_KEYS_PATH` | `App_Data/keys` (local) / `/data/keys` (Docker) | Where the keys that sign the auth cookie are stored. Must be on persistent storage — on a container's ephemeral filesystem every restart regenerates them and silently signs everyone out. Defaults to a `keys` folder beside `NOTES_PATH`. |
-| `TZ` | `UTC` | IANA time zone id (e.g. `America/New_York`, `Europe/London`) note timestamps are *displayed* in. Storage is always UTC regardless — this only affects what you see in the UI. |
-| `OIDC_AUTHORITY` | unset | Your OIDC provider's issuer URL. Leave unset to disable OIDC entirely. |
-| `OIDC_CLIENT_ID` | unset | OIDC client id registered with your provider. |
-| `OIDC_CLIENT_SECRET` | unset | OIDC client secret. All three `OIDC_*` values must be set for OIDC to be offered. |
-| `OIDC_DISPLAY_NAME` | `OIDC` | Label on the "Sign in with …" button on the login page. |
-| `GOTENBERG_URL` | unset | Base URL of a [Gotenberg 8](https://gotenberg.dev) service (e.g. `http://gotenberg:3000`) used to render note PDFs. Leave unset to disable PDF export entirely — no button, and `/notes/{id}/pdf` returns 404. Must be an absolute http(s) URL; anything else logs a warning and leaves it off. |
-| `OLLAMA_URL` | unset | Base URL of an [Ollama](https://ollama.com) server (e.g. `http://localhost:11434`); enables background auto-tagging. Must be an absolute http(s) URL, otherwise a warning is logged and it stays off; every user's untagged note text is sent here. See [Auto-tagging with Ollama](#auto-tagging-with-ollama-optional). |
-| `OLLAMA_MODEL` | `phi4` | The Ollama model used to suggest tags (e.g. `phi4-mini`, or a pinned `phi4:14b`). It must already be pulled on the server. |
-| `OLLAMA_TIMEOUT_SECONDS` | `120` | How long to wait for the model before giving up (10–600). A big model on CPU, or a cold model load, can be slow. |
-| `AUTO_TAG_INTERVAL_MINUTES` | `10` | Minutes between background auto-tagging passes (1–1440). |
-| `AUTO_TAG_BATCH_SIZE` | `10` | Most notes tagged per pass, across all users (1–100). |
-| `AUTO_INDEX_INTERVAL_MINUTES` | `5` | How often the background pass reconciles every user's note index against the files on disk. `0` disables it (the startup pass and Settings → "Rescan Now" still work). |
+| Environment variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `POSTGRES_HOST` | **Yes** | none — startup fails without it. `localhost` in the launch profiles / `postgres` in Docker (the compose service name) | Host of the one PostgreSQL database holding user accounts, settings and the note index. There's no fallback, and a missing or unreachable database fails startup rather than starting degraded. |
+| `POSTGRES_DB` | **Yes** | none — startup fails without it. `jnotes` in the launch profiles; `${POSTGRES_DB:-jnotes}` in compose | Database name. |
+| `POSTGRES_USER` | **Yes** | none — startup fails without it. `jnotes` in the launch profiles; `${POSTGRES_USER:-jnotes}` in compose | Database username. |
+| `POSTGRES_PASSWORD` | No (needed for password auth) | none. `jnotes` in the launch profiles; `${POSTGRES_PASSWORD:-jnotes}` in compose | Database password. Never logged. Change this for anything reachable beyond your machine. |
+| `POSTGRES_PORT` | No | `5432` | PostgreSQL port. |
+| `NOTES_PATH` | No | `notes` (relative to the working directory). `App_Data/notes` in the launch profiles / `/data/notes` in Docker | Folder note markdown files are read from/written to. |
+| `DATA_PROTECTION_KEYS_PATH` | No | a `keys` folder beside `NOTES_PATH`. `App_Data/keys` in the launch profiles / `/data/keys` in Docker | Where the keys that sign the auth cookie are stored. Must be on persistent storage — on a container's ephemeral filesystem every restart regenerates them and silently signs everyone out. |
+| `TZ` | No | `UTC` (`Australia/Melbourne` in the launch profiles) | IANA time zone id (e.g. `America/New_York`, `Europe/London`) note timestamps are *displayed* in. Storage is always UTC regardless — this only affects what you see in the UI. |
+| `AUTO_INDEX_INTERVAL_MINUTES` | No | `5` | How often the background pass reconciles every user's note index against the files on disk. `0` disables it (the startup pass and Settings → "Rescan Now" still work). |
+| `OIDC_AUTHORITY` | No | unset | Your OIDC provider's issuer URL. Leave unset to disable OIDC entirely. Not set by the launch profiles, so values in your own environment flow through. |
+| `OIDC_CLIENT_ID` | No | unset | OIDC client id registered with your provider. |
+| `OIDC_CLIENT_SECRET` | No | unset | OIDC client secret. All three `OIDC_*` values must be set for OIDC to be offered. |
+| `OIDC_DISPLAY_NAME` | No | `OIDC` | Label on the "Sign in with …" button on the login page. |
+| `GOTENBERG_URL` | No | unset (PDF export off). `http://localhost:3000` in the launch profiles | Base URL of a [Gotenberg 8](https://gotenberg.dev) service (e.g. `http://gotenberg:3000`) used to render note PDFs. Leave unset to disable PDF export entirely — no button, and `/notes/{id}/pdf` returns 404. Must be an absolute http(s) URL; anything else logs a warning and leaves it off. |
+| `OLLAMA_URL` | No | unset (auto-tagging off). Set to empty in the launch profiles | Base URL of an [Ollama](https://ollama.com) server (e.g. `http://localhost:11434`); enables background auto-tagging. Must be an absolute http(s) URL, otherwise a warning is logged and it stays off; every user's untagged note text is sent here. See [Auto-tagging with Ollama](#auto-tagging-with-ollama-optional). |
+| `OLLAMA_MODEL` | No | `phi4` | The Ollama model used to suggest tags (e.g. `phi4-mini`, or a pinned `phi4:14b`). It must already be pulled on the server. |
+| `OLLAMA_TIMEOUT_SECONDS` | No | `120` | How long to wait for the model before giving up (10–600). A big model on CPU, or a cold model load, can be slow. |
+| `AUTO_TAG_INTERVAL_MINUTES` | No | `10` | Minutes between background auto-tagging passes (1–1440). |
+| `AUTO_TAG_BATCH_SIZE` | No | `10` | Most notes tagged per pass, across all users (1–100). |
+| `AUTO_TAG_ENABLED` | Deprecated | ignored | No longer read; a warning is logged if it is still set. Auto-tagging is controlled by `OLLAMA_URL` alone. |
+| `ASPNETCORE_ENVIRONMENT` | No | `Production` (`Development` in the launch profiles) | ASP.NET Core host environment (developer exception page, DI validation, static web assets). |
+| `ASPNETCORE_URLS` / `ASPNETCORE_HTTP_PORTS` | No | Kestrel's default (`ASPNETCORE_URLS=http://+:8080` in the Docker image) | Listen addresses. The launch profiles set them from `applicationUrl`. |
+| `Logging__LogLevel__Default` | No | `Information` | Standard ASP.NET Core log level override. |
+| `Logging__LogLevel__Microsoft.AspNetCore` | No | `Warning` | Standard ASP.NET Core log level override (set to `Information` to see per-request lines). |
+| `AllowedHosts` | No | `*` | ASP.NET Core host filtering. |
+
+Running without the launch profile (`dotnet run --no-launch-profile`, a published build) requires setting
+these yourself; a missing required one stops startup with a message naming it. Blank values count as
+unset. The one further variable, `JNOTES_TEST_POSTGRES_CONNECTION_STRING`, is read only by the test suite.
 
 All of these take effect at startup only — changing one requires an app/container restart.
 
@@ -194,7 +208,7 @@ GOTENBERG_URL=http://gotenberg:3000
 
 then `docker compose up -d --build`. Gotenberg isn't published to the host; only JNotes talks to it. It runs a headless Chromium, so budget a few hundred MB of RAM. If it's stopped, the button still shows but the new tab explains the PDF service isn't reachable. The PDF is always light-themed, whatever your theme. Mermaid diagrams are rendered in the PDF. Images from other websites appear as links rather than being downloaded.
 
-Running locally instead: `docker run --rm -p 3000:3000 gotenberg/gotenberg:8`, then start JNotes with `GOTENBERG_URL=http://localhost:3000`.
+Running locally instead: `docker run --rm -p 3000:3000 gotenberg/gotenberg:8`, then set `GOTENBERG_URL` (the launch profiles already use `http://localhost:3000`).
 
 ### Auto-tagging with Ollama (optional)
 
@@ -229,7 +243,7 @@ OLLAMA_URL=http://ollama:11434
 
 (use `COMPOSE_PROFILES=pdf,ollama` if you also want PDF export), then `docker compose up -d --build` and pull the model once with `docker compose exec ollama ollama pull phi4`. Budget about 9 GB of disk and enough RAM or VRAM for a 14B model; on CPU only it is slow, so consider raising `OLLAMA_TIMEOUT_SECONDS`. Ollama isn't published to the host, and GPU passthrough isn't configured in the compose file (see the [Ollama Docker docs](https://docs.ollama.com/docker)).
 
-**Running locally.** Start Ollama, then run JNotes with `OLLAMA_URL` set (PowerShell: `$env:OLLAMA_URL="http://localhost:11434"`); `appsettings.json` ships it empty, so nothing is sent anywhere until you set it.
+**Running locally.** Start Ollama, then run JNotes with `OLLAMA_URL` set (PowerShell: `$env:OLLAMA_URL="http://localhost:11434"`); the launch profiles set it empty, so nothing is sent anywhere until you set it (set it only against a throwaway database and notes folder).
 
 **Privacy.** Once `OLLAMA_URL` is set, tagging is automatic and covers every user's untagged notes; there is no per-user opt-out, so it is an admin decision. Note text is sent only to `OLLAMA_URL`, and JNotes doesn't log it (or the URL). If that address is a remote or cloud host, your note text leaves your machine. Only the first ~12,000 characters of a long note are sent.
 

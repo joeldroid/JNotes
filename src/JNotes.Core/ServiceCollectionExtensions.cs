@@ -35,25 +35,27 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddJNotesCore(this IServiceCollection services, IConfiguration configuration)
     {
-        // Flat "NOTES_PATH"/"POSTGRES_HOST"/"TZ" keys rather than a nested section — these are the
-        // exact names the app expects as environment variables (see Dockerfile/docker-compose.yml),
-        // and IConfiguration's indexer already reads plain env vars by that name with no "__" nesting
-        // needed, so appsettings.json declares them the same way for local dev.
+        // Environment variables are the only configuration source: JNotes.Web's Program.cs strips the JSON
+        // file and command-line sources (see EnvironmentOnlyConfiguration). Flat "NOTES_PATH"/"POSTGRES_HOST"/"TZ"
+        // keys rather than a nested section — these are the exact names the app expects as environment
+        // variables (see Dockerfile/docker-compose.yml/launchSettings.json), and IConfiguration's indexer
+        // reads plain env vars by that name with no "__" nesting needed.
+        // Blank counts as unset (ReadNonBlank) for the values where an empty string would only crash or misbehave.
         services.Configure<JNotesOptions>(options =>
         {
-            options.NotesFolderPath = configuration["NOTES_PATH"] ?? options.NotesFolderPath;
-            options.TimeZoneId = configuration["TZ"] ?? options.TimeZoneId;
-            options.PostgresHost = configuration["POSTGRES_HOST"] ?? options.PostgresHost;
+            options.NotesFolderPath = ReadNonBlank(configuration, "NOTES_PATH") ?? options.NotesFolderPath;
+            options.TimeZoneId = ReadNonBlank(configuration, "TZ") ?? options.TimeZoneId;
+            options.PostgresHost = ReadNonBlank(configuration, "POSTGRES_HOST") ?? options.PostgresHost;
             options.PostgresPort = int.TryParse(configuration["POSTGRES_PORT"], out var port) ? port : options.PostgresPort;
-            options.PostgresDatabase = configuration["POSTGRES_DB"] ?? options.PostgresDatabase;
-            options.PostgresUsername = configuration["POSTGRES_USER"] ?? options.PostgresUsername;
+            options.PostgresDatabase = ReadNonBlank(configuration, "POSTGRES_DB") ?? options.PostgresDatabase;
+            options.PostgresUsername = ReadNonBlank(configuration, "POSTGRES_USER") ?? options.PostgresUsername;
             options.PostgresPassword = configuration["POSTGRES_PASSWORD"] ?? options.PostgresPassword;
             // POSTGRES_HOST/PORT/DB/USER/PASSWORD split out (rather than one POSTGRES_CONNECTION_STRING)
             // so a docker-compose setup can share the same plain values with the `postgres` service
             // instead of hand-building an Npgsql connection string. Built here, not read directly, so
             // it's still one string by the time DbContextFactory needs it; CoreServicesFixture and the
             // other test fixtures set PostgresConnectionString directly afterwards, which overrides this.
-            if (!string.IsNullOrWhiteSpace(options.PostgresHost))
+            if (options.GetMissingRequiredPostgresSettings().Count == 0)
             {
                 options.PostgresConnectionString = new NpgsqlConnectionStringBuilder
                 {
@@ -76,7 +78,7 @@ public static class ServiceCollectionExtensions
             options.Authority = configuration["OIDC_AUTHORITY"] ?? options.Authority;
             options.ClientId = configuration["OIDC_CLIENT_ID"] ?? options.ClientId;
             options.ClientSecret = configuration["OIDC_CLIENT_SECRET"] ?? options.ClientSecret;
-            options.DisplayName = configuration["OIDC_DISPLAY_NAME"] ?? options.DisplayName;
+            options.DisplayName = ReadNonBlank(configuration, "OIDC_DISPLAY_NAME") ?? options.DisplayName;
         });
 
         // Optional PDF export — same flat-env-var pattern; unset/invalid GOTENBERG_URL means off (PdfExportOptions.IsEnabled).
@@ -133,8 +135,10 @@ public static class ServiceCollectionExtensions
             // Same "fail loudly at startup, never limp along" property the old eager Redis connect had.
             if (string.IsNullOrWhiteSpace(jnotesOptions.PostgresConnectionString))
             {
-                throw new InvalidOperationException(
-                    "POSTGRES_HOST (with POSTGRES_DB/POSTGRES_USER/POSTGRES_PASSWORD) is required — JNotes keeps user accounts, settings and the note index in PostgreSQL.");
+                var missing = jnotesOptions.GetMissingRequiredPostgresSettings();
+                throw new InvalidOperationException(missing.Count > 0
+                    ? $"Missing required environment variable(s): {string.Join(", ", missing)}. JNotes keeps user accounts, settings and the note index in PostgreSQL. Local dev: run with a launch profile from src/JNotes.Web/Properties/launchSettings.json; Docker: see docker-compose.yml."
+                    : "POSTGRES_HOST (with POSTGRES_DB/POSTGRES_USER/POSTGRES_PASSWORD) is required — JNotes keeps user accounts, settings and the note index in PostgreSQL.");
             }
 
             options.UseNpgsql(jnotesOptions.PostgresConnectionString);
@@ -166,4 +170,8 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>The configured value, or null when it is unset, empty or whitespace-only (the value is not trimmed).</summary>
+    private static string? ReadNonBlank(IConfiguration configuration, string key) =>
+        string.IsNullOrWhiteSpace(configuration[key]) ? null : configuration[key];
 }

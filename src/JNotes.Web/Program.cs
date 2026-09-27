@@ -9,6 +9,7 @@ using JNotes.Web.Auth;
 using JNotes.Web.Components;
 using JNotes.Web.Components.Layout;
 using JNotes.Web.Export;
+using JNotes.Web.Hosting;
 using JNotes.Web.Images;
 using JNotes.Web.Indexing;
 using JNotes.Web.Tagging;
@@ -22,7 +23,9 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using MudBlazor.Services;
 
-var builder = WebApplication.CreateBuilder(args);
+// No args: command-line arguments are deliberately not a configuration source (see EnvironmentOnlyConfiguration).
+var builder = WebApplication.CreateBuilder();
+builder.UseEnvironmentVariablesOnly();
 
 // Add services to the container.
 builder.Services.AddJNotesCore(builder.Configuration);
@@ -48,9 +51,11 @@ builder.Services.AddSingleton<IPdfExportAssetSource, WebRootPdfExportAssetSource
 // falls back to a "keys" folder beside NOTES_PATH, which reproduces the old location for both defaults
 // (App_Data/notes -> App_Data/keys, /data/notes -> /data/keys). Read directly off IConfiguration,
 // like the OIDC values below, since this must be decided before the DI container exists.
-var notesPath = builder.Configuration["NOTES_PATH"] ?? "notes";
-var keysDirectory = builder.Configuration["DATA_PROTECTION_KEYS_PATH"]
-    ?? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(notesPath))!, "keys");
+// A blank value counts as unset (a compose `KEY=${KEY:-}` passthrough yields an empty string).
+var notesPath = string.IsNullOrWhiteSpace(builder.Configuration["NOTES_PATH"]) ? "notes" : builder.Configuration["NOTES_PATH"]!;
+var keysDirectory = string.IsNullOrWhiteSpace(builder.Configuration["DATA_PROTECTION_KEYS_PATH"])
+    ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(notesPath))!, "keys")
+    : builder.Configuration["DATA_PROTECTION_KEYS_PATH"]!;
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keysDirectory));
 
 builder.Services.AddAuthorization(options =>
