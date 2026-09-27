@@ -11,11 +11,11 @@
 
 # Explicit project name so this never shares a project (and "orphan container" warnings) with the
 # app's docker-compose.yml, which would otherwise default to the same folder name.
-name: jnotes-test
+name: jnotes-debug
 
 services:
-  jnotes_test:
-    container_name: jnotes_test
+  jnotes-debug-db:
+    container_name: jnotes-debug-db
     image: postgres:18-alpine
     # Comes back up with Docker Desktop after a reboot, so Visual Studio's Test Explorer always finds
     # it running. Stop it with `docker compose -f docker-compose.test.yml down`.
@@ -42,3 +42,25 @@ services:
       interval: 2s
       timeout: 5s
       retries: 15
+
+  jnotes-debug-pdf:
+    # Chromium-based HTML -> PDF converter, used only by the optional PDF export. Behind the "pdf"
+    # profile so a plain `docker compose up` never starts it. No `ports:` on purpose: only the jnotes
+    # service (same compose network) talks to it, and Gotenberg has no authentication of its own.
+    image: gotenberg/gotenberg:8
+    container_name: jnotes-debug-pdf
+    ports:
+      - 127.0.0.1:3000:3000
+    command:
+      - gotenberg
+      # JNotes sends everything the page needs (HTML, images, fonts, mermaid) inside the request, so
+      # Chromium never needs the network: only the request's own temp files may load. Stops a note
+      # (e.g. an <img> in a mermaid label) from making Gotenberg fetch URLs on your internal network.
+      - "--chromium-allow-list=^file:///tmp/.*"
+    healthcheck:
+      # curl ships in the image for exactly this.
+      test: ["CMD", "curl", "--silent", "--fail", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
