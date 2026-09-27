@@ -1,8 +1,6 @@
-@inject ISettingsService SettingsService
-@inject ICurrentUserContext CurrentUser
-
 <!DOCTYPE html>
-<html lang="en" data-theme="@_theme">
+@* data-theme is fixed to "dark" because mermaid-preview.js reads it, and there is no user theme. *@
+<html lang="en" data-theme="dark">
 
 <head>
     <meta charset="utf-8" />
@@ -26,8 +24,6 @@
 </html>
 
 @code {
-    private string _theme = AppTheme.Dark;
-
     // /login and /setup handle a plain form POST that must call HttpContext.SignInAsync — that
     // only works while the response is still being built, which is true for a statically-rendered
     // page but not from inside an already-connected InteractiveServer circuit (headers long sent).
@@ -40,17 +36,4 @@
         HttpContext.Request.Path.StartsWithSegments("/login") || HttpContext.Request.Path.StartsWithSegments("/setup")
             ? null // static SSR
             : InteractiveServer;
-
-    protected override async Task OnInitializedAsync()
-    {
-        // Read during prerender so the initial HTML already has the right data-theme — avoids a
-        // flash of the wrong theme before the circuit connects. Guarded: on /login, /setup, or any
-        // request before anyone's authenticated, ICurrentUserContext would throw — default to dark
-        // (this app's app-wide default, see SettingsService.GetThemeAsync) rather than making
-        // ICurrentUserContext.UserId nullable (which would ripple into every Core call site that
-        // assumes a valid Guid).
-        _theme = HttpContext.User.Identity?.IsAuthenticated == true
-            ? await SettingsService.GetThemeAsync(CurrentUser.UserId)
-            : AppTheme.Dark;
-    }
 }

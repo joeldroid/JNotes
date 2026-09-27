@@ -2,9 +2,9 @@ namespace JNotes.Core.Users;
 
 /// <summary>
 /// Who the current request/circuit is acting as. Scoped — resolved once per request/circuit.
-/// <c>NoteService</c> and the Settings page's per-user theme lookups depend on this; Core has no
+/// <c>NoteService</c> (and other implicit-current-user Core services) depend on this; Core has no
 /// implementation of its own (that lives in <c>JNotes.Web</c> — see
-/// <c>CookieCurrentUserContext</c> — since it inherently needs ASP.NET Core's HTTP context, a
+/// <c>AuthenticatedCurrentUserContext</c> — since it inherently needs ASP.NET Core's HTTP context, a
 /// hosting-layer concern Core doesn't otherwise depend on).
 /// </summary>
 /// <remarks>

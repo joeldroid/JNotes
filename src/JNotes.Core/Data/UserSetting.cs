@@ -1,9 +1,10 @@
 namespace JNotes.Core.Data;
 
 /// <summary>
-/// One per-user preference row (e.g. "Theme"). A separate table from the global <see cref="SettingEntry"/>
-/// key-value store — that one holds installation-wide settings (notes folder path override, etc.)
-/// that have nothing to do with any particular user.
+/// One per-user preference row. No keys are currently in use; the table is kept for future per-user
+/// preferences. A separate table from the global <see cref="SettingEntry"/> key-value store — that one
+/// holds installation-wide settings (notes folder path override, etc.) that have nothing to do with any
+/// particular user.
 /// </summary>
 public sealed class UserSetting
 {

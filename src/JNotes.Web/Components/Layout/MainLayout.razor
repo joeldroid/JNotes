@@ -1,14 +1,10 @@
 @inherits LayoutComponentBase
 @implements IDisposable
-@inject AuthenticationStateProvider AuthenticationStateProvider
-@inject ISettingsService SettingsService
-@inject ICurrentUserContext CurrentUser
-@inject ThemeState Theme
-@inject IJSRuntime JSRuntime
 @inject IBrowserViewportService Viewport
 @inject NavigationManager Navigation
 
-<MudThemeProvider Theme="JNotesTheme.Instance" IsDarkMode="Theme.IsDark" ObserveSystemDarkModeChange="false" />
+@* The app is dark-only: App.razor sets <html data-theme="dark"> once, and this stays in step. *@
+<MudThemeProvider Theme="JNotesTheme.Instance" IsDarkMode="true" ObserveSystemDarkModeChange="false" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
@@ -43,35 +39,7 @@
 @code {
     private bool _drawerOpen = true;
 
-    protected override async Task OnInitializedAsync()
-    {
-        // Guarded on IsAuthenticated: NotFound/Error use this layout with [AllowAnonymous], and
-        // ICurrentUserContext.UserId throws for an unauthenticated principal (same rule as NavMenu and
-        // App.razor). Dark is the app-wide default, and what an anonymous visitor always gets.
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var isDark = authState.User.Identity?.IsAuthenticated != true
-            || await SettingsService.GetThemeAsync(CurrentUser.UserId) == AppTheme.Dark;
-        Theme.Initialize(isDark);
-
-        Theme.Changed += OnThemeChanged;
-        Navigation.LocationChanged += OnLocationChanged;
-    }
-
-    private void OnThemeChanged() => _ = InvokeAsync(async () =>
-    {
-        StateHasChanged();
-
-        // <html data-theme> is what mermaid-preview.js reads (it can't see MudThemeProvider's state).
-        var name = Theme.IsDark ? AppTheme.Dark : AppTheme.Light;
-        try
-        {
-            await JSRuntime.InvokeVoidAsync("document.documentElement.setAttribute", "data-theme", name);
-        }
-        catch (JSDisconnectedException)
-        {
-            // The circuit's gone — nothing to update.
-        }
-    });
+    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
 
     // Below the drawer breakpoint it's an overlay, so picking a destination should dismiss it.
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => _ = InvokeAsync(async () =>
@@ -91,7 +59,6 @@
 
     public void Dispose()
     {
-        Theme.Changed -= OnThemeChanged;
         Navigation.LocationChanged -= OnLocationChanged;
     }
 }

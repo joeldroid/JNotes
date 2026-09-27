@@ -17,7 +17,6 @@
 @inject IOptions<AutoTagOptions> AutoTagOptionsAccessor
 @inject AutoTagStatus AutoTagStatus
 @inject NavigationManager NavigationManager
-@inject ThemeState Theme
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Settings</PageTitle>
@@ -26,11 +25,6 @@
 
 <section class="jn-settings-group">
     <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-3">App settings</MudText>
-
-    <MudPaper Outlined="true" Class="jn-settings-card">
-        <MudText Typo="Typo.subtitle1" HtmlTag="h3" Class="mb-1">Appearance</MudText>
-        <MudSwitch T="bool" Value="@(_theme == AppTheme.Dark)" ValueChanged="ToggleThemeAsync" Label="Dark mode" Color="Color.Primary" />
-    </MudPaper>
 
     <MudPaper Outlined="true" Class="jn-settings-card jn-settings-card-narrow">
         <MudText Typo="Typo.subtitle1" HtmlTag="h3" Class="mb-2">Account</MudText>
@@ -338,8 +332,6 @@
 
 @code {
     // App settings
-    private string _theme = AppTheme.Dark;
-
     private string _newPassword = "";
     private string? _passwordChangeMessage;
     private bool _passwordChangeError;
@@ -395,8 +387,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _theme = await SettingsService.GetThemeAsync(CurrentUser.UserId);
-
         // The Administration settings section is markup-gated (AuthorizeView Roles="Admin"), but
         // that alone wouldn't stop a Member's circuit from fetching this data into this
         // component's state — IsCurrentUserAdminAsync's check avoids ever running these queries
@@ -419,17 +409,6 @@
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         return authState.User.IsInRole(nameof(UserRole.Admin));
-    }
-
-    private async Task ToggleThemeAsync(bool isDark)
-    {
-        _theme = isDark ? AppTheme.Dark : AppTheme.Light;
-        await SettingsService.SetThemeAsync(CurrentUser.UserId, _theme);
-
-        // Applies instantly without a reload: MainLayout owns MudThemeProvider and the <html>
-        // data-theme attribute (which mermaid-preview.js reads) and updates both when this changes. A
-        // real page reload gets the same value from the now-persisted setting (App.razor/MainLayout).
-        Theme.Set(isDark);
     }
 
     private async Task RefreshCountAsync()

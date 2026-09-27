@@ -69,3 +69,5 @@ nunit-*.xml
 **/v18
 **/FileContentIndex
 .vs
+**/keys/*
+*.log

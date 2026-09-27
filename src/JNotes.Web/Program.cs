@@ -13,7 +13,6 @@ using JNotes.Web.Hosting;
 using JNotes.Web.Images;
 using JNotes.Web.Indexing;
 using JNotes.Web.Tagging;
-using JNotes.Web.Theme;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -106,7 +105,6 @@ if (oidcConfigured)
 }
 
 builder.Services.AddMudServices();
-builder.Services.AddScoped<ThemeState>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

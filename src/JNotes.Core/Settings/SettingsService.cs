@@ -11,7 +11,6 @@ namespace JNotes.Core.Settings;
 public sealed class SettingsService : ISettingsService
 {
     private const string NotesFolderPathKey = "NotesFolderPath";
-    private const string ThemeKey = "Theme";
     private const string PasswordAuthEnabledKey = "PasswordAuthEnabled";
     private const string ImageCleanupIntervalDaysKey = "ImageCleanupIntervalDays";
     private const string ImageCleanupLastRunKey = "ImageCleanupLastRunUtc";
@@ -45,31 +44,6 @@ public sealed class SettingsService : ISettingsService
         else
         {
             entry.Value = path;
-        }
-
-        await db.SaveChangesAsync(cancellationToken);
-    }
-
-    public async Task<string> GetThemeAsync(Guid userId, CancellationToken cancellationToken = default)
-    {
-        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var entry = await db.UserSettings.FindAsync([userId, ThemeKey], cancellationToken);
-        // Dark is the app-wide default — a user who has never touched the toggle gets dark until
-        // they explicitly pick light, not the other way around.
-        return entry?.Value ?? AppTheme.Dark;
-    }
-
-    public async Task SetThemeAsync(Guid userId, string theme, CancellationToken cancellationToken = default)
-    {
-        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var entry = await db.UserSettings.FindAsync([userId, ThemeKey], cancellationToken);
-        if (entry is null)
-        {
-            db.UserSettings.Add(new UserSetting { UserId = userId, Key = ThemeKey, Value = theme });
-        }
-        else
-        {
-            entry.Value = theme;
         }
 
         await db.SaveChangesAsync(cancellationToken);

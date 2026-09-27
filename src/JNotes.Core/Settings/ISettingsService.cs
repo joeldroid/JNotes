@@ -15,11 +15,6 @@ public interface ISettingsService
 
     Task SetNotesFolderPathAsync(string path, CancellationToken cancellationToken = default);
 
-    /// <summary>Per-user preference (backed by the separate <c>UserSettings</c> table), unlike the installation-wide settings above.</summary>
-    Task<string> GetThemeAsync(Guid userId, CancellationToken cancellationToken = default);
-
-    Task SetThemeAsync(Guid userId, string theme, CancellationToken cancellationToken = default);
-
     /// <summary>Whether the username/password login form is shown at all. Defaults to true.</summary>
     Task<bool> GetPasswordAuthEnabledAsync(CancellationToken cancellationToken = default);
 

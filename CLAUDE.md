@@ -103,20 +103,16 @@ already-connected `InteractiveServer` circuit. `App.razor` picks render mode per
 logout, and the OIDC challenge are therefore plain form posts / minimal-API endpoints in
 `Program.cs`, never an `@onclick` in an interactive component.
 
-**Theme.** Dark is the app-wide default: `SettingsService.GetThemeAsync` returns `AppTheme.Dark`
-when a user has no `UserSetting` row. `App.razor`'s `OnInitializedAsync` prerenders
-`<html data-theme>`, and always uses Dark for unauthenticated requests (`/login`, `/setup`) —
-a fixed choice, since there's no signed-in user yet. A user who chose light sees a dark login
-screen until they sign in.
+**Theme.** The live app is dark-only: `MainLayout` and `AuthLayout` render `MudThemeProvider
+IsDarkMode="true"`, and `App.razor` emits a literal `<html data-theme="dark">` (read by
+`mermaid-preview.js`). There is no per-user theme setting. The `UserSettings` table is kept, unused,
+for future per-user preferences. PDF export is light via its own `note-pdf.css`, independent of this.
 
 **UI is MudBlazor** (NuGet `MudBlazor`, `AddMudServices()` in `Program.cs`; Roboto is vendored under
 `wwwroot/lib/roboto` and `fonts.css`, so there are no external requests). Things that aren't obvious:
-- **One theme, one owner.** `Theme/JNotesTheme.cs` is the shared `MudTheme` (palettes, Roboto stack).
+- **One theme, one owner.** `Theme/JNotesTheme.cs` is the shared `MudTheme` (palette, Roboto stack).
   `MainLayout.razor` hosts `MudThemeProvider`/`MudPopoverProvider`/`MudDialogProvider`/
-  `MudSnackbarProvider` and seeds the scoped `ThemeState` from `ISettingsService` (same
-  `IsAuthenticated` guard as `App.razor` — `NotFound`/`Error` reuse `MainLayout` anonymously).
-  `Settings.razor`'s dark-mode switch calls `ThemeState.Set`; `MainLayout` re-renders the provider and
-  rewrites `<html data-theme>` over JS interop (that attribute is what `mermaid-preview.js` reads).
+  `MudSnackbarProvider`.
 - **Palette variables exist only at runtime.** `MudBlazor.min.css` uses `var(--mud-palette-*)` but never
   defines them; `MudThemeProvider` emits them. Our own CSS reads them (`--mud-palette-lines-default`,
   `--mud-palette-text-secondary`, …). `--jnotes-font-mono` (in `variables.css`) is the one mono stack.
@@ -175,7 +171,7 @@ container filesystem) every restart regenerates them and silently signs everyone
   claims, which would go stale), so both profile pages force a full reload after saving to refresh
   that sibling component.
 - **Settings and user management share one page, split by role, not by route.** `Settings.razor`
-  (`/settings`, `[Authorize]`) shows "App settings" (Appearance, your own password) to everyone and
+  (`/settings`, `[Authorize]`) shows "App settings" (your own password) to everyone and
   "Administration settings" (Security, Storage, Index, user table, add/edit/delete user) inside
   `<AuthorizeView Roles="Admin">`. Markup gating only stops *rendering*, not fetching into a
   Member's circuit state, so `OnInitializedAsync` checks `IsInRole(nameof(UserRole.Admin))` before
@@ -460,8 +456,8 @@ implement the interface.
   failure its hover `title` is always the generic "Invalid mermaid syntax." (`parse` runs with
   `suppressErrors`, so mermaid's own message isn't available).
 - **Theme is read from `data-theme` in JS**, not passed from C#, with a `MutationObserver` on
-  `<html>`: `MainLayout` flips that attribute live with no reload (when `ThemeState` changes), so a
-  server-side parameter would go stale. The theme is part of the cache key, so both variants coexist.
+  `<html>`. The attribute is fixed to `dark` today (`App.razor`), but the observer and the theme cache
+  key are kept so a future theme change needs no JS changes.
 - **`MarkdownToolbar`'s "Flow →" / "Flow ↓" buttons** (a second "Diagrams" `MudButtonGroup`) insert
   `flowchart LR` / `flowchart TD` starters. The snippet text lives as C# raw-string consts in the
   component (non-interpolated: the `{Decision}` braces are literal) and goes through the existing

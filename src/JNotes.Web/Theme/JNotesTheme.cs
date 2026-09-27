@@ -3,9 +3,9 @@ using MudBlazor;
 namespace JNotes.Web.Theme;
 
 /// <summary>
-/// The one <see cref="MudTheme"/> the app uses. Shared by <c>MainLayout</c> (interactive) and
-/// <c>AuthLayout</c> (static SSR, where <c>MudThemeProvider</c> still emits the palette CSS variables
-/// server-side even though nothing on the page is interactive).
+/// The one <see cref="MudTheme"/> the app uses. The app is dark-only (<c>IsDarkMode="true"</c> in both
+/// <c>MainLayout</c> and <c>AuthLayout</c>), so only <see cref="MudTheme.PaletteDark"/> is set; the
+/// default <see cref="MudTheme.PaletteLight"/> is never emitted.
 /// </summary>
 public static class JNotesTheme
 {
@@ -15,16 +15,6 @@ public static class JNotesTheme
 
     public static MudTheme Instance { get; } = new()
     {
-        PaletteLight = new PaletteLight
-        {
-            Primary = "#00796b",
-            Secondary = "#00796b",
-            AppbarBackground = "#1f2430",
-            AppbarText = "#ffffff",
-            DrawerBackground = "#f6f7f9",
-            Background = "#ffffff",
-            Surface = "#ffffff",
-        },
         PaletteDark = new PaletteDark
         {
             Primary = "#4fd1c5",

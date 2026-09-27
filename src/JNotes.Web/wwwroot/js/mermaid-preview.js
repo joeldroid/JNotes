@@ -96,8 +96,8 @@ function observeTheme() {
         return;
     }
     themeObserved = true;
-    // Settings -> Dark mode flips data-theme live with no reload, and Blazor keeps the same
-    // <html> element across in-app navigation, so the DOM is the only reliable source of truth.
+    // The app is dark-only today (App.razor fixes data-theme="dark"), but the theme stays
+    // attribute-driven and observed so diagrams follow <html data-theme> if that ever changes.
     new MutationObserver(() => {
         if (currentTheme() === configuredTheme) {
             return;

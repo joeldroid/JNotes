@@ -7,7 +7,6 @@ namespace JNotes.Tests.TestDoubles;
 internal sealed class StubSettingsService(string notesFolderPath) : ISettingsService
 {
     private string _notesFolderPath = notesFolderPath;
-    private readonly Dictionary<Guid, string> _themesByUser = [];
     private bool _passwordAuthEnabled = true;
     private int _imageCleanupIntervalDays = ImageCleanupSchedule.DefaultIntervalDays;
     private DateTimeOffset? _imageCleanupLastRunUtc;
@@ -18,15 +17,6 @@ internal sealed class StubSettingsService(string notesFolderPath) : ISettingsSer
     public Task SetNotesFolderPathAsync(string path, CancellationToken cancellationToken = default)
     {
         _notesFolderPath = path;
-        return Task.CompletedTask;
-    }
-
-    public Task<string> GetThemeAsync(Guid userId, CancellationToken cancellationToken = default) =>
-        Task.FromResult(_themesByUser.GetValueOrDefault(userId, AppTheme.Dark));
-
-    public Task SetThemeAsync(Guid userId, string theme, CancellationToken cancellationToken = default)
-    {
-        _themesByUser[userId] = theme;
         return Task.CompletedTask;
     }
 

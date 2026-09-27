@@ -19,7 +19,7 @@ see [Authentication](#authentication) below for that flow, adding more users, an
   sign in with a password, OIDC, or both.
 - **Portable storage** — every note is `notes/<user-id>/<id>.md` with a small YAML front matter
   header (title, tags, type, timestamps) followed by the markdown body.
-- **Responsive UI** — [MudBlazor](https://mudblazor.com) (Material design) with a light/dark theme, usable on both desktop and mobile.
+- **Responsive UI** — [MudBlazor](https://mudblazor.com) (Material design) with a dark theme, usable on both desktop and mobile.
 - **Self-healing index** — the note index is reconciled against the notes folder at startup and
   on demand (Settings → Rescan Now), so edits made directly to the files (outside the app, or
   while the container was stopped) are picked up automatically.
@@ -206,7 +206,7 @@ COMPOSE_PROFILES=pdf
 GOTENBERG_URL=http://gotenberg:3000
 ```
 
-then `docker compose up -d --build`. Gotenberg isn't published to the host; only JNotes talks to it. It runs a headless Chromium, so budget a few hundred MB of RAM. If it's stopped, the button still shows but the new tab explains the PDF service isn't reachable. The PDF is always light-themed, whatever your theme. Mermaid diagrams are rendered in the PDF. Images from other websites appear as links rather than being downloaded.
+then `docker compose up -d --build`. Gotenberg isn't published to the host; only JNotes talks to it. It runs a headless Chromium, so budget a few hundred MB of RAM. If it's stopped, the button still shows but the new tab explains the PDF service isn't reachable. The PDF is always light-themed, even though the app itself is dark. Mermaid diagrams are rendered in the PDF. Images from other websites appear as links rather than being downloaded.
 
 Running locally instead: `docker run --rm -p 3000:3000 gotenberg/gotenberg:8`, then set `GOTENBERG_URL` (the launch profiles already use `http://localhost:3000`).
 
