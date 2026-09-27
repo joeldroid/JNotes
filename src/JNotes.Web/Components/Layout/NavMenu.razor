@@ -1,3 +1,4 @@
+@implements IDisposable
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IUserRepository UserRepository
 @inject ICurrentUserContext CurrentUser
@@ -16,15 +17,21 @@
     </AuthorizeView>
 
     <MudNavMenu Class="jn-nav-list">
-        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.StickyNote2">Notes</MudNavLink>
+        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.StickyNote2">All Notes</MudNavLink>
         @* One entry per note type (rather than a "New note" dropdown): each opens the editor on an unsaved
            draft (nothing is created until Save). Wrapped in an unqualified <AuthorizeView> because NavMenu
            also renders for NotFound/Error; the dividers live inside it so an anonymous visitor doesn't get
-           two separators around nothing. *@
+           two separators around nothing.
+           These deliberately have no Href (so MudNavLink raises OnClick instead of navigating as a NavLink -
+           see the CLAUDE.md note on this), which means MudBlazor's own route-matching "active" highlight
+           never applies to them. IsNewNoteRouteActive/jn-nav-active (nav-menu.css) reproduce it manually so
+           these two links highlight like every Href-based one when their draft route is open. *@
         <AuthorizeView>
             <MudDivider Class="my-2" />
-            <MudNavLink Icon="@Icons.Material.Outlined.NoteAdd" OnClick="() => NewNote(NoteType.Text)">New text note</MudNavLink>
-            <MudNavLink Icon="@Icons.Material.Outlined.Checklist" OnClick="() => NewNote(NoteType.Checklist)">New checklist</MudNavLink>
+            <MudNavLink Icon="@Icons.Material.Outlined.NoteAdd" Class="@(IsNewNoteRouteActive(NoteType.Text) ? "jn-nav-active" : null)"
+                        OnClick="() => NewNote(NoteType.Text)">New Text Note</MudNavLink>
+            <MudNavLink Icon="@Icons.Material.Outlined.Checklist" Class="@(IsNewNoteRouteActive(NoteType.Checklist) ? "jn-nav-active" : null)"
+                        OnClick="() => NewNote(NoteType.Checklist)">New Checklist Note</MudNavLink>
             <MudDivider Class="my-2" />
         </AuthorizeView>
         <MudNavLink Href="/settings" Icon="@Icons.Material.Outlined.Settings">Settings</MudNavLink>
@@ -62,6 +69,11 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // MainLayout (and NavMenu inside it) survives client-side navigation on this circuit, so this
+        // runs once per circuit, not once per page - LocationChanged is what keeps IsNewNoteRouteActive
+        // (and therefore the "New Text Note"/"New Checklist Note" highlight) current after that.
+        NavigationManager.LocationChanged += OnLocationChanged;
+
         // Guarded on IsAuthenticated (not just wrapped in <AuthorizeView> in the markup above) —
         // NavMenu renders inside MainLayout, which NotFound/Error also use with [AllowAnonymous],
         // so this can run for a signed-out visitor too. ICurrentUserContext.UserId throws in that
@@ -78,10 +90,22 @@
         }
     }
 
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => NavigationManager.LocationChanged -= OnLocationChanged;
+
     // Only navigates: NoteEditor's /notes/new/{type} route holds the note as an in-memory draft and
     // creates it when the user clicks Save.
     private void NewNote(NoteType type) =>
         NavigationManager.NavigateTo($"/notes/new/{type.ToString().ToLowerInvariant()}");
+
+    // Mirrors the route NewNote navigates to, so the link highlights while that draft is open - see
+    // the markup comment above on why MudNavLink can't do this itself for an OnClick-only link.
+    private bool IsNewNoteRouteActive(NoteType type)
+    {
+        var path = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/');
+        return string.Equals(path, $"notes/new/{type.ToString().ToLowerInvariant()}", StringComparison.OrdinalIgnoreCase);
+    }
 
     private void OnSearchChanged(string? value) => _searchText = value ?? "";
 

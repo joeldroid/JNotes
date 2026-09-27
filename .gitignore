@@ -71,3 +71,4 @@ nunit-*.xml
 .vs
 **/keys/*
 *.log
+docs/plans/*.md

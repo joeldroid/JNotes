@@ -1,5 +1,6 @@
 /* App chrome: the app bar brand, page padding, and the sidebar's search box + account widget.
-   Everything else in the sidebar is MudNavMenu/MudNavLink/MudMenu and styles itself. */
+   Everything else in the sidebar is MudNavMenu/MudNavLink/MudMenu and styles itself, except
+   .jn-nav-active below. */
 .jn-brand {
     color: inherit;
     font-size: 1.25rem;
@@ -74,4 +75,23 @@
 
 .jn-signout {
     margin: 0.5rem 0.25rem 0;
+}
+
+/* "New Text Note"/"New Checklist Note" (NavMenu.razor) have no Href - MudNavLink only raises OnClick
+   when Href is unset - so MudBlazor's own NavLink-based ".mud-nav-link.active" route highlight never
+   applies to them. NavMenu.razor adds .jn-nav-active to the *outer* .mud-nav-item wrapper instead
+   (the only element its Class parameter reaches - MudNavLink's inner .mud-nav-link element sets its
+   own class="@LinkClassname" after any splatted attributes, so anything passed in from outside there
+   would just be overwritten). This reproduces MudBlazor's own default-color-variant active styling on
+   that inner element from the outside. */
+.jn-nav-active > .mud-nav-link {
+    border-inline-end-style: solid;
+    border-inline-end-width: 2px;
+    color: var(--mud-palette-primary);
+    background-color: var(--mud-palette-action-default-hover);
+    font-weight: 500 !important;
+}
+
+.jn-nav-active > .mud-nav-link:hover {
+    background-color: var(--mud-palette-action-default-hover);
 }

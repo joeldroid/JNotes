@@ -196,21 +196,29 @@ container filesystem) every restart regenerates them and silently signs everyone
   Clicking toggles a `MudCollapse` (`_accountOpen`) with "My Profile" and "Sign out" (a plain
   `<form method="post" action="/logout">` with a `MudButton ButtonType="Submit"`, never an
   `OnClick`); `/profile` has no top-level nav entry.
-- **Order:** Search, Notes, divider, New text note, New checklist, divider, Settings, Trash (the dividers are
-  `MudDivider`s inside the same `AuthorizeView` as the New-note links). Icons are MudBlazor's built-in
-  `Icons.Material.*` (compiled SVG path strings — no icon font, no network). The vendored UI
+- **Order:** Search, All Notes, divider, New Text Note, New Checklist Note, divider, Settings, Trash (the
+  dividers are `MudDivider`s inside the same `AuthorizeView` as the New-note links). Icons are MudBlazor's
+  built-in `Icons.Material.*` (compiled SVG path strings — no icon font, no network). The vendored UI
   dependencies are Roboto and mermaid, under `wwwroot/lib/`; MudBlazor itself comes from NuGet. The
   search field has a leading search icon and clears itself on every `@onclick` (an unmatched attribute
-  on `MudTextField`, which lands on its root element).
-- **"New text note" / "New checklist" live here, not in `NoteList.razor`, so they work from any page.** Each only
-  navigates to `/notes/new/{text|checklist}` — **nothing is created until Save** (see `NoteEditor`'s new-note
-  mode under "Notes UI"). New notes of every type start with an **empty title, tags, and body**. They're two
-  plain `MudNavLink`s with an `OnClick` and no `Href` (MudBlazor only raises `OnClick` when `Href` is
-  unset) rather than one "New note" dropdown — a `MudMenu` inside `MudNavMenu` didn't work in practice, and one
-  click per type is faster anyway. They're wrapped in an unqualified `<AuthorizeView>` (not a manual
-  `IsAuthenticated` check) because `NavMenu` also renders for `NotFound`/`Error` (`[AllowAnonymous]`,
-  same `MainLayout`), and an anonymous circuit never gets a handler id for markup `AuthorizeView`
-  didn't render.
+  on `MudTextField`, which lands on its root element). Nav labels are title case throughout.
+- **"New Text Note" / "New Checklist Note" live here, not in `NoteList.razor`, so they work from any page.**
+  Each only navigates to `/notes/new/{text|checklist}` — **nothing is created until Save** (see
+  `NoteEditor`'s new-note mode under "Notes UI"). New notes of every type start with an **empty title, tags,
+  and body**. They're two plain `MudNavLink`s with an `OnClick` and no `Href` (MudBlazor only raises
+  `OnClick` when `Href` is unset) rather than one "New note" dropdown — a `MudMenu` inside `MudNavMenu`
+  didn't work in practice, and one click per type is faster anyway. They're wrapped in an unqualified
+  `<AuthorizeView>` (not a manual `IsAuthenticated` check) because `NavMenu` also renders for
+  `NotFound`/`Error` (`[AllowAnonymous]`, same `MainLayout`), and an anonymous circuit never gets a handler
+  id for markup `AuthorizeView` didn't render.
+  **Gotcha:** no `Href` also means MudBlazor's own NavLink-based active-route highlight never applies to
+  these two — `NavMenu.razor`'s `IsNewNoteRouteActive` reads `NavigationManager.Uri` directly (refreshed via
+  a `LocationChanged` subscription, since `MainLayout`/`NavMenu` survive client-side navigation and never
+  re-run `OnInitializedAsync`) and adds `jn-nav-active` to the link's outer `.mud-nav-item` — the only
+  element `MudNavLink`'s `Class` parameter reaches; its inner `.mud-nav-link` element sets its own
+  `class="@LinkClassname"` after any splatted attributes, clobbering anything passed in that way — and
+  `nav-menu.css` reproduces MudBlazor's default-color-variant active styling on that inner element from the
+  outside.
 - **Search** is a single free-text box (title, body, tags) with no type/tag options. Enter navigates
   to `/?q=<url-encoded text>` (empty → `/`); `NoteList.razor` reads it via
   `[SupplyParameterFromQuery(Name = "q")]` and refreshes from `OnParametersSetAsync`, not
