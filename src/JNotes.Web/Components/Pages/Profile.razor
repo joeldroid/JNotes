@@ -36,7 +36,7 @@ else
                           HelperText="@(_canEditEmail ? null : "Only an admin can change your email.")" />
 
             <div>
-                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Disabled="_isSaving">
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Primary" Disabled="_isSaving">
                     @(_isSaving ? "Saving…" : "Save")
                 </MudButton>
             </div>

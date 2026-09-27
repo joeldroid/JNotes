@@ -17,7 +17,8 @@ public static class JNotesTheme
     {
         PaletteLight = new PaletteLight
         {
-            Primary = "#2f6feb",
+            Primary = "#00796b",
+            Secondary = "#00796b",
             AppbarBackground = "#1f2430",
             AppbarText = "#ffffff",
             DrawerBackground = "#f6f7f9",
@@ -26,7 +27,9 @@ public static class JNotesTheme
         },
         PaletteDark = new PaletteDark
         {
-            Primary = "#6ea8fe",
+            Primary = "#4fd1c5",
+            PrimaryContrastText = "#0b1f1d",
+            Secondary = "#4fd1c5",
             AppbarBackground = "#1a1d23",
             DrawerBackground = "#1a1d23",
             Background = "#14161a",

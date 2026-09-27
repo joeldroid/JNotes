@@ -122,7 +122,7 @@
                                  Min="ImageCleanupSchedule.DisabledIntervalDays" Max="ImageCleanupSchedule.MaxIntervalDays"
                                  HideSpinButtons="true" Variant="Variant.Outlined" Margin="Margin.Dense" Class="jn-days-field" />
                 <span>day(s)</span>
-                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveImageCleanupIntervalAsync">Save</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="SaveImageCleanupIntervalAsync">Save</MudButton>
             </div>
             <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">
                 Enter 0 to turn the automatic cleanup off (@ImageCleanupSchedule.MaxIntervalDays days at most). Default: @ImageCleanupSchedule.DefaultIntervalDays.
@@ -293,7 +293,7 @@
         </DialogContent>
         <DialogActions>
             <MudButton OnClick="() => _editProfileTarget = null">Cancel</MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmEditProfileAsync">Save</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ConfirmEditProfileAsync">Save</MudButton>
         </DialogActions>
     </MudDialog>
 
@@ -311,7 +311,7 @@
         </DialogContent>
         <DialogActions>
             <MudButton OnClick="() => _resetPasswordTarget = null">Cancel</MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmResetPasswordAsync">Set password</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ConfirmResetPasswordAsync">Set password</MudButton>
         </DialogActions>
     </MudDialog>
 

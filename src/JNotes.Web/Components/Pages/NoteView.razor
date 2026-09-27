@@ -34,7 +34,7 @@ else
                 }
             </div>
             <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" Class="flex-shrink-0">
-                <MudButton Href="@($"/notes/{_note.Id}/edit")" Variant="Variant.Filled" Color="Color.Primary"
+                <MudButton Href="@($"/notes/{_note.Id}/edit")" Variant="Variant.Outlined" Color="Color.Primary"
                            StartIcon="@Icons.Material.Filled.Edit">Edit</MudButton>
                 @if (PdfExportOptions.Value.IsEnabled)
                 {
