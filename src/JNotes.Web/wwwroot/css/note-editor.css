@@ -53,6 +53,7 @@
     align-items: flex-end;
     gap: 0.25rem;
     flex-shrink: 0;
+    padding-top: 4px;
 }
 
 /* One column by default; two equal panes from MudBlazor's md breakpoint up. min-width: 0 on the

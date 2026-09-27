@@ -30,6 +30,13 @@
     & > .mud-button-root {
         height: 40px;
     }
+
+    /* A labelled dense outlined field (e.g. the password box) gets an 8px top margin from
+       MudBlazor's own .mud-input-outlined-with-label rule, which flex-start alone doesn't
+       account for — without this the button sits 8px above the field it's aligned with. */
+    &:not(.jn-inline-form-center) > .mud-button-root {
+        margin-top: 8px;
+    }
 }
 
 .jn-inline-grow {
