@@ -13,7 +13,10 @@
     <MudAppBar Elevation="0" Dense="true">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" Class="d-md-none"
                        aria-label="Toggle navigation" OnClick="() => _drawerOpen = !_drawerOpen" />
-        <a href="/" class="jn-brand">JNotes</a>
+        <a href="/" class="jn-brand">
+            <img src="@Assets["img/jnotes-logo.png"]" alt="" class="jn-brand-logo" />
+            JNotes
+        </a>
     </MudAppBar>
 
     @* One responsive drawer instead of the old desktop <aside> + offcanvas pair, so NavMenu (and its

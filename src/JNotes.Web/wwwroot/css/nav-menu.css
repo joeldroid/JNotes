@@ -2,11 +2,21 @@
    Everything else in the sidebar is MudNavMenu/MudNavLink/MudMenu and styles itself, except
    .jn-nav-active below. */
 .jn-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
     color: inherit;
     font-size: 1.25rem;
     font-weight: 500;
     letter-spacing: 0.01em;
     text-decoration: none;
+}
+
+.jn-brand-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    flex-shrink: 0;
 }
 
 .jn-page {
