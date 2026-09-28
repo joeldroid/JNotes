@@ -7,23 +7,10 @@
    interactive MudBlazor component (they need a circuit). MudThemeProvider is fine: it only emits
    the palette CSS variables, which the plain markup below styles itself with (auth.css).
 
-   /login puts its own, bigger logo inside the card instead (Login.razor), so the header here is
-   skipped for it — read from HttpContext rather than a cascading flag from the page, since this
-   renders once per request with no circuit for a child->parent update to travel through anyway
-   (the same reasoning as App.razor's own path-based render-mode check). *@
+   No top banner: /login and /setup each put the logo inside their own card. *@
 <MudThemeProvider Theme="JNotesTheme.Instance" IsDarkMode="true" />
 
 <div class="auth-shell">
-    @if (!IsLoginPage)
-    {
-        <header class="auth-appbar">
-            <span class="jn-brand">
-                <img src="@Assets["img/jnotes-logo.png"]" alt="" class="jn-brand-logo" />
-                JNotes
-            </span>
-        </header>
-    }
-
     <main class="auth-main">
         @Body
     </main>
@@ -34,10 +21,3 @@
     <a href="." class="reload">Reload</a>
     <span class="dismiss">🗙</span>
 </div>
-
-@code {
-    [CascadingParameter]
-    private HttpContext HttpContext { get; set; } = default!;
-
-    private bool IsLoginPage => HttpContext.Request.Path.StartsWithSegments("/login");
-}

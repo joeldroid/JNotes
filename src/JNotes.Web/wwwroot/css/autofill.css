@@ -1,0 +1,22 @@
+/* Browsers paint autofilled/suggested inputs (typically username and email) with their own light
+   background, which is a white box on the dark theme. That background is !important in the UA
+   stylesheet, so it can't be overridden directly: a near-endless transition keeps the field's own
+   (transparent) background showing, and the text colour is restored explicitly. Covers the plain
+   <input>s on /login and /setup as well as MudBlazor's inputs and the note editor textareas. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--mud-palette-text-primary);
+    caret-color: var(--mud-palette-text-primary);
+    transition: background-color 600000s 0s, color 600000s 0s;
+}
+
+/* Firefox */
+input:autofill,
+textarea:autofill {
+    background-color: transparent;
+    color: var(--mud-palette-text-primary);
+}
