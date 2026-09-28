@@ -1,7 +1,4 @@
 @implements IDisposable
-@inject AuthenticationStateProvider AuthenticationStateProvider
-@inject IUserRepository UserRepository
-@inject ICurrentUserContext CurrentUser
 @inject NavigationManager NavigationManager
 
 <div class="jn-nav">
@@ -38,53 +35,26 @@
         <MudNavLink Href="/trash" Icon="@Icons.Material.Outlined.DeleteOutline">Trash</MudNavLink>
     </MudNavMenu>
 
-    <AuthorizeView>
-        <div class="jn-account">
-            <button type="button" class="jn-account-toggle" aria-expanded="@(_accountOpen ? "true" : "false")"
-                    @onclick="() => _accountOpen = !_accountOpen">
-                <MudAvatar Color="Color.Primary" Size="Size.Small">@_initials</MudAvatar>
-                <span class="jn-account-name">@_displayName</span>
-                <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Class="@(_accountOpen ? "jn-chevron jn-chevron-open" : "jn-chevron")" />
-            </button>
-            <MudCollapse Expanded="_accountOpen">
-                @* Stays a plain form POST — SignOutAsync writes Set-Cookie, so it can't be an @onclick in the circuit. *@
-                <form method="post" action="/logout" class="jn-signout">
-                    <AntiforgeryToken />
-                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Default"
-                               Size="Size.Small" FullWidth="true">Sign out</MudButton>
-                </form>
-            </MudCollapse>
-        </div>
-    </AuthorizeView>
+    @* Must stay the last child of div.jn-nav: .jn-account { margin-top: auto } bottom-anchors it (below md
+       only - at md and up the same widget lives in MainLayout's app bar and this copy is d-md-none). *@
+    <AccountMenu DisplayName="@DisplayName" Initials="@Initials" />
 </div>
 
 @code {
-    private string _displayName = "";
-    private string _initials = "";
-    private string _searchText = "";
-    private bool _accountOpen;
+    [Parameter]
+    public string DisplayName { get; set; } = "";
 
-    protected override async Task OnInitializedAsync()
+    [Parameter]
+    public string Initials { get; set; } = "";
+
+    private string _searchText = "";
+
+    protected override void OnInitialized()
     {
         // MainLayout (and NavMenu inside it) survives client-side navigation on this circuit, so this
         // runs once per circuit, not once per page - LocationChanged is what keeps IsNewNoteRouteActive
         // (and therefore the "New Text Note"/"New Checklist Note" highlight) current after that.
         NavigationManager.LocationChanged += OnLocationChanged;
-
-        // Guarded on IsAuthenticated (not just wrapped in <AuthorizeView> in the markup above) —
-        // NavMenu renders inside MainLayout, which NotFound/Error also use with [AllowAnonymous],
-        // so this can run for a signed-out visitor too. ICurrentUserContext.UserId throws in that
-        // case, so it must never be touched outside this check.
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        if (authState.User.Identity?.IsAuthenticated == true)
-        {
-            var user = await UserRepository.GetUserByIdAsync(CurrentUser.UserId);
-            if (user is not null)
-            {
-                _displayName = user.FirstName is { Length: > 0 } firstName ? firstName : user.Username;
-                _initials = UserInitials.Compute(user.FirstName, user.LastName, user.Username);
-            }
-        }
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => InvokeAsync(StateHasChanged);

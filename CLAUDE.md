@@ -167,10 +167,10 @@ container filesystem) every restart regenerates them and silently signs everyone
   "Account" card in `Settings.razor`'s "App settings" (self-edit — there is no separate `/profile`
   page) and the admin section of the same page. FirstName/LastName: your own, or anyone's if Admin.
   **Email is Admin-only, enforced in Core** (`InvalidOperationException` for a Member) as well as by
-  the disabled input — a client that skips the UI mustn't get through. `NavMenu` shows
-  `FirstName ?? Username`, re-queried on each circuit init (not cached in cookie claims, which would
-  go stale), so a self-edit save forces a full reload of `/settings` to refresh that sibling
-  component.
+  the disabled input — a client that skips the UI mustn't get through. The account widget
+  (`MainLayout` → `AccountMenu`) shows `FirstName ?? Username`, re-queried on each circuit init (not
+  cached in cookie claims, which would go stale), so a self-edit save forces a full reload of
+  `/settings` to refresh that sibling component.
 - **Self-service password change requires the current password; admin reset doesn't.**
   `ChangePassword.razor` (`/settings/change-password`, its own page rather than an inline field in
   the Account card, so a mistyped current password doesn't fail silently next to unrelated profile
@@ -201,13 +201,17 @@ container filesystem) every restart regenerates them and silently signs everyone
   `MainLayout.razor` hosts a single `NavMenu` — a persistent sidebar on desktop, an overlay opened by the
   app bar's menu button below md (so the menu, and its search box state, exists once). `MudDrawer`'s
   content is already a full-height flex column; `.jn-account { margin-top: auto }` (`nav-menu.css`)
-  bottom-anchors the account section. `MainLayout` closes the overlay on navigation when the viewport
-  is below md (`IBrowserViewportService`).
-- **Account widget:** avatar initials from `UserInitials.Compute` (pure static: `FirstName[0]` +
-  `LastName[0]` if both, else first two letters of first name, then username; max 2 chars).
-  Clicking toggles a `MudCollapse` (`_accountOpen`) with just "Sign out" (a plain
-  `<form method="post" action="/logout">` with a `MudButton ButtonType="Submit"`, never an
-  `OnClick`) — profile editing lives in `/settings`'s Account card instead, so there is no
+  bottom-anchors the account section (mobile only — at md and up the widget lives in the app bar).
+  `MainLayout` closes the overlay on navigation when the viewport is below md (`IBrowserViewportService`).
+- **Account widget:** `AccountMenu.razor` (`Components/Layout/`, injects nothing) is rendered twice — in
+  `MainLayout`'s `MudAppBar` at the right (`d-none d-md-flex`, a `MudMenu` whose `ChildContent` is the
+  `/logout` form) and at the bottom of `NavMenu` (`d-md-none`, the original `MudCollapse`). CSS
+  show/hide was chosen over `MudHidden` (needs JS, flashes). The display name and avatar initials
+  (`UserInitials.Compute`, pure static: `FirstName[0]` + `LastName[0]` if both, else first two letters of
+  first name, then username; max 2 chars) are looked up once per circuit in
+  `MainLayout.OnInitializedAsync` and passed down as parameters. Sign-out is still a plain
+  `<form method="post" action="/logout">` with a `MudButton ButtonType="Submit"`, never a
+  `MudMenuItem`/`OnClick` — profile editing lives in `/settings`'s Account card instead, so there is no
   top-level nav entry for it.
 - **Order:** Search, All Notes, divider, New Text Note, New Checklist Note, divider, Settings, Trash (the
   dividers are `MudDivider`s inside the same `AuthorizeView` as the New-note links). Icons are MudBlazor's

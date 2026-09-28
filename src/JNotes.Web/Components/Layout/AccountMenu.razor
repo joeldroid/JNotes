@@ -1,0 +1,63 @@
+@* The account widget (avatar + display name + "Sign out"). Rendered twice - in MainLayout's app bar
+   (InAppBar, md and up) and at the bottom of NavMenu's sidebar (below md) - and shown/hidden with CSS
+   classes rather than MudHidden (needs JS, flashes). Injects nothing: MainLayout looks the user up once
+   per circuit and passes the values in. The AuthorizeView's Context is renamed so it can't collide with
+   MudMenu ActivatorContent's own `context`. *@
+<AuthorizeView Context="auth">
+    @if (InAppBar)
+    {
+        <div class="jn-account-appbar d-none d-md-flex">
+            <MudMenu @bind-Open="_open" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
+                     PopoverClass="jn-account-popover" AriaLabel="Account menu">
+                <ActivatorContent>
+                    <button type="button" class="jn-account-toggle jn-account-toggle-appbar"
+                            aria-expanded="@(_open ? "true" : "false")" @onclick="e => context.ToggleAsync(e)">
+                        <MudAvatar Color="Color.Primary" Size="Size.Small">@Initials</MudAvatar>
+                        <span class="jn-account-name">@DisplayName</span>
+                        <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Class="@(_open ? "jn-chevron jn-chevron-open" : "jn-chevron")" />
+                    </button>
+                </ActivatorContent>
+                <ChildContent>
+                    @* Plain form POST: SignOutAsync writes Set-Cookie, so never an OnClick/MudMenuItem. *@
+                    <form method="post" action="/logout" class="jn-signout jn-signout-appbar">
+                        <AntiforgeryToken />
+                        <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Default"
+                                   Size="Size.Small" FullWidth="true">Sign out</MudButton>
+                    </form>
+                </ChildContent>
+            </MudMenu>
+        </div>
+    }
+    else
+    {
+        <div class="jn-account d-md-none">
+            <button type="button" class="jn-account-toggle" aria-expanded="@(_open ? "true" : "false")"
+                    @onclick="() => _open = !_open">
+                <MudAvatar Color="Color.Primary" Size="Size.Small">@Initials</MudAvatar>
+                <span class="jn-account-name">@DisplayName</span>
+                <MudIcon Icon="@Icons.Material.Filled.ExpandMore" Class="@(_open ? "jn-chevron jn-chevron-open" : "jn-chevron")" />
+            </button>
+            <MudCollapse Expanded="_open">
+                @* Stays a plain form POST — SignOutAsync writes Set-Cookie, so it can't be an @onclick in the circuit. *@
+                <form method="post" action="/logout" class="jn-signout">
+                    <AntiforgeryToken />
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Outlined" Color="Color.Default"
+                               Size="Size.Small" FullWidth="true">Sign out</MudButton>
+                </form>
+            </MudCollapse>
+        </div>
+    }
+</AuthorizeView>
+
+@code {
+    [Parameter, EditorRequired]
+    public string DisplayName { get; set; } = "";
+
+    [Parameter, EditorRequired]
+    public string Initials { get; set; } = "";
+
+    [Parameter]
+    public bool InAppBar { get; set; }
+
+    private bool _open;
+}

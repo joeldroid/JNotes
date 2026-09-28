@@ -515,8 +515,8 @@
         {
             await UserManagementService.UpdateProfileAsync(CurrentUser.UserId, CurrentUser.UserId, firstName, lastName, email);
 
-            // Forced full reload so NavMenu's displayed name (which reads the freshly-saved first
-            // name) refreshes immediately — it's part of MainLayout, a sibling that a normal
+            // Forced full reload so the account widget's displayed name (looked up in MainLayout, from
+            // the freshly-saved first name) refreshes immediately — MainLayout is a sibling that a normal
             // in-circuit re-render of this page alone wouldn't touch.
             NavigationManager.NavigateTo("/settings", forceLoad: true);
         }

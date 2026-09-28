@@ -1,6 +1,7 @@
-/* App chrome: the app bar brand, page padding, and the sidebar's search box + account widget.
-   Everything else in the sidebar is MudNavMenu/MudNavLink/MudMenu and styles itself, except
-   .jn-nav-active below. */
+/* App chrome: the app bar brand, page padding, the sidebar's search box, and the account widget
+   (AccountMenu.razor: at the bottom of the sidebar below md, at the right of the app bar from md up).
+   Everything else in the sidebar is MudNavMenu/MudNavLink and styles itself, except .jn-nav-active
+   below. */
 .jn-brand {
     display: inline-flex;
     align-items: center;
@@ -85,6 +86,22 @@
 
 .jn-signout {
     margin: 0.5rem 0.25rem 0;
+}
+
+/* App-bar variant (md and up): a MudMenu activator instead of the sidebar's collapse. */
+.jn-account-appbar {
+    align-items: center;
+}
+
+.jn-account-toggle-appbar {
+    width: auto;
+    max-width: 16rem;
+    color: inherit;
+}
+
+.jn-account-popover .jn-signout-appbar {
+    margin: 0.5rem 0.75rem;
+    min-width: 10rem;
 }
 
 /* "New Text Note"/"New Checklist Note" (NavMenu.razor) have no Href - MudNavLink only raises OnClick

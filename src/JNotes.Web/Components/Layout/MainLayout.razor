@@ -2,6 +2,9 @@
 @implements IDisposable
 @inject IBrowserViewportService Viewport
 @inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IUserRepository UserRepository
+@inject ICurrentUserContext CurrentUser
 
 @* The app is dark-only: App.razor sets <html data-theme="dark"> once, and this stays in step. *@
 <MudThemeProvider Theme="JNotesTheme.Instance" IsDarkMode="true" ObserveSystemDarkModeChange="false" />
@@ -17,13 +20,15 @@
             <img src="@Assets["img/jnotes-logo.png"]" alt="" class="jn-brand-logo" />
             JNotes
         </a>
+        <MudSpacer />
+        <AccountMenu InAppBar="true" DisplayName="@_displayName" Initials="@_initials" />
     </MudAppBar>
 
     @* One responsive drawer instead of the old desktop <aside> + offcanvas pair, so NavMenu (and its
        search box state) exists once. *@
     <MudDrawer @bind-Open="_drawerOpen" Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md"
                ClipMode="DrawerClipMode.Always" Elevation="0">
-        <NavMenu />
+        <NavMenu DisplayName="@_displayName" Initials="@_initials" />
     </MudDrawer>
 
     <MudMainContent>
@@ -42,7 +47,28 @@
 @code {
     private bool _drawerOpen = true;
 
-    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+    private string _displayName = "";
+    private string _initials = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+
+        // Guarded on IsAuthenticated (not just wrapped in <AuthorizeView> in the markup) —
+        // MainLayout is also used by NotFound/Error with [AllowAnonymous], so this can run for a
+        // signed-out visitor too. ICurrentUserContext.UserId throws in that case, so it must never be
+        // touched outside this check.
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            var user = await UserRepository.GetUserByIdAsync(CurrentUser.UserId);
+            if (user is not null)
+            {
+                _displayName = user.FirstName is { Length: > 0 } firstName ? firstName : user.Username;
+                _initials = UserInitials.Compute(user.FirstName, user.LastName, user.Username);
+            }
+        }
+    }
 
     // Below the drawer breakpoint it's an overlay, so picking a destination should dismiss it.
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => _ = InvokeAsync(async () =>
