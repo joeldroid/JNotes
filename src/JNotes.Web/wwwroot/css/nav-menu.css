@@ -45,7 +45,11 @@
 /* "New Note" (NavMenu.razor): a filled MudButton activating a MudMenu, kept outside MudNavMenu.
    .mud-menu is inline-flex by default, so it is stretched explicitly to span the sidebar like the
    search box and nav links; its activator is display: contents, which makes the button a direct flex
-   child that fills it. The label inherits the button's justify-content, so flex-start below left-aligns it. */
+   child that fills it. The label inherits the button's justify-content, so flex-start below left-aligns it.
+   The button's box metrics are then overridden to reproduce .mud-nav-link's own (8px 16px padding, 24px
+   icon, 12px icon-to-text gap, regular-weight body text), so the + icon and "New Note" land on the same
+   x positions as the icons and labels of All Notes / Trash instead of MudBlazor's tighter button defaults
+   (uppercase 500-weight text, 20px icon, -4px/8px icon margins, 6px 16px padding). */
 .jn-nav-new {
     margin-bottom: 0.5rem;
 
@@ -54,12 +58,29 @@
         width: 100%;
     }
 
-    /* Left-aligned like the nav links, and keeping the label's own casing ("New Note") instead of
-       MudBlazor's default uppercase button text. */
     & .mud-menu .mud-button-root {
         width: 100%;
         justify-content: flex-start;
+        padding: 8px 16px;
+        font-family: inherit;
+        font-size: inherit;
+        font-weight: 400;
+        line-height: 1.75;
+        letter-spacing: 0;
         text-transform: none;
+    }
+
+    & .mud-button-icon-start {
+        margin-inline: 0 12px;
+
+        & > *:first-child {
+            font-size: 1.5rem;
+        }
+    }
+
+    /* The dropdown arrow is the one thing the nav links don't have: pin it to the right edge. */
+    & .mud-button-icon-end {
+        margin-inline: auto 0;
     }
 }
 
