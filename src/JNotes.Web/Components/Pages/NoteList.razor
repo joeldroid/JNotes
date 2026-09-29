@@ -3,19 +3,13 @@
 @inject INoteService NoteService
 @inject IAppTimeZoneProvider TimeZoneProvider
 
-@* Thin routed shell: owns the URL (?q=), data loading and the filter values; NoteListView draws
+@* Thin routed shell: owns the URL (?q=) and data loading; NoteListView draws
    the screen. INoteService is deliberately resolved and used only from this page's first lifecycle
    methods — see CLAUDE.md's ICurrentUserContext gotcha. *@
 
 <PageTitle>Notes</PageTitle>
 
-<NoteListView Query="@Query"
-              Groups="_groups"
-              AvailableTags="_availableTags"
-              TypeFilter="@_typeFilter"
-              TagFilter="@_tagFilter"
-              TypeFilterChanged="OnTypeFilterChangedAsync"
-              TagFilterChanged="OnTagFilterChangedAsync" />
+<NoteListView Query="@Query" Groups="_groups" />
 
 @code {
     [SupplyParameterFromQuery(Name = "q")]
@@ -26,15 +20,6 @@
     // GroupByRelativeDate drops empty buckets, so it returns an empty list exactly when the note
     // list was empty.
     private IReadOnlyList<NoteGroup>? _groups;
-    private IReadOnlyList<string> _availableTags = [];
-
-    private string _typeFilter = NoteListView.AllTypes;
-    private string _tagFilter = NoteListView.AllTags;
-
-    protected override async Task OnInitializedAsync()
-    {
-        _availableTags = await NoteService.GetDistinctTagsAsync();
-    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -47,27 +32,11 @@
 
     private async Task RefreshAsync()
     {
-        var type = Enum.TryParse<NoteType>(_typeFilter, out var parsed) ? parsed : (NoteType?)null;
-        var query = new NoteSearchQuery(
-            SearchText: string.IsNullOrWhiteSpace(Query) ? null : Query,
-            Tag: _tagFilter == NoteListView.AllTags ? null : _tagFilter,
-            Type: type);
+        var query = new NoteSearchQuery(SearchText: string.IsNullOrWhiteSpace(Query) ? null : Query);
 
         // ListAsync already orders by UpdatedAt descending (EfNoteIndexRepository.SearchAsync) —
         // grouping never re-sorts, so that order carries straight through into each bucket.
         var notes = await NoteService.ListAsync(query);
         _groups = NoteGrouping.GroupByRelativeDate(notes, DateTimeOffset.UtcNow, TimeZoneProvider.TimeZone);
-    }
-
-    private async Task OnTypeFilterChangedAsync(string? value)
-    {
-        _typeFilter = value ?? NoteListView.AllTypes;
-        await RefreshAsync();
-    }
-
-    private async Task OnTagFilterChangedAsync(string? value)
-    {
-        _tagFilter = value ?? NoteListView.AllTags;
-        await RefreshAsync();
     }
 }

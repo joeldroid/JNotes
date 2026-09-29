@@ -1,4 +1,4 @@
-@* The default notes screen: the search-results header, the Type/Tag filters, and the grouped list.
+@* The default notes screen: the search-results header and the grouped list.
    Presentational on purpose — it injects nothing and never calls INoteService. The routed page
    (Pages/NoteList.razor) owns data loading, because AuthenticatedCurrentUserContext must be resolved
    from a routed page's first lifecycle method (see CLAUDE.md, "ICurrentUserContext gotcha"). *@
@@ -10,48 +10,16 @@
     </MudText>
 }
 
-<div class="jn-filters">
-    <MudSelect T="string" Label="Type" Variant="Variant.Outlined" Margin="Margin.Dense"
-               Value="@TypeFilter" ValueChanged="@(value => TypeFilterChanged.InvokeAsync(value))">
-        <MudSelectItem T="string" Value="@AllTypes">All types</MudSelectItem>
-        <MudSelectItem T="string" Value="@("Text")">Text</MudSelectItem>
-        <MudSelectItem T="string" Value="@("Checklist")">Checklist</MudSelectItem>
-    </MudSelect>
-
-    <MudSelect T="string" Label="Tag" Variant="Variant.Outlined" Margin="Margin.Dense"
-               Value="@TagFilter" ValueChanged="@(value => TagFilterChanged.InvokeAsync(value))">
-        <MudSelectItem T="string" Value="@AllTags">All tags</MudSelectItem>
-        @foreach (var tag in AvailableTags)
-        {
-            <MudSelectItem T="string" Value="@tag">@tag</MudSelectItem>
-        }
-    </MudSelect>
-</div>
-
 @* Rendered unconditionally (it handles its own loading/empty states) so its collapsed-group set
-   survives a filter that matches nothing. *@
+   survives a search that matches nothing. *@
 <NoteGroupList Groups="Groups" EmptyText="@EmptyText" />
 
 @code {
-    // MudSelect can't show a label for an empty-string value, so "no filter" is an explicit sentinel.
-    // AllTags is a comma because a tag can never contain one (tags are split on commas).
-    // Public so the page can translate these back into a NoteSearchQuery without redefining them.
-    public const string AllTypes = "all";
-    public const string AllTags = ",";
-
     /// <summary>The active free-text search (the page's <c>?q=</c>), or null/blank for the plain list.</summary>
     [Parameter] public string? Query { get; set; }
 
     /// <summary>Sections to render; <c>null</c> while the first load is in flight.</summary>
     [Parameter] public IReadOnlyList<NoteGroup>? Groups { get; set; }
-
-    [Parameter] public IReadOnlyList<string> AvailableTags { get; set; } = [];
-
-    [Parameter] public string TypeFilter { get; set; } = AllTypes;
-    [Parameter] public string TagFilter { get; set; } = AllTags;
-
-    [Parameter] public EventCallback<string?> TypeFilterChanged { get; set; }
-    [Parameter] public EventCallback<string?> TagFilterChanged { get; set; }
 
     // A property, not an inline conditional in the NoteGroupList attribute: keeps the quoted strings
     // out of a Razor attribute expression.

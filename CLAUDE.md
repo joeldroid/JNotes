@@ -253,10 +253,9 @@ container filesystem) every restart regenerates them and silently signs everyone
   `[SupplyParameterFromQuery(Name = "q")]` and refreshes from `OnParametersSetAsync`, not
   `OnInitializedAsync` — the page instance is reused across searches, only the query string
   changes (same reason `NoteEditor.razor` reacts to its `Id` parameter). Routing through the URL is
-  what makes search work from any page. `NoteList.razor` is a thin routed page: it holds `Query`, the
-  page-local Type/Tag filter values and every `INoteService` call, and hands the result to
-  `NoteListView` (`Components/Notes/`), which renders the filters, the "Search results for … · Clear"
-  line shown when `Query` is set, and the list (see "The default notes view" under "Notes UI").
+  what makes search work from any page. `NoteList.razor` is a thin routed page: it holds `Query` and
+  every `INoteService` call, and hands the result to `NoteListView` (`Components/Notes/`), which
+  renders the "Search results for … · Clear" line shown when `Query` is set, and the list (see "The default notes view" under "Notes UI").
 
 ## Storage and indexing
 
@@ -323,7 +322,8 @@ container filesystem) every restart regenerates them and silently signs everyone
   nothing — `NoteEditor` passes a `SuggestTags` delegate) shows tags as chips plus a
   `MudAutocomplete<string>`; typed text that matches no suggestion is offered last as "Add new tag …",
   so every add goes through `ValueChanged`, and a comma-separated entry adds several tags (`TagList`, pure
-  static). The list page's Tag filter stays a `MudSelect`: it's an exact filter, not free text.
+  static). The list page has no Type/Tag filters (removed from the UI); `NoteSearchQuery.Tag`/`Type`
+  still exist in Core, and tags are still searchable through the free-text box.
 - **`IndexedFileWriteTimeUtc` is rounded to whole microseconds on both write and compare**
   (`IndexTimestamp.ToIndexResolution`), because PostgreSQL `timestamptz` has microsecond precision
   while `File.GetLastWriteTimeUtc` has 100-nanosecond ticks. Without the rounding,
@@ -379,19 +379,17 @@ skipping empty buckets and never re-sorting. It's pure static with no clock/time
 `lastWeekStart` early in a month.
 
 **The notes screen is split across three files, and the split is deliberate.**
-- `Pages/NoteList.razor` (`/`) owns the URL, the `Query`, the filter values and all `INoteService`
+- `Pages/NoteList.razor` (`/`) owns the URL, the `Query` and all `INoteService`
   calls. `_groups` is `null` until the first load finishes, an empty list when nothing matched (safe as
   the "empty" signal only because `GroupByRelativeDate` drops empty buckets). The components below inject
   nothing — `INoteService` has to stay resolved from a routed page's first lifecycle method (see the
   `ICurrentUserContext` gotcha), and `[SupplyParameterFromQuery]` only works on a routable component.
-- `Components/Notes/NoteListView.razor` renders the search header, the Type/Tag `MudSelect`s and the list.
-  "No filter" is an explicit sentinel (`AllTypes`/`AllTags`, `public const` here and read back by the
-  page) because `MudSelect` can't label an empty-string value.
+- `Components/Notes/NoteListView.razor` renders the search header and the list.
 - `Components/Notes/NoteGroupList.razor` renders the sections with `MudExpansionPanels` (multi-expand)
   and its own Loading…/empty placeholders, and owns `_collapsedGroups`. That set is kept here, not left
   to the panel, because the panel's `Expanded` parameter would snap back to open on every re-render
-  (e.g. when a filter changes). `NoteListView` renders it **unconditionally** — never wrap it in an
-  `@if`: the placeholders live inside it precisely so a filter that matches nothing doesn't destroy the
+  (e.g. when a search changes). `NoteListView` renders it **unconditionally** — never wrap it in an
+  `@if`: the placeholders live inside it precisely so a search that matches nothing doesn't destroy the
   instance (a component survives its own internal branches, not a parent's) and take the set with it.
 
 **`ChecklistNoteEditor` and `TextNoteEditor` deliberately share one layout.** A hide/show button on
