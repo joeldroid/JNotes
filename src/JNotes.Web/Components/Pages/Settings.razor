@@ -1,5 +1,5 @@
 @page "/settings"
-@attribute [Authorize]
+@attribute [Authorize(Roles = nameof(UserRole.Admin))]
 @using System.ComponentModel.DataAnnotations
 @using JNotes.Core
 @using JNotes.Web.Tagging
@@ -19,46 +19,12 @@
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
-<PageTitle>Settings</PageTitle>
+<PageTitle>Administration</PageTitle>
 
-<MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-3">Settings</MudText>
-
-<section class="jn-settings-group">
-    <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-3">App settings</MudText>
-
-    <MudPaper Outlined="true" Class="jn-settings-card jn-settings-card-narrow">
-        <MudText Typo="Typo.subtitle1" HtmlTag="h3" Class="mb-2">Account</MudText>
-
-        @if (_profileError is not null)
-        {
-            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">@_profileError</MudAlert>
-        }
-
-        <MudText Class="mb-2">
-            <strong>Username:</strong> @_currentUserAccount?.Username
-            <MudText Typo="Typo.caption" Color="Color.Secondary" Inline="true">(username can't be changed here)</MudText>
-        </MudText>
-
-        <MudStack Spacing="2" Class="mb-3">
-            <MudTextField T="string" @bind-Value="_profileFirstName" Immediate="true" Label="First name" Variant="Variant.Outlined" Margin="Margin.Dense" />
-            <MudTextField T="string" @bind-Value="_profileLastName" Immediate="true" Label="Last name" Variant="Variant.Outlined" Margin="Margin.Dense" />
-            <MudTextField T="string" @bind-Value="_profileEmail" Immediate="true" Label="Email" Variant="Variant.Outlined" Margin="Margin.Dense"
-                          Disabled="@(!_canEditEmail)"
-                          HelperText="@(_canEditEmail ? null : "Only an admin can change your email.")" />
-            <MudStack Row="true" Spacing="2">
-                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="SaveProfileAsync" Disabled="_isSavingProfile">
-                    @(_isSavingProfile ? "Saving…" : "Save profile")
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Href="/settings/change-password">Change password</MudButton>
-            </MudStack>
-        </MudStack>
-    </MudPaper>
-</section>
+<MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-3">Administration</MudText>
 
 <AuthorizeView Roles="Admin" Context="adminAuthContext">
     <section class="jn-settings-group">
-        <MudText Typo="Typo.h6" HtmlTag="h2" Class="mb-3">Administration settings</MudText>
-
         <MudPaper Outlined="true" Class="jn-settings-card">
             <MudText Typo="Typo.subtitle1" HtmlTag="h3" Class="mb-1">Security</MudText>
             @* @key is bumped when the server refuses a change, so the switch is rebuilt from the model instead of
@@ -346,16 +312,6 @@
 </AuthorizeView>
 
 @code {
-    // App settings
-    private UserAccount? _currentUserAccount;
-    private string _profileFirstName = "";
-    private string _profileLastName = "";
-    private string _profileEmail = "";
-    private bool _canEditEmail;
-    private bool _isSavingProfile;
-    private string? _profileError;
-
-    // Administration settings
     private string _notesFolderPath = "";
     private int _noteCount;
     private bool _isRescanning;
@@ -406,19 +362,9 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _currentUserAccount = await UserRepository.GetUserByIdAsync(CurrentUser.UserId);
-        if (_currentUserAccount is not null)
-        {
-            _canEditEmail = _currentUserAccount.Role == UserRole.Admin;
-            _profileFirstName = _currentUserAccount.FirstName ?? "";
-            _profileLastName = _currentUserAccount.LastName ?? "";
-            _profileEmail = _currentUserAccount.Email ?? "";
-        }
-
-        // The Administration settings section is markup-gated (AuthorizeView Roles="Admin"), but
-        // that alone wouldn't stop a Member's circuit from fetching this data into this
-        // component's state — IsCurrentUserAdminAsync's check avoids ever running these queries
-        // for them.
+        // The route is role-gated ([Authorize(Roles = Admin)]) and the markup is too (AuthorizeView
+        // Roles="Admin"), but an open circuit keeps its principal until revalidation — this check is
+        // defense in depth, so a demoted user's circuit never runs these queries.
         if (await IsCurrentUserAdminAsync())
         {
             _notesFolderPath = await SettingsService.GetNotesFolderPathAsync();
@@ -496,43 +442,6 @@
         < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
         _ => $"{bytes / (1024.0 * 1024.0):0.#} MB",
     };
-
-    private async Task SaveProfileAsync()
-    {
-        _isSavingProfile = true;
-        _profileError = null;
-
-        var firstName = string.IsNullOrWhiteSpace(_profileFirstName) ? null : _profileFirstName.Trim();
-        var lastName = string.IsNullOrWhiteSpace(_profileLastName) ? null : _profileLastName.Trim();
-        // If email isn't editable, send back exactly what's already on the account rather than the
-        // (disabled, but still present) input's value — belt-and-suspenders alongside the
-        // server-side check in IUserManagementService, not a substitute for it.
-        var email = _canEditEmail
-            ? (string.IsNullOrWhiteSpace(_profileEmail) ? null : _profileEmail.Trim())
-            : _currentUserAccount!.Email;
-
-        try
-        {
-            await UserManagementService.UpdateProfileAsync(CurrentUser.UserId, CurrentUser.UserId, firstName, lastName, email);
-
-            // Forced full reload so the account widget's displayed name (looked up in MainLayout, from
-            // the freshly-saved first name) refreshes immediately — MainLayout is a sibling that a normal
-            // in-circuit re-render of this page alone wouldn't touch.
-            NavigationManager.NavigateTo("/settings", forceLoad: true);
-        }
-        catch (DuplicateEmailException)
-        {
-            _profileError = $"Email '{email}' is already in use by another account.";
-        }
-        catch (InvalidOperationException ex)
-        {
-            _profileError = ex.Message;
-        }
-        finally
-        {
-            _isSavingProfile = false;
-        }
-    }
 
     private async Task TogglePasswordAuthAsync(bool enabled)
     {
@@ -659,7 +568,7 @@
 
             if (targetId == CurrentUser.UserId)
             {
-                // Refresh NavMenu's displayed name — same reasoning as Profile.razor's own save.
+                // Refresh the account widget's displayed name — same reasoning as Account.razor's own save.
                 NavigationManager.NavigateTo("/settings", forceLoad: true);
             }
             else

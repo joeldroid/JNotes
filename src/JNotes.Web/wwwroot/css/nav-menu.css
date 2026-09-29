@@ -88,6 +88,12 @@
     margin: 0.5rem 0.25rem 0;
 }
 
+/* "My Account" link above the sign-out button in the sidebar's account widget (mobile). */
+.jn-account-link {
+    margin: 0.5rem 0.25rem 0;
+    justify-content: flex-start;
+}
+
 /* App-bar variant (md and up): a MudMenu activator instead of the sidebar's collapse. */
 .jn-account-appbar {
     align-items: center;

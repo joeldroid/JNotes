@@ -21,7 +21,7 @@ see [Authentication](#authentication) below for that flow, adding more users, an
   header (title, tags, type, timestamps) followed by the markdown body.
 - **Responsive UI** — [MudBlazor](https://mudblazor.com) (Material design) with a dark theme, usable on both desktop and mobile.
 - **Self-healing index** — the note index is reconciled against the notes folder at startup and
-  on demand (Settings → Rescan Now), so edits made directly to the files (outside the app, or
+  on demand (Administration → Rescan Now), so edits made directly to the files (outside the app, or
   while the container was stopped) are picked up automatically.
 
 ## Project layout
@@ -98,8 +98,8 @@ pick the admin's username and password — see [Authentication](#authentication)
 > are untouched (they're files), but user accounts and settings do not carry over: point
 > `POSTGRES_HOST`/`POSTGRES_DB`/etc. at an empty database and you'll go through the `/setup` screen
 > again. The re-created user gets a **new** user id, so rename `notes/<old-user-id>/` to
-> `notes/<new-user-id>/` (find the new id in Settings → Administration settings) to get the old
-> notes back, then Settings → "Rescan Now". You can delete the old `jnotes.db`/`-wal`/`-shm` files
+> `notes/<new-user-id>/` (find the new id in Administration) to get the old
+> notes back, then Administration → "Rescan Now". You can delete the old `jnotes.db`/`-wal`/`-shm` files
 > and stop your Redis container.
 
 ### Configuration
@@ -114,7 +114,7 @@ pick the admin's username and password — see [Authentication](#authentication)
 | `NOTES_PATH` | No | `notes` (relative to the working directory). `App_Data/notes` in the launch profiles / `/data/notes` in Docker | Folder note markdown files are read from/written to. |
 | `DATA_PROTECTION_KEYS_PATH` | No | a `keys` folder beside `NOTES_PATH`. `App_Data/keys` in the launch profiles / `/data/keys` in Docker | Where the keys that sign the auth cookie are stored. Must be on persistent storage — on a container's ephemeral filesystem every restart regenerates them and silently signs everyone out. |
 | `TZ` | No | `UTC` (`Australia/Melbourne` in the launch profiles) | IANA time zone id (e.g. `America/New_York`, `Europe/London`) note timestamps are *displayed* in. Storage is always UTC regardless — this only affects what you see in the UI. |
-| `AUTO_INDEX_INTERVAL_MINUTES` | No | `5` | How often the background pass reconciles every user's note index against the files on disk. `0` disables it (the startup pass and Settings → "Rescan Now" still work). |
+| `AUTO_INDEX_INTERVAL_MINUTES` | No | `5` | How often the background pass reconciles every user's note index against the files on disk. `0` disables it (the startup pass and Administration → "Rescan Now" still work). |
 | `OIDC_AUTHORITY` | No | unset | Your OIDC provider's issuer URL. Leave unset to disable OIDC entirely. Not set by the launch profiles, so values in your own environment flow through. |
 | `OIDC_CLIENT_ID` | No | unset | OIDC client id registered with your provider. |
 | `OIDC_CLIENT_SECRET` | No | unset | OIDC client secret. All three `OIDC_*` values must be set for OIDC to be offered. |
@@ -186,7 +186,7 @@ docker compose up --build
 
 The app listens on `http://localhost:8080`. Notes and the Data Protection keys are bind-mounted to
 `./data` on the host (`./data/notes/<user-id>/*.md`, `./data/keys`) — edit note files there
-directly with any editor and they'll be picked up next time the app starts (or via Settings →
+directly with any editor and they'll be picked up next time the app starts (or via Administration →
 Rescan Now while it's running). The **database is a named Docker volume** (`jnotes-pgdata`), not a
 file under `./data` — deleting `./data` no longer resets accounts, and `docker compose down -v`
 does. As with running locally, upgrading from a SQLite/Redis version means starting fresh (see the
@@ -224,7 +224,7 @@ A background task sends notes that have **no tags** to a local [Ollama](https://
 - If you remove tags the tagger added, they stay removed.
 - An editor left open for more than 10 minutes on an untagged note can overwrite the new tags with its next save.
 
-Settings → Administration has a read-only **Auto-tagging** card showing the current state and the last pass. Ollama unloads the model after 5 idle minutes, so the first note of a pass may load it cold, which counts toward `OLLAMA_TIMEOUT_SECONDS`.
+Administration has a read-only **Auto-tagging** card showing the current state and the last pass. Ollama unloads the model after 5 idle minutes, so the first note of a pass may load it cold, which counts toward `OLLAMA_TIMEOUT_SECONDS`.
 
 **Ollama on the Docker host.** Run `ollama pull phi4`, then create a `.env` file next to `docker-compose.yml` with:
 
@@ -250,22 +250,22 @@ OLLAMA_URL=http://ollama:11434
 ## Authentication
 
 **First run:** with no users yet, every page redirects to a setup screen where you choose the
-admin's username and password. That account can then manage everyone else from Settings →
-**Administration settings** (only visible once signed in as an admin) — create additional users,
+admin's username and password. That account can then manage everyone else from
+**Administration** in the username menu in the header (only visible to admins) — create additional users,
 reset a password, or delete an account. Deleting a user never deletes their notes: the folder is
 moved to `notes/deleted/<user-id>/` rather than removed, and the account itself is deleted. There's
 no "restore" button yet — put the folder back and re-create the account by hand if you need to.
 
 **Each user needs a password, an email (for OIDC), or both** — set when they're created. There's
 no self-service password reset or invite email (JNotes has no mail-sending capability); an admin
-sets or resets a password directly, and anyone can change their own from Settings → Account.
+sets or resets a password directly, and anyone can change their own from **My Account** (click your name in the header).
 
 **OIDC** is optional and configured with the `OIDC_AUTHORITY`/`OIDC_CLIENT_ID`/`OIDC_CLIENT_SECRET`
 env vars (see Configuration above) — once set, a "Sign in with …" button appears on the login page.
 Accounts aren't auto-created from OIDC: an admin creates the user first with their email set, and
 that account links to the IdP automatically the first time they sign in with a matching email.
-Once OIDC is configured, an admin can turn password login off entirely from Settings →
-Administration settings → Security (refused if OIDC isn't configured, so you can't lock everyone out).
+Once OIDC is configured, an admin can turn password login off entirely from
+Administration → Security (refused if OIDC isn't configured, so you can't lock everyone out).
 
 ## Note file format
 
@@ -292,7 +292,7 @@ ordinary markdown that GitHub, Obsidian, and similar tools also render.
 
 An image inserted into a text note is saved as `notes/<user-id>/images/<random-id>.<ext>` and linked
 from the body as `![name](images/<random-id>.<ext>)` — relative to the note, so it resolves in any
-editor pointed at the folder. Deleting a note (or the link) doesn't delete its image file, since the same image can be used by several notes; JNotes removes the ones no note (or trashed note) uses any more, for all users, every 7 days by default. An admin can change the interval in days, or set it to 0 to turn it off, under **Settings → Administration → Images**, and can also run it immediately with **Clean up now**. The first automatic pass runs one interval after the feature is first started, not at startup.
+editor pointed at the folder. Deleting a note (or the link) doesn't delete its image file, since the same image can be used by several notes; JNotes removes the ones no note (or trashed note) uses any more, for all users, every 7 days by default. An admin can change the interval in days, or set it to 0 to turn it off, under **Administration → Images**, and can also run it immediately with **Clean up now**. The first automatic pass runs one interval after the feature is first started, not at startup.
 
 JNotes keeps checked items after unchecked ones within each run of adjacent checklist items, but the
 file is still ordinary markdown — you can reorder it by hand.

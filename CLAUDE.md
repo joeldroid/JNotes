@@ -164,36 +164,42 @@ container filesystem) every restart regenerates them and silently signs everyone
   runs and hide JNotes's own message.
 - **Profile editing** goes through one entry point,
   `IUserManagementService.UpdateProfileAsync(targetUserId, requestingUserId, ...)`, used by both the
-  "Account" card in `Settings.razor`'s "App settings" (self-edit — there is no separate `/profile`
-  page) and the admin section of the same page. FirstName/LastName: your own, or anyone's if Admin.
+  `Account.razor` (`/account`, "My Account", self-edit) and the admin section of `Settings.razor`.
+  FirstName/LastName: your own, or anyone's if Admin.
   **Email is Admin-only, enforced in Core** (`InvalidOperationException` for a Member) as well as by
   the disabled input — a client that skips the UI mustn't get through. The account widget
   (`MainLayout` → `AccountMenu`) shows `FirstName ?? Username`, re-queried on each circuit init (not
   cached in cookie claims, which would go stale), so a self-edit save forces a full reload of
-  `/settings` to refresh that sibling component.
+  the current page (`/account`, or `/settings` for an admin editing their own row) to refresh that
+  sibling component.
 - **Self-service password change requires the current password; admin reset doesn't.**
-  `ChangePassword.razor` (`/settings/change-password`, its own page rather than an inline field in
-  the Account card, so a mistyped current password doesn't fail silently next to unrelated profile
+  `ChangePassword.razor` (`/account/change-password`, its own page rather than an inline field in
+  the My Account form, so a mistyped current password doesn't fail silently next to unrelated profile
   state) re-verifies via `IUserRepository.VerifyPasswordAsync(username, currentPassword)` before
   calling the same `SetPasswordAsync` the admin's reset-password dialog uses — the admin path
   deliberately skips this check, since knowing the current password isn't and shouldn't be a
   precondition for an admin resetting someone else's. An OIDC-only account (no `PasswordHash` yet)
   skips the current-password field entirely, since there's nothing to verify against — this is then
-  "set a password" rather than "change" one. The Account card's "Change password" button is just a
+  "set a password" rather than "change" one. My Account's "Change password" button is just a
   link to this page.
-- **Settings and user management share one page, split by role, not by route.** `Settings.razor`
-  (`/settings`, `[Authorize]`) shows "App settings" (your own Account — name, email, save-profile,
-  and a link to change your password) to everyone and
-  "Administration settings" (Security, Storage, Index, user table, add/edit/delete user) inside
-  `<AuthorizeView Roles="Admin">`. Markup gating only stops *rendering*, not fetching into a
-  Member's circuit state, so `OnInitializedAsync` checks `IsInRole(nameof(UserRole.Admin))` before
+- **Personal account settings and administration are separate pages, split by route and role.**
+  `Account.razor` (`/account`, `[Authorize]`, "My Account") holds your own name, email, save-profile and
+  a link to change your password; it is reached only from the account widget's "My Account" item
+  (there is no sidebar entry), and resolves `ICurrentUserContext` in `OnInitializedAsync` like every
+  routed page. `Settings.razor` (`/settings`, page title "Administration", `[Authorize(Roles = "Admin")]`)
+  holds Security, Storage, Index, Images, Auto-tagging, the user table and add/edit/delete user; its
+  "Administration" item in the account widget (there is no sidebar link) sits inside
+  `<AuthorizeView Roles="Admin" Context="adminAuth">`, but that is cosmetic — the
+  route attribute is what stops a Member (they get `Routes.razor`'s "not authorized" message). The inner
+  `<AuthorizeView Roles="Admin">` and the `IsInRole(nameof(UserRole.Admin))` check stay as defense in
+  depth, because an already-open circuit keeps its principal until revalidation: markup gating only
+  stops *rendering*, not fetching into a circuit's state, so `OnInitializedAsync` checks the role before
   calling `GetAllUsersAsync()`, `GetNotesFolderPathAsync()`, or `RefreshCountAsync()`. The user
   mutations (create/delete/reset-password) have no server-side role check beyond what
   `UpdateProfileAsync`/`DeleteUserAsync` do; they rely on Blazor Server's render-tree-scoped event
   dispatch (a Member's circuit never receives a handler id for a button `AuthorizeView` didn't
   render). The three user dialogs (edit profile, reset password, delete — inline `MudDialog`s bound to
-  the `*Target` fields) are therefore declared *inside* the Administration `AuthorizeView`. Storage/Index only act on *your own* notes but live in Administration settings to keep
-  "App settings" to what every Member needs.
+  the `*Target` fields) are therefore declared *inside* the Administration `AuthorizeView`. Storage/Index only act on *your own* notes but live in Administration because it is admin-only.
 
 ## Sidebar (`NavMenu.razor`)
 
@@ -204,16 +210,22 @@ container filesystem) every restart regenerates them and silently signs everyone
   bottom-anchors the account section (mobile only — at md and up the widget lives in the app bar).
   `MainLayout` closes the overlay on navigation when the viewport is below md (`IBrowserViewportService`).
 - **Account widget:** `AccountMenu.razor` (`Components/Layout/`, injects nothing) is rendered twice — in
-  `MainLayout`'s `MudAppBar` at the right (`d-none d-md-flex`, a `MudMenu` whose `ChildContent` is the
-  `/logout` form) and at the bottom of `NavMenu` (`d-md-none`, the original `MudCollapse`). CSS
+  `MainLayout`'s `MudAppBar` at the right (`d-none d-md-flex`, a `MudMenu` whose `ChildContent` is a
+  "My Account" `MudMenuItem Href="/account"` and, for admins only, an "Administration"
+  `MudMenuItem Href="/settings"` above the `/logout` form) and at the bottom of `NavMenu`
+  (`d-md-none`, the original `MudCollapse`, with the same two links as `MudButton Href`s — class
+  `jn-account-link` — above the same form). The admin item is wrapped in a nested
+  `<AuthorizeView Roles="Admin" Context="adminAuth">`; the context is renamed so it can't collide with the
+  outer `auth` one or MudMenu's own `context`. CSS
   show/hide was chosen over `MudHidden` (needs JS, flashes). The display name and avatar initials
   (`UserInitials.Compute`, pure static: `FirstName[0]` + `LastName[0]` if both, else first two letters of
   first name, then username; max 2 chars) are looked up once per circuit in
   `MainLayout.OnInitializedAsync` and passed down as parameters. Sign-out is still a plain
   `<form method="post" action="/logout">` with a `MudButton ButtonType="Submit"`, never a
-  `MudMenuItem`/`OnClick` — profile editing lives in `/settings`'s Account card instead, so there is no
-  top-level nav entry for it.
-- **Order:** Search, All Notes, divider, New Text Note, New Checklist Note, divider, Settings, Trash (the
+  `MudMenuItem`/`OnClick` (it must write `Set-Cookie`); "My Account" is plain navigation, so an `Href`
+  item is fine. Profile editing (`/account`) and Administration (`/settings`) are reached only from this
+  widget, so there is no top-level nav entry for either.
+- **Order:** Search, All Notes, divider, New Text Note, New Checklist Note, divider, Trash (the
   dividers are `MudDivider`s inside the same `AuthorizeView` as the New-note links). Icons are MudBlazor's
   built-in `Icons.Material.*` (compiled SVG path strings — no icon font, no network). The vendored UI
   dependencies are Roboto and mermaid, under `wwwroot/lib/`; MudBlazor itself comes from NuGet. The

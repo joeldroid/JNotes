@@ -1,4 +1,4 @@
-/* Settings page: each section is a bordered card; a few small layout helpers for inline forms. */
+/* Administration (/settings) and My Account (/account) pages: each section is a bordered card; a few small layout helpers for inline forms. */
 .jn-settings-group {
     margin-bottom: 2rem;
 }

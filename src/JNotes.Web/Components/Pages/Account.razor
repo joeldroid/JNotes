@@ -1,0 +1,95 @@
+@page "/account"
+@attribute [Authorize]
+@inject IUserRepository UserRepository
+@inject IUserManagementService UserManagementService
+@inject ICurrentUserContext CurrentUser
+@inject NavigationManager NavigationManager
+
+<PageTitle>My Account</PageTitle>
+
+<MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-3">My Account</MudText>
+
+<MudPaper Outlined="true" Class="jn-settings-card jn-settings-card-narrow">
+    @if (_profileError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true" Class="mb-2">@_profileError</MudAlert>
+    }
+
+    <MudText Class="mb-2">
+        <strong>Username:</strong> @_currentUserAccount?.Username
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Inline="true">(username can't be changed here)</MudText>
+    </MudText>
+
+    <MudStack Spacing="2" Class="mb-3">
+        <MudTextField T="string" @bind-Value="_profileFirstName" Immediate="true" Label="First name" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        <MudTextField T="string" @bind-Value="_profileLastName" Immediate="true" Label="Last name" Variant="Variant.Outlined" Margin="Margin.Dense" />
+        <MudTextField T="string" @bind-Value="_profileEmail" Immediate="true" Label="Email" Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Disabled="@(!_canEditEmail)"
+                      HelperText="@(_canEditEmail ? null : "Only an admin can change your email.")" />
+        <MudStack Row="true" Spacing="2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="SaveProfileAsync" Disabled="_isSavingProfile">
+                @(_isSavingProfile ? "Saving…" : "Save profile")
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Href="/account/change-password">Change password</MudButton>
+        </MudStack>
+    </MudStack>
+</MudPaper>
+
+@code {
+    private UserAccount? _currentUserAccount;
+    private string _profileFirstName = "";
+    private string _profileLastName = "";
+    private string _profileEmail = "";
+    private bool _canEditEmail;
+    private bool _isSavingProfile;
+    private string? _profileError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currentUserAccount = await UserRepository.GetUserByIdAsync(CurrentUser.UserId);
+        if (_currentUserAccount is not null)
+        {
+            _canEditEmail = _currentUserAccount.Role == UserRole.Admin;
+            _profileFirstName = _currentUserAccount.FirstName ?? "";
+            _profileLastName = _currentUserAccount.LastName ?? "";
+            _profileEmail = _currentUserAccount.Email ?? "";
+        }
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        _isSavingProfile = true;
+        _profileError = null;
+
+        var firstName = string.IsNullOrWhiteSpace(_profileFirstName) ? null : _profileFirstName.Trim();
+        var lastName = string.IsNullOrWhiteSpace(_profileLastName) ? null : _profileLastName.Trim();
+        // If email isn't editable, send back exactly what's already on the account rather than the
+        // (disabled, but still present) input's value — belt-and-suspenders alongside the
+        // server-side check in IUserManagementService, not a substitute for it.
+        var email = _canEditEmail
+            ? (string.IsNullOrWhiteSpace(_profileEmail) ? null : _profileEmail.Trim())
+            : _currentUserAccount!.Email;
+
+        try
+        {
+            await UserManagementService.UpdateProfileAsync(CurrentUser.UserId, CurrentUser.UserId, firstName, lastName, email);
+
+            // Forced full reload so the account widget's displayed name and initials (looked up once per
+            // circuit in MainLayout, a sibling of this page, from the freshly-saved first name) refresh in
+            // the app bar and sidebar — a normal in-circuit re-render of this page alone wouldn't touch them.
+            NavigationManager.NavigateTo("/account", forceLoad: true);
+        }
+        catch (DuplicateEmailException)
+        {
+            _profileError = $"Email '{email}' is already in use by another account.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            _profileError = ex.Message;
+        }
+        finally
+        {
+            _isSavingProfile = false;
+        }
+    }
+}
