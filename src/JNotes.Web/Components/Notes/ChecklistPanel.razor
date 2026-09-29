@@ -1,13 +1,11 @@
-@* The checklist — items grouped by category, plus the add-item and add-category boxes.
+@* The checklist — items grouped by category.
    Interactive in NoteView (goes through NoteService); ChecklistNoteEditor sets ReadOnly, so it's just
-   a live preview of the markdown being edited (inert checkboxes, no add boxes). This component
-   only reports what the user did through its callbacks and renders whatever Body it's handed. Its
-   two root elements are meant to sit in a flex-column parent: the list scrolls (jn-fill) and the
-   boxes stay pinned (jn-noshrink); in a plain block parent those classes are harmless. *@
+   a live preview of the markdown being edited (inert checkboxes). This component only reports what
+   the user did through its callback and renders whatever Body it's handed. Its root is meant to sit
+   in a flex-column parent, where the list scrolls (jn-fill); in a plain block parent that class is
+   harmless. *@
 @{
     var sections = ChecklistMarkdownParser.ParseSections(Body);
-    var target = ResolveTarget(sections);
-    var hasCategories = sections.Any(s => s.Title is not null);
 }
 
 <div class="jn-fill">
@@ -35,87 +33,24 @@
             }
             @if (section.Items.Count == 0)
             {
-                <MudText Color="Color.Secondary" Class="jn-check-empty">
-                    @(section.Title is null && !ReadOnly ? "No items yet — add one below." : "Nothing here yet.")
-                </MudText>
+                <MudText Color="Color.Secondary" Class="jn-check-empty">Nothing here yet.</MudText>
             }
         </div>
     }
 </div>
 
-@if (!ReadOnly)
-{
-    <div class="jn-noshrink">
-        <div class="jn-add-row">
-            @if (hasCategories)
-            {
-                <MudSelect T="int" Label="Category" aria-label="Category for the new item" Variant="Variant.Outlined" Margin="Margin.Dense"
-                           Disabled="Disabled" Class="jn-add-category"
-                           Value="@(target.HeadingLineIndex ?? UncategorizedTarget)" ValueChanged="OnTargetChanged">
-                    @foreach (var section in sections)
-                    {
-                        <MudSelectItem T="int" Value="@(section.HeadingLineIndex ?? UncategorizedTarget)">@(section.Title ?? "No category")</MudSelectItem>
-                    }
-                </MudSelect>
-            }
-            <MudTextField T="string" @ref="_newItemInput" Value="_newItemText" ValueChanged="OnNewItemInput" Immediate="true"
-                          Placeholder="Add an item" aria-label="Add a checklist item" Variant="Variant.Outlined" Margin="Margin.Dense"
-                          Disabled="Disabled" OnKeyDown="OnNewItemKeyDownAsync" Class="jn-add-input" />
-            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
-                       Disabled="@(Disabled || string.IsNullOrWhiteSpace(_newItemText))" OnClick="AddItemAsync">Add</MudButton>
-        </div>
-        <div class="jn-add-row">
-            <MudTextField T="string" Value="_newCategoryText" ValueChanged="OnNewCategoryInput" Immediate="true"
-                          Placeholder="New category" aria-label="New category name" Variant="Variant.Outlined" Margin="Margin.Dense"
-                          Disabled="Disabled" OnKeyDown="OnNewCategoryKeyDownAsync" Class="jn-add-input" />
-            <MudButton Variant="Variant.Outlined"
-                       Disabled="@(Disabled || string.IsNullOrWhiteSpace(_newCategoryText))" OnClick="AddCategoryAsync">Add category</MudButton>
-        </div>
-    </div>
-}
-
 @code {
-    // <option value> for the uncategorized section, which has no heading line to identify it by.
-    private const int UncategorizedTarget = -1;
-    // "Nothing chosen yet" — falls back to the last category, which is where a fresh one lands.
-    private const int NoTarget = -2;
-
     [Parameter, EditorRequired] public string Body { get; set; } = "";
 
     /// <summary>Disables every control — the view sets it while a save is in flight so clicks can't race.</summary>
     [Parameter] public bool Disabled { get; set; }
 
-    /// <summary>Renders the list only — checkboxes inert but styled normally, no add-item/add-category boxes. The editor uses this: once the user is editing the raw markdown, a second way to edit it just crowds the UI.</summary>
+    /// <summary>Renders the list with checkboxes inert but styled normally. The editor uses this: once the user is editing the raw markdown, a second way to edit it just duplicates the UI.</summary>
     [Parameter] public bool ReadOnly { get; set; }
 
     [Parameter] public EventCallback<(int LineIndex, bool IsChecked)> OnItemChecked { get; set; }
-    [Parameter] public EventCallback<(string Text, int? CategoryHeadingLine)> OnAddItem { get; set; }
-    [Parameter] public EventCallback<string> OnAddCategory { get; set; }
 
-    private MudTextField<string>? _newItemInput;
-    private string _newItemText = "";
-    private string _newCategoryText = "";
-    private int _target = NoTarget;
     private int _listVersion;
-    private bool _focusNewItemInput;
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        // Wait for a render where the input is enabled again (the view disables it during a save,
-        // which drops focus) so several items can be typed in a row.
-        if (_focusNewItemInput && !Disabled && _newItemInput is not null)
-        {
-            _focusNewItemInput = false;
-            await _newItemInput.FocusAsync();
-        }
-    }
-
-    // The category new items go to. Identified by heading line, which raw-markdown edits can shift or
-    // remove, so a stale choice quietly falls back to the last category rather than erroring.
-    private ChecklistSection ResolveTarget(IReadOnlyList<ChecklistSection> sections) =>
-        sections.FirstOrDefault(s => (s.HeadingLineIndex ?? UncategorizedTarget) == _target) ?? sections[^1];
-
-    private void OnTargetChanged(int value) => _target = value;
 
     private async Task OnItemCheckedAsync(int lineIndex, bool isChecked)
     {
@@ -131,57 +66,5 @@
         // the DOM checkbox ticked. Bumping the version changes every row's key, forcing a
         // rebuild from the model. (Also snaps the box back if the save failed.)
         _listVersion++;
-    }
-
-    private void OnNewItemInput(string? value) => _newItemText = value ?? "";
-
-    private async Task OnNewItemKeyDownAsync(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter")
-        {
-            await AddItemAsync();
-        }
-    }
-
-    private async Task AddItemAsync()
-    {
-        if (Disabled || string.IsNullOrWhiteSpace(_newItemText))
-        {
-            return;
-        }
-
-        var heading = ResolveTarget(ChecklistMarkdownParser.ParseSections(Body)).HeadingLineIndex;
-        await OnAddItem.InvokeAsync((_newItemText, heading));
-
-        _newItemText = "";
-        _listVersion++;
-        _focusNewItemInput = true;
-    }
-
-    private void OnNewCategoryInput(string? value) => _newCategoryText = value ?? "";
-
-    private async Task OnNewCategoryKeyDownAsync(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter")
-        {
-            await AddCategoryAsync();
-        }
-    }
-
-    private async Task AddCategoryAsync()
-    {
-        if (Disabled || string.IsNullOrWhiteSpace(_newCategoryText))
-        {
-            return;
-        }
-
-        await OnAddCategory.InvokeAsync(_newCategoryText);
-
-        // A new category is always the last section, so dropping the explicit choice selects it and
-        // the next item typed lands there.
-        _target = NoTarget;
-        _newCategoryText = "";
-        _listVersion++;
-        _focusNewItemInput = true;
     }
 }

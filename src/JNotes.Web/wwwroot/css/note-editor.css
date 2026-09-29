@@ -108,21 +108,17 @@
        of sync with the textarea. */
     overflow: auto;
 
-    /* The checklist preview: a flex column so its list scrolls while the (absent, when read-only) boxes stay pinned. */
+    /* The checklist preview: a flex column so its list scrolls. */
     &.note-editor-preview-column {
         display: flex;
         flex-direction: column;
     }
 }
 
-/* ChecklistPanel's two root elements: the list fills and scrolls, the add boxes stay pinned. */
+/* ChecklistPanel's root: the list fills its flex-column parent and scrolls. */
 .jn-fill {
     flex: 1 1 auto;
     overflow: auto;
-}
-
-.jn-noshrink {
-    flex-shrink: 0;
 }
 
 .jn-check-heading {
@@ -163,25 +159,4 @@
    which would grey them out). MudCheckBox's ReadOnly blocks keyboard toggling; this blocks the pointer. */
 .checklist-readonly {
     pointer-events: none;
-}
-
-.jn-add-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 0.5rem;
-    margin-top: 0.75rem;
-
-    & > .mud-button-root {
-        /* Line the button up with the dense outlined input beside it. */
-        height: 40px;
-    }
-}
-
-.jn-add-category {
-    flex: 0 1 12rem;
-}
-
-.jn-add-input {
-    flex: 1 1 12rem;
 }

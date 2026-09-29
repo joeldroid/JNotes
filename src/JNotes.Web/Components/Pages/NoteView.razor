@@ -59,11 +59,10 @@ else
 
         @if (_note.Type == NoteType.Checklist)
         {
-            // Checking items, adding items, and adding categories are the changes allowed from the view —
-            // each goes through NoteService, never a free body edit (that stays in the editor).
+            // Checking items is the one change allowed from the view — it goes through NoteService,
+            // never a free body edit (that stays in the editor).
             <MudPaper Outlined="true" Class="pa-3">
-                <ChecklistPanel Body="@_note.Body" Disabled="_isMutating"
-                                OnItemChecked="SetItemCheckedAsync" OnAddItem="AddItemAsync" OnAddCategory="AddCategoryAsync" />
+                <ChecklistPanel Body="@_note.Body" Disabled="_isMutating" OnItemChecked="SetItemCheckedAsync" />
             </MudPaper>
         }
         else
@@ -100,14 +99,6 @@ else
         MutateChecklistAsync(
             () => NoteService.SetChecklistItemCheckedAsync(Id, change.LineIndex, change.IsChecked),
             "update the checklist");
-
-    private Task AddItemAsync((string Text, int? CategoryHeadingLine) add) =>
-        MutateChecklistAsync(
-            () => NoteService.AddChecklistItemAsync(Id, add.Text, add.CategoryHeadingLine),
-            "add the item");
-
-    private Task AddCategoryAsync(string name) =>
-        MutateChecklistAsync(() => NoteService.AddChecklistCategoryAsync(Id, name), "add the category");
 
     private async Task MutateChecklistAsync(Func<Task<Note>> mutation, string action)
     {

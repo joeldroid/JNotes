@@ -336,9 +336,8 @@ container filesystem) every restart regenerates them and silently signs everyone
 **Opening a note lands on a read-only view; editing is a separate route.** `NoteView.razor`
 (`/notes/{id}`) renders title, tags, and body (`MarkdownPreview` for text notes; the shared
 `ChecklistPanel` for checklists) with Edit and Delete (same soft-delete as the editor). The view
-never edits free-form body text, but for checklists it can **toggle items, add items, and add
-categories** via `INoteService.SetChecklistItemCheckedAsync`/`AddChecklistItemAsync`/
-`AddChecklistCategoryAsync`. A single `_isMutating` flag (passed to the panel as `Disabled`, which
+never edits free-form body text, but for checklists it can **toggle items** via
+`INoteService.SetChecklistItemCheckedAsync` (adding items/categories is done in the editor). A single `_isMutating` flag (passed to the panel as `Disabled`, which
 disables every control while a call is in flight) stands in for the editor's save gate. `NoteEditor.razor` is at `/notes/{id}/edit` with a "Save" link back (autosave has already written everything; the button just returns to the view) and a "Delete" button — the same filled-primary/outlined-error icon+text pair as the view's Edit/Delete.
 **The same page also serves `/notes/new/{TypeName}` as an unsaved draft** (`IsNew` = `TypeName is not null`): an in-memory `Note` with `Id = Guid.Empty`, built in `OnParametersSetAsync` (the component is reused when switching text ↔ checklist). **No autosave** — `OnContentEdited`/`OnMetadataEdited` skip the debouncers and `DisposeAsync` skips its flush, since either would create the note. **Save** (`SaveNewAsync`) refuses an empty/whitespace title with an inline error, else calls `INoteService.CreateAsync` and navigates to the view; Delete becomes **Discard** (a link to `/`, nothing on disk to trash). A `NavigationLock` confirms before dropping a draft that has content (`_draftSaved` is set before Save's own navigation so it doesn't block itself). An image pasted into a draft is uploaded immediately, so a discarded draft can leave an orphan for the scheduled cleanup.
 The view's whole content (header, meta, body) sits in a centered `.note-view` column capped by
@@ -406,9 +405,9 @@ difference: `TextNoteEditor` has the `MarkdownToolbar` (bold etc.); `ChecklistNo
 deliberately doesn't, and has just an "Item" and a "Category" button instead (its own `_textareaRef`, no
 `MarkdownToolbar`). They call `markdown-toolbar.js`'s `insertLine`, which puts `- [ ] Item` / `## Category`
 on its own line below the cursor's line (a blank line is kept above a category) and selects the placeholder. **The editor's checklist pane is a pure preview** — inert checkboxes, no
-add-item/add-category boxes (`ChecklistPanel ReadOnly="true"`): once the user is editing the raw
-markdown, a second way to edit it just duplicates and crowds the UI. Checking, adding items, and
-adding categories happen in `NoteView` only. The body input stays a **native `<textarea>`** (styled as
+add controls (`ChecklistPanel ReadOnly="true"`): once the user is editing the raw
+markdown, a second way to edit it just duplicates the UI. Checking happens in `NoteView` only; adding
+items and categories happens through the editor's toolbar buttons. The body input stays a **native `<textarea>`** (styled as
 `.note-editor-textarea`), not a `MudTextField`: `markdown-toolbar.js` and `image-paste.js` drive the real
 DOM element and rely on a real `input` event.
 
@@ -553,15 +552,10 @@ the heading if the category is empty.
 **`ChecklistPanel` is the one checklist UI, used by both the view (interactive) and the editor
 (`ReadOnly`, see above)** (`Components/Notes/`). `ReadOnly` renders just the grouped list with
 inert checkboxes — deliberately not `Disabled`, which greys them out; instead `MudCheckBox`'s own `ReadOnly`
-blocks toggling and `.checklist-readonly` sets `pointer-events: none` (`note-editor.css`); the rest of this paragraph describes the interactive mode. It groups items by section, has a category `MudSelect<int>` (shown only once
-headings exist; defaults to the last category, and a new category is auto-selected) beside the
-add-item box, and a separate "New category" box. It owns no persistence: it renders the `Body` it's
-given and reports actions through `OnItemChecked`/`OnAddItem`/`OnAddCategory` callbacks, so the
-panel stays free of any save logic. The category
-choice is remembered by heading *line index*, which raw edits can shift, so a stale one falls back to
-the last category. Renaming, deleting, or reordering categories is done in the editor's markdown
-textarea (the editor's panel is read-only). After an add, the panel refocuses its item input on the next render where it's enabled
-(the view disables it during a save, which drops focus).
+blocks toggling and `.checklist-readonly` sets `pointer-events: none` (`note-editor.css`); without `ReadOnly` (the view) the checkboxes toggle. It groups items by section and has no add-item or
+add-category controls. It owns no persistence: it renders the `Body` it's given and reports a toggle
+through the `OnItemChecked` callback, so the panel stays free of any save logic. Adding, renaming,
+deleting, or reordering categories and items is done in the editor's markdown textarea and toolbar.
 
 **`@key` + `_listVersion` is required on checklist rows** (`ChecklistPanel.razor`): each row's
 `@key` includes `_listVersion`, bumped after every mutation. Without it, the `MudCheckBox` has already
