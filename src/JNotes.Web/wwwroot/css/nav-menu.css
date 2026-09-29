@@ -1,7 +1,7 @@
 /* App chrome: the app bar brand, page padding, the sidebar's search box, and the account widget
    (AccountMenu.razor: at the bottom of the sidebar below md, at the right of the app bar from md up).
-   Everything else in the sidebar is MudNavMenu/MudNavLink and styles itself, except .jn-nav-active
-   below. */
+   Everything else in the sidebar is MudNavMenu/MudNavLink and styles itself, except the New Note
+   dropdown button (.jn-nav-new) below. */
 .jn-brand {
     display: inline-flex;
     align-items: center;
@@ -40,6 +40,27 @@
 
 .jn-nav-search {
     margin-bottom: 0.5rem;
+}
+
+/* "New Note" (NavMenu.razor): a filled MudButton activating a MudMenu, kept outside MudNavMenu.
+   .mud-menu is inline-flex by default, so it is stretched explicitly to span the sidebar like the
+   search box and nav links; its activator is display: contents, which makes the button a direct flex
+   child that fills it. The label inherits the button's justify-content, so flex-start below left-aligns it. */
+.jn-nav-new {
+    margin-bottom: 0.5rem;
+
+    & .mud-menu {
+        display: flex;
+        width: 100%;
+    }
+
+    /* Left-aligned like the nav links, and keeping the label's own casing ("New Note") instead of
+       MudBlazor's default uppercase button text. */
+    & .mud-menu .mud-button-root {
+        width: 100%;
+        justify-content: flex-start;
+        text-transform: none;
+    }
 }
 
 .jn-account {
@@ -108,23 +129,4 @@
 .jn-account-popover .jn-signout-appbar {
     margin: 0.5rem 0.75rem;
     min-width: 10rem;
-}
-
-/* "New Text Note"/"New Checklist Note" (NavMenu.razor) have no Href - MudNavLink only raises OnClick
-   when Href is unset - so MudBlazor's own NavLink-based ".mud-nav-link.active" route highlight never
-   applies to them. NavMenu.razor adds .jn-nav-active to the *outer* .mud-nav-item wrapper instead
-   (the only element its Class parameter reaches - MudNavLink's inner .mud-nav-link element sets its
-   own class="@LinkClassname" after any splatted attributes, so anything passed in from outside there
-   would just be overwritten). This reproduces MudBlazor's own default-color-variant active styling on
-   that inner element from the outside. */
-.jn-nav-active > .mud-nav-link {
-    border-inline-end-style: solid;
-    border-inline-end-width: 2px;
-    color: var(--mud-palette-primary);
-    background-color: var(--mud-palette-action-default-hover);
-    font-weight: 500 !important;
-}
-
-.jn-nav-active > .mud-nav-link:hover {
-    background-color: var(--mud-palette-action-default-hover);
 }

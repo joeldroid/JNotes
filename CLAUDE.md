@@ -225,29 +225,29 @@ container filesystem) every restart regenerates them and silently signs everyone
   `MudMenuItem`/`OnClick` (it must write `Set-Cookie`); "My Account" is plain navigation, so an `Href`
   item is fine. Profile editing (`/account`) and Administration (`/settings`) are reached only from this
   widget, so there is no top-level nav entry for either.
-- **Order:** Search, All Notes, divider, New Text Note, New Checklist Note, divider, Trash (the
-  dividers are `MudDivider`s inside the same `AuthorizeView` as the New-note links). Icons are MudBlazor's
+- **Order:** Search, New Note (the dropdown button below), All Notes, divider, Trash (Search and New Note
+  share one `<AuthorizeView Context="auth">` outside `MudNavMenu`; the divider is a plain `MudDivider`). Icons are MudBlazor's
   built-in `Icons.Material.*` (compiled SVG path strings — no icon font, no network). The vendored UI
   dependencies are Roboto and mermaid, under `wwwroot/lib/`; MudBlazor itself comes from NuGet. The
   search field has a leading search icon and clears itself on every `@onclick` (an unmatched attribute
   on `MudTextField`, which lands on its root element). Nav labels are title case throughout.
-- **"New Text Note" / "New Checklist Note" live here, not in `NoteList.razor`, so they work from any page.**
-  Each only navigates to `/notes/new/{text|checklist}` — **nothing is created until Save** (see
-  `NoteEditor`'s new-note mode under "Notes UI"). New notes of every type start with an **empty title, tags,
-  and body**. They're two plain `MudNavLink`s with an `OnClick` and no `Href` (MudBlazor only raises
-  `OnClick` when `Href` is unset) rather than one "New note" dropdown — a `MudMenu` inside `MudNavMenu`
-  didn't work in practice, and one click per type is faster anyway. They're wrapped in an unqualified
-  `<AuthorizeView>` (not a manual `IsAuthenticated` check) because `NavMenu` also renders for
-  `NotFound`/`Error` (`[AllowAnonymous]`, same `MainLayout`), and an anonymous circuit never gets a handler
-  id for markup `AuthorizeView` didn't render.
-  **Gotcha:** no `Href` also means MudBlazor's own NavLink-based active-route highlight never applies to
-  these two — `NavMenu.razor`'s `IsNewNoteRouteActive` reads `NavigationManager.Uri` directly (refreshed via
-  a `LocationChanged` subscription, since `MainLayout`/`NavMenu` survive client-side navigation and never
-  re-run `OnInitializedAsync`) and adds `jn-nav-active` to the link's outer `.mud-nav-item` — the only
-  element `MudNavLink`'s `Class` parameter reaches; its inner `.mud-nav-link` element sets its own
-  `class="@LinkClassname"` after any splatted attributes, clobbering anything passed in that way — and
-  `nav-menu.css` reproduces MudBlazor's default-color-variant active styling on that inner element from the
-  outside.
+- **"New Note" lives here, not in `NoteList.razor`, so it works from any page.** It is one `MudMenu` whose
+  `ActivatorContent` is a `Variant.Filled`/`Color.Primary` full-width `MudButton` ("New Note", with + and
+  dropdown icons), with two `MudMenuItem Href`s, "Text" (`/notes/new/text`) and "Checklist"
+  (`/notes/new/checklist`). It only navigates — **nothing is created until Save** (see `NoteEditor`'s
+  new-note mode under "Notes UI"). New notes of every type start with an **empty title, tags, and body**.
+  It sits **outside** `MudNavMenu`, in its own `div.jn-nav-new` between the search box and the nav list: a
+  `MudMenu` nested *inside* `MudNavMenu` didn't work in practice, whereas as a sibling it behaves like
+  `AccountMenu`'s app-bar menu (its popover renders in `MainLayout`'s `MudPopoverProvider`, so the drawer
+  can't clip it, and `MainLayout`'s close-on-navigation closes the mobile drawer for free). It shares the
+  search box's unqualified `<AuthorizeView Context="auth">` (not a manual `IsAuthenticated` check) because
+  `NavMenu` also renders for `NotFound`/`Error` (`[AllowAnonymous]`, same `MainLayout`), and an anonymous
+  circuit never gets a handler id for markup `AuthorizeView` didn't render; the context is renamed so it
+  can't collide with `ActivatorContent`'s own `context`.
+  **No active-route indication, deliberately:** neither the button nor the menu items reflect an open
+  `/notes/new/{type}` draft (the editor page itself makes that obvious), so `NavMenu` needs no
+  `LocationChanged` subscription. `.mud-menu` is `inline-flex` by default, so `nav-menu.css` stretches
+  it (and its button) to the sidebar's full width explicitly.
 - **Search** is a single free-text box (title, body, tags) with no type/tag options. Enter navigates
   to `/?q=<url-encoded text>` (empty → `/`); `NoteList.razor` reads it via
   `[SupplyParameterFromQuery(Name = "q")]` and refreshes from `OnParametersSetAsync`, not
