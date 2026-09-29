@@ -1,4 +1,15 @@
-<div class="jn-editor-toolbar-row jn-editor-toolbar-end">
+@implements IAsyncDisposable
+@inject IJSRuntime JSRuntime
+
+<div class="jn-editor-toolbar-row">
+    <div class="jn-toolbar">
+        <MudButtonGroup Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default" aria-label="Checklist">
+            <MudButton title="Add an item" OnClick="AddItemAsync"
+                       StartIcon="@Icons.Material.Filled.AddTask">Item</MudButton>
+            <MudButton title="Add a category" OnClick="AddCategoryAsync"
+                       StartIcon="@Icons.Material.Filled.CreateNewFolder">Category</MudButton>
+        </MudButtonGroup>
+    </div>
     <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => _showChecklist = !_showChecklist">
         @(_showChecklist ? "Hide checklist" : "Show checklist")
     </MudButton>
@@ -6,7 +17,7 @@
 
 <div class="jn-editor-split @(_showChecklist ? "jn-editor-split-two" : "")">
     <div>
-        <textarea class="note-editor-textarea" aria-label="Checklist markdown"
+        <textarea @ref="_textareaRef" class="note-editor-textarea" aria-label="Checklist markdown"
                   value="@Body" @oninput="OnInput"></textarea>
     </div>
     @if (_showChecklist)
@@ -25,6 +36,37 @@
     [Parameter] public EventCallback<string> BodyChanged { get; set; }
 
     private bool _showChecklist = true;
+    private ElementReference _textareaRef;
+    private IJSObjectReference? _toolbarModule;
 
     private Task OnInput(ChangeEventArgs e) => BodyChanged.InvokeAsync(e.Value?.ToString() ?? "");
+
+    // Both go through markdown-toolbar.js, which fires a real input event, so Body and the autosave
+    // debounce pick the insertion up exactly like typing.
+    private Task AddItemAsync() => InsertLineAsync("- [ ] ", "Item", blankBefore: false);
+
+    private Task AddCategoryAsync() => InsertLineAsync("## ", "Category", blankBefore: true);
+
+    private async Task InsertLineAsync(string prefix, string placeholder, bool blankBefore)
+    {
+        _toolbarModule ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/markdown-toolbar.js");
+        await _toolbarModule.InvokeVoidAsync("insertLine", _textareaRef, prefix, placeholder, blankBefore);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_toolbarModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _toolbarModule.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The circuit's already gone (e.g. tab closed/navigated away) — nothing to clean up.
+        }
+    }
 }

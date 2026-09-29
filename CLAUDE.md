@@ -403,7 +403,9 @@ left, and a togglable, **visible-by-default** right pane (`MarkdownPreview` / a 
 it's hidden. Both right panes share `.note-editor-preview`'s fixed height (see `note-editor.css`);
 the checklist pane is a flex column so its list scrolls. The one
 difference: `TextNoteEditor` has the `MarkdownToolbar` (bold etc.); `ChecklistNoteEditor`
-deliberately doesn't. **The editor's checklist pane is a pure preview** — inert checkboxes, no
+deliberately doesn't, and has just an "Item" and a "Category" button instead (its own `_textareaRef`, no
+`MarkdownToolbar`). They call `markdown-toolbar.js`'s `insertLine`, which puts `- [ ] Item` / `## Category`
+on its own line below the cursor's line (a blank line is kept above a category) and selects the placeholder. **The editor's checklist pane is a pure preview** — inert checkboxes, no
 add-item/add-category boxes (`ChecklistPanel ReadOnly="true"`): once the user is editing the raw
 markdown, a second way to edit it just duplicates and crowds the UI. Checking, adding items, and
 adding categories happen in `NoteView` only. The body input stays a **native `<textarea>`** (styled as

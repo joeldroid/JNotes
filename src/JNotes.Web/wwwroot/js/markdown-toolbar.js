@@ -34,6 +34,38 @@ export function insertAtCursor(textarea, text) {
     fireInput(textarea);
 }
 
+// Inserts `prefix + placeholder` as its own line below the line the cursor is on (or in place of the
+// cursor's line if that one is blank), then selects the placeholder so typing replaces it. With
+// blankBefore, a blank line is kept above it (for a checklist category heading). Used by the
+// checklist editor's "Add item" / "Add category" buttons.
+export function insertLine(textarea, prefix, placeholder, blankBefore) {
+    const value = textarea.value;
+    const pos = textarea.selectionEnd;
+
+    const lineStart = value.lastIndexOf('\n', pos - 1) + 1;
+    let lineEnd = value.indexOf('\n', pos);
+    if (lineEnd === -1) {
+        lineEnd = value.length;
+    }
+
+    const currentLineBlank = value.slice(lineStart, lineEnd).trim() === '';
+    const insertAt = currentLineBlank ? lineStart : lineEnd;
+    const before = value.slice(0, insertAt);
+
+    let lead = '';
+    if (before.length > 0) {
+        const wanted = blankBefore ? 2 : 1;
+        const existing = before.length - before.replace(/\n+$/, '').length;
+        lead = '\n'.repeat(Math.max(0, wanted - existing));
+    }
+
+    textarea.value = before + lead + prefix + placeholder + value.slice(lineEnd);
+
+    const selStart = insertAt + lead.length + prefix.length;
+    textarea.setSelectionRange(selStart, selStart + placeholder.length);
+    fireInput(textarea);
+}
+
 // Toggles a line prefix (list marker) across every selected line. If every non-blank selected
 // line already has the prefix, it's removed from all of them; otherwise it's added to all of
 // them. addPrefix/hasPrefix/stripPrefix let bullet and ordered lists share this one routine.
