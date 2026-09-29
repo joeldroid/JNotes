@@ -47,7 +47,7 @@ else
                 else
                 {
                     <MudButton Href="@($"/notes/{_note.Id}")" Variant="Variant.Outlined" Color="Color.Primary"
-                               StartIcon="@Icons.Material.Filled.Save">Save</MudButton>
+                               StartIcon="@Icons.Material.Filled.Close">Close</MudButton>
                     <MudButton Variant="Variant.Outlined" Color="Color.Error" title="Move to Trash"
                                StartIcon="@Icons.Material.Outlined.DeleteOutline" OnClick="TrashAsync">Delete</MudButton>
                 }
@@ -289,6 +289,18 @@ else
     private async Task TrashAsync()
     {
         if (_note is null)
+        {
+            return;
+        }
+
+        // true = "Delete"; anything else (Cancel, Esc, backdrop click) leaves the note alone.
+        var name = string.IsNullOrWhiteSpace(_note.Title) ? "Untitled note" : _note.Title;
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            $"Delete \"{name}\"?",
+            "It will be moved to Trash, where you can restore it.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+        if (confirmed != true)
         {
             return;
         }

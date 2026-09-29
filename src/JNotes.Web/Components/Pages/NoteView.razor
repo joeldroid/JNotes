@@ -3,6 +3,7 @@
 @using Microsoft.Extensions.Options
 @inject INoteService NoteService
 @inject NavigationManager NavigationManager
+@inject IDialogService DialogService
 @inject IAppTimeZoneProvider TimeZoneProvider
 @inject IOptions<PdfExportOptions> PdfExportOptions
 
@@ -129,7 +130,19 @@ else
 
     private async Task TrashAsync()
     {
-        if (_note is null)
+        if (_note is null || _isDeleting)
+        {
+            return;
+        }
+
+        // true = "Delete"; anything else (Cancel, Esc, backdrop click) leaves the note alone.
+        var name = string.IsNullOrWhiteSpace(_note.Title) ? "Untitled note" : _note.Title;
+        var confirmed = await DialogService.ShowMessageBoxAsync(
+            $"Delete \"{name}\"?",
+            "It will be moved to Trash, where you can restore it.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+        if (confirmed != true)
         {
             return;
         }
@@ -138,8 +151,8 @@ else
         _actionError = null;
         try
         {
-            // Same soft-delete the editor's trash button does — recoverable from the Trash page,
-            // so no confirmation step here either. No autosave to coordinate with on this page.
+            // Same soft-delete the editor's trash button does — recoverable from the Trash page.
+            // No autosave to coordinate with on this page.
             await NoteService.TrashAsync(_note.Id);
             NavigationManager.NavigateTo("/");
         }
