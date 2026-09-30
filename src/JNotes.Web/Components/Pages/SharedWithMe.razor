@@ -1,0 +1,25 @@
+@page "/shared"
+@attribute [Authorize]
+@inject INoteService NoteService
+@inject IAppTimeZoneProvider TimeZoneProvider
+
+@* Thin routed page, like NoteList: it owns the INoteService call (resolved from the first lifecycle method — see
+   CLAUDE.md's ICurrentUserContext gotcha) and hands the grouped result to NoteGroupList, which injects nothing. *@
+
+<PageTitle>Shared with Me</PageTitle>
+
+<MudText Typo="Typo.h5" HtmlTag="h1" Class="mb-1">Shared with Me</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">Notes other people have shared with you.</MudText>
+
+<NoteGroupList Groups="_groups" EmptyText="Nothing has been shared with you yet." />
+
+@code {
+    // null until the first load finishes (NoteGroupList shows "Loading…"); empty when nothing is shared.
+    private IReadOnlyList<NoteGroup>? _groups;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var notes = await NoteService.ListAsync(new NoteSearchQuery(Scope: NoteListScope.SharedWithMe));
+        _groups = NoteGrouping.GroupByRelativeDate(notes, DateTimeOffset.UtcNow, TimeZoneProvider.TimeZone);
+    }
+}

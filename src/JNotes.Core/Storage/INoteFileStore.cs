@@ -23,6 +23,9 @@ public interface INoteFileStore
     /// <exception cref="Serialization.NoteParseException">The file exists but its front matter can't be parsed.</exception>
     Task<Note> ReadAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default);
 
+    /// <summary>Whether <paramref name="noteId"/>'s live file exists in <paramref name="userId"/>'s folder. Does not look in the trash.</summary>
+    Task<bool> ExistsAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default);
+
     /// <summary>The exact text of the note's file, unparsed.</summary>
     /// <exception cref="NoteNotFoundException">No file exists for <paramref name="noteId"/>.</exception>
     Task<string> ReadRawAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default);

@@ -4,6 +4,7 @@ using JNotes.Core.Export;
 using JNotes.Core.Indexing;
 using JNotes.Core.Notes;
 using JNotes.Core.Serialization;
+using JNotes.Core.Sharing;
 using JNotes.Core.Storage;
 using JNotes.Core.Tagging;
 using JNotes.Core.Users;
@@ -96,9 +97,22 @@ internal sealed class CoreServicesFixture : IAsyncDisposable
 
     public INoteIndexRepository IndexRepository => _scope.ServiceProvider.GetRequiredService<INoteIndexRepository>();
 
+    public INoteSharingService NoteSharing => _scope.ServiceProvider.GetRequiredService<INoteSharingService>();
+
+    public INoteShareRepository ShareRepository => _scope.ServiceProvider.GetRequiredService<INoteShareRepository>();
+
+    public IUserManagementService UserManagement => _scope.ServiceProvider.GetRequiredService<IUserManagementService>();
+
     public void ActAsUserA() => _currentUserContext.UserId = UserAId;
 
     public void ActAsUserB() => _currentUserContext.UserId = UserBId;
+
+    /// <summary>Acts as <paramref name="userId"/> — for users beyond A and B (see <see cref="CreateUserAsync"/>).</summary>
+    public void ActAs(Guid userId) => _currentUserContext.UserId = userId;
+
+    /// <summary>Creates an extra account (password "password123") and returns its id.</summary>
+    public async Task<Guid> CreateUserAsync(string username, UserRole role = UserRole.Member) =>
+        (await UserRepository.CreateUserAsync(username, role, email: null, password: "password123")).Id;
 
     public static async Task<CoreServicesFixture> CreateAsync()
     {

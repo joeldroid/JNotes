@@ -29,7 +29,7 @@ public interface IUserRepository
     /// <summary>Used for both an admin resetting someone's password and a user changing their own.</summary>
     Task SetPasswordAsync(Guid userId, string newPassword, CancellationToken cancellationToken = default);
 
-    /// <summary>Hard-deletes the account row (cascades its notes-index/settings rows) — callers that also need to preserve the user's files should archive them first, see <c>IUserManagementService</c>.</summary>
+    /// <summary>Hard-deletes the account row (cascades its settings and NoteShares rows — as owner and as recipient) — callers that also need to preserve the user's files should archive them first, see <c>IUserManagementService</c>.</summary>
     Task DeleteUserAsync(Guid userId, CancellationToken cancellationToken = default);
 
     /// <summary>

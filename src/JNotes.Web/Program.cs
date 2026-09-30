@@ -2,6 +2,8 @@ using JNotes.Core;
 using JNotes.Core.Data;
 using JNotes.Core.Export;
 using JNotes.Core.Images;
+using JNotes.Core.Notes;
+using JNotes.Core.Storage;
 using JNotes.Core.Tagging;
 using JNotes.Core.Users;
 using JNotes.Web;
@@ -20,6 +22,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
+using Microsoft.Net.Http.Headers;
 using MudBlazor.Services;
 
 // No args: command-line arguments are deliberately not a configuration source (see EnvironmentOnlyConfiguration).
@@ -197,6 +200,33 @@ app.MapGet("/images/{fileName}", async (string fileName, IImageService images, H
     context.Response.Headers.CacheControl = "private, max-age=31536000, immutable";
     context.Response.Headers.XContentTypeOptions = "nosniff";
     return Results.Stream(image.Stream, image.ContentType);
+}).RequireAuthorization();
+
+// The same, for a viewer who isn't the note's owner: an image of a note shared with them, served from the
+// *owner's* folder after INoteService re-checks access to the note on every request (a Read viewer also needs the
+// note's text to mention the file). Still no user id in the URL. Unlike /images this can't be immutable: a revoked
+// share must stop working, so it's `no-cache` (revalidate every time) with an ETag, which makes the revalidation a
+// cheap 304 once the access check has passed. Runs in an ordinary request scope, so the ICurrentUserContext gotcha doesn't apply.
+app.MapGet("/notes/{noteId:guid}/images/{fileName}", async (Guid noteId, string fileName, INoteService notes, HttpContext context, CancellationToken cancellationToken) =>
+{
+    ImageContent? image;
+    try
+    {
+        image = await notes.OpenImageAsync(noteId, fileName, cancellationToken);
+    }
+    catch (NoteNotFoundException)
+    {
+        return Results.NotFound();
+    }
+
+    if (image is null)
+    {
+        return Results.NotFound();
+    }
+
+    context.Response.Headers.CacheControl = "private, no-cache";
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    return Results.Stream(image.Stream, image.ContentType, entityTag: new EntityTagHeaderValue($"\"{fileName}\""));
 }).RequireAuthorization();
 
 // Optional PDF export: mapped only when GOTENBERG_URL is valid, so with the feature off the route simply 404s like any unknown URL.

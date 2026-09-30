@@ -13,6 +13,12 @@
 
     [Parameter, EditorRequired] public string Markdown { get; set; } = "";
 
+    /// <summary>
+    /// Set for a viewer who isn't the note's owner: uploaded images are then served from the note-scoped
+    /// <c>/notes/{id}/images/…</c> route instead of the caller's own <c>/images/…</c>.
+    /// </summary>
+    [Parameter] public Guid? ImagesNoteId { get; set; }
+
     private string _html = "";
     private bool _hasMermaid;
     private ElementReference _container;
@@ -20,7 +26,7 @@
 
     protected override void OnParametersSet()
     {
-        _html = MarkdownRenderer.RenderToHtml(Markdown);
+        _html = ImagesNoteId is { } id ? MarkdownRenderer.RenderToHtml(Markdown, id) : MarkdownRenderer.RenderToHtml(Markdown);
         _hasMermaid = _html.Contains(MermaidBlockMarker, StringComparison.Ordinal);
     }
 

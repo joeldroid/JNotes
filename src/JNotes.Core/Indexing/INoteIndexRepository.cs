@@ -15,6 +15,11 @@ namespace JNotes.Core.Indexing;
 /// </remarks>
 public interface INoteIndexRepository
 {
+    /// <summary>
+    /// <paramref name="userId"/>'s own notes plus (per <see cref="NoteSearchQuery.Scope"/>) the notes other users have
+    /// shared with them, newest first. Shared rows carry <see cref="NoteSummary.SharedWithMe"/>; own rows carry
+    /// <see cref="NoteSummary.OutgoingShareCount"/>.
+    /// </summary>
     Task<IReadOnlyList<NoteSummary>> SearchAsync(Guid userId, NoteSearchQuery query, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<string>> GetDistinctTagsAsync(Guid userId, CancellationToken cancellationToken = default);

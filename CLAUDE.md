@@ -42,7 +42,7 @@ docker compose up --build   # production-shaped: what Docker actually runs, not 
 
 **Web never touches the filesystem or EF Core/PostgreSQL directly** — only Core's interfaces
 (`INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
-`IUserManagementService`, `IImageService`, `IImageCleanupService`, `INoteExportService`, `INoteAutoTagger`). Enforced at build time: `Microsoft.CodeAnalysis.BannedApiAnalyzers`
+`IUserManagementService`, `IImageService`, `IImageCleanupService`, `INoteExportService`, `INoteAutoTagger`, `INoteSharingService`). Enforced at build time: `Microsoft.CodeAnalysis.BannedApiAnalyzers`
 (`src/JNotes.Web/BannedSymbols.txt`) bans `System.IO.File`/`Directory`, `DbContext`, and Npgsql's
 `NpgsqlConnection`/`NpgsqlDataSource` in Web. Pure static Core
 helpers (`ChecklistMarkdownParser`, `NoteGrouping`, `UserInitials`, `UserValidation`) are fine to
@@ -225,7 +225,8 @@ container filesystem) every restart regenerates them and silently signs everyone
   `MudMenuItem`/`OnClick` (it must write `Set-Cookie`); "My Account" is plain navigation, so an `Href`
   item is fine. Profile editing (`/account`) and Administration (`/settings`) are reached only from this
   widget, so there is no top-level nav entry for either.
-- **Order:** Search, New Note (the dropdown button below), All Notes, divider, Trash (Search and New Note
+- **Order:** Search, New Note (the dropdown button below), All Notes, Shared with Me (a plain `MudNavLink` to
+  `/shared`), divider, Trash (Search and New Note
   share one `<AuthorizeView Context="auth">` outside `MudNavMenu`; the divider is a plain `MudDivider`). Icons are MudBlazor's
   built-in `Icons.Material.*` (compiled SVG path strings — no icon font, no network). The vendored UI
   dependencies are Roboto and mermaid, under `wwwroot/lib/`; MudBlazor itself comes from NuGet. The
@@ -297,8 +298,9 @@ container filesystem) every restart regenerates them and silently signs everyone
   `NoteIndex*` table prefix (`NoteIndexEntries`, `NoteIndexTags`) is the "these are the throwaway,
   rebuildable ones" marker in `psql` — a schema boundary would add no guarantee `NoteIndexReconciler`
   doesn't already provide, since the tables can be `TRUNCATE`d and rebuilt from disk at any time.
-  `NoteAutoTagAttempts` (the background tagger's memory, see "Auto-tagging") is the one **non-`NoteIndex*`**
-  note-related table, precisely because it is *not* derived: it can't be rebuilt from the files.
+  `NoteAutoTagAttempts` (the background tagger's memory, see "Auto-tagging") and `NoteShares` (per-note
+  sharing grants, see "Note sharing") are the only **non-`NoteIndex*`** note-related tables, precisely because
+  they are *not* derived: neither can be rebuilt from the files.
 - **Tags are a child table (`NoteIndexTags`), not a `jsonb`/`text[]` column**, because search has to
   match title OR body OR *any tag* with `ILIKE` in one translatable LINQ query —
   `jsonb_array_elements_text` isn't expressible in LINQ, and Npgsql's `text[]` mapping has no "any
@@ -342,6 +344,7 @@ disables every control while a call is in flight) stands in for the editor's sav
 **The same page also serves `/notes/new/{TypeName}` as an unsaved draft** (`IsNew` = `TypeName is not null`): an in-memory `Note` with `Id = Guid.Empty`, built in `OnParametersSetAsync` (the component is reused when switching text ↔ checklist). **No autosave** — `OnContentEdited`/`OnMetadataEdited` skip the debouncers and `DisposeAsync` skips its flush, since either would create the note. **Save** (`SaveNewAsync`) refuses an empty/whitespace title with an inline error, else calls `INoteService.CreateAsync` and navigates to the view; Delete becomes **Discard** (a link to `/`, nothing on disk to trash). A `NavigationLock` confirms before dropping a draft that has content (`_draftSaved` is set before Save's own navigation so it doesn't block itself). An image pasted into a draft is uploaded immediately, so a discarded draft can leave an orphan for the scheduled cleanup.
 The view's whole content (header, meta, body) sits in a centered `.note-view` column capped by
 `--note-view-max-width` (56rem, `note-view.css`); the editor's two-pane split deliberately stays full width.
+**Shared notes (see "Note sharing"):** `NoteView` and `NoteEditor` load through `INoteService.GetWithAccessAsync` and gate by `NoteAccess`. Buttons by level: **Owner** — Edit, Share (shows "Shared with N"), Export PDF, Delete; **Edit** recipient — Edit, Export PDF, **Leave**; **Read** recipient — Export PDF, **Leave** (`ChecklistPanel ReadOnly`, no Edit). Recipients also see a "Shared by X · Can edit/View only" chip in `.jn-meta`. Leave confirms in a `MudMessageBox`, calls `INoteSharingService.LeaveAsync`, then goes to `/shared`. The **share dialog** is an inline `MudDialog` (the `Settings.razor` pattern) rendered **only inside `@if (_access.IsOwner)`**, so a recipient's circuit never gets its handler ids; it hosts `NoteSharePanel` (`Components/Notes/`, injects nothing — the page passes a `SearchRecipients` delegate and the current `Shares`, and receives `OnShare`/`OnPermissionChanged`/`OnRemove`). `ShareAsync` is an upsert, so adding and changing permission are one handler. The page bumps `_sharesVersion` after every mutation and the panel puts its `Version` in each row's `@key` — a `MudSelect` keeps its own state after a refused change (same gotcha as `_listVersion`). `NoteEditor` for an **Edit** recipient renders the title as text and the tags as read-only chips (`TagInput` has no `Disabled` parameter, so it isn't rendered and `OnMetadataEdited` can never fire), hides Delete, and passes `ImagesNoteId`/`SaveImage` to `TextNoteEditor`; a **Read** recipient is redirected (`replace: true`) to the view. `SaveNowAsync` catches `NoteNotFoundException`/`NoteAccessDeniedException`, sets **`_accessLost`**, cancels both debouncers and shows "no longer available … NOT saved"; `OnContentEdited`/`OnMetadataEdited` and `DisposeAsync`'s flush then do nothing. A recipient's save returns the owner's merged note, so the editor adopts only its Title/Tags/UpdatedAt and keeps the body being typed. `SharedWithMe.razor` (`/shared`) is a thin routed page like `NoteList` (`NoteListScope.SharedWithMe`, `NoteGroupList`). `NoteListItem` shows a "Shared by X · …" chip (recipient) or "Shared · N" (owner).
 
 **Autosave (existing notes only) has two scopes, and the cheaper one is deliberately incomplete.**
 `NoteService.AutosaveAsync(note, NoteSaveScope)` is what the editor's debounced autosave,
@@ -427,11 +430,26 @@ that opens its picker; `ClearAsync` after each pick so the same file can be chos
 - **The `.md` link is note-relative** — `![name](images/<file>)` — so the raw folder still renders in
   Obsidian/VS Code/GitHub. `ImageLinkMarkdownExtension` (a `DocumentProcessed` walk in the
   `MarkdownRenderer` pipeline) rewrites *only* an exact `images/<valid stored name>` image URL to
-  `/images/<file>`; external URLs and anything odd pass through. `ImageLinks` holds the prefixes so
+  `/images/<file>`; external URLs and anything odd pass through. (Non-owners get the note-scoped route —
+  see the sharing bullet below.) `ImageLinks` holds the prefixes so
   inserter and renderer can't drift.
 - **`GET /images/{fileName}`** (`Program.cs`, `RequireAuthorization`) serves from the *caller's own*
   folder, so another user's name is a 404 with no user id in the URL. Names are GUIDs, never reused,
   hence `Cache-Control: private, max-age=31536000, immutable`; `nosniff`.
+- **Shared notes' images use a note-scoped route** — `GET /notes/{noteId:guid}/images/{fileName}`
+  (`Program.cs`, `RequireAuthorization`), used only when the viewer is **not** the owner (`MarkdownPreview`'s
+  `ImagesNoteId` → `IMarkdownRenderer.RenderToHtml(markdown, noteId)`, which rewrites `images/<file>` to
+  `ImageLinks.NoteScopedPrefix(noteId)` + file through its own Markdig walk; owners keep `/images/…`
+  unchanged). It calls `INoteService.OpenImageAsync`, which re-resolves access on every request and serves
+  from the **owner's** folder. A **Read** viewer additionally needs the note's raw text to mention the
+  file name; **Owner and Edit skip that check** (an Edit user can write any name into the body, and skipping
+  it avoids a broken image between a paste and the debounced autosave). Because a revoked share must stop
+  working it is `Cache-Control: private, no-cache` with an ETag (the file name) — a revalidation is a cheap
+  304 after the access check — not the immutable cache of `/images`. **An Edit recipient's uploads go to the
+  owner's folder** (`INoteService.SaveImageAsync`, via `TextNoteEditor`'s `SaveImage` delegate): a recipient's
+  own folder would leave the owner unable to see the image and the recipient's cleanup would delete it.
+  `IImageCleanupService` is therefore unchanged — the image sits in the owner's folder and the owner's note
+  mentions it.
 - **Validation is by magic bytes, not the client's name/MIME** (`ImageFormat.Detect`), and
   `ImageFormat.IsStoredFileName` (`\z`-anchored regex) is also the path-traversal guard for every
   name that reaches the disk. SVG is excluded on purpose: opened directly it can run script in the
@@ -567,13 +585,86 @@ ordinary content debounce and save gate. `NoteView` has no autosave, so its pane
 `INoteService` checklist methods.
 Known limitation: two tabs on one note are last-writer-wins (there's no cross-circuit locking).
 
+## Note sharing
+
+An owner shares one note with any other user as **Read** or **Edit**. **The file never moves or gets copied**
+— it stays at `{NotesFolder}/{ownerId}/{noteId}.md` — and every access check is made in Core, on every call.
+
+**Model.** `NoteShares` (`NoteShare`, `Data/`) is the source of truth for grants and is **not derived** (like
+`NoteAutoTagAttempts`, so no `NoteIndex*` prefix): PK `(NoteId, SharedWithUserId)` (the resolver's lookup; one
+owner per recipient), indexes on `(OwnerUserId, NoteId)` and `SharedWithUserId`, `Permission` stored as the enum
+name, **both FKs to `Users` cascade** (PostgreSQL allows two cascade paths), a check constraint
+`CK_NoteShares_NotSelf`, and deliberately no FK to the truncatable `NoteIndexEntries`. Grants are **not** in front
+matter: that would put other users' ids in portable files, need a rescan to see a change, and let a hand edit grant
+access. `INoteShareRepository`/`PostgresNoteShareRepository` (singleton, explicit ids) is plain storage;
+`INoteService` does note access and `INoteSharingService`/`NoteSharingService` (scoped, implicit current user)
+manages grants (`ListSharesAsync`, `SearchRecipientsAsync`, `ShareAsync` — an upsert, so it also changes a
+permission — `UnshareAsync`, `LeaveAsync`).
+
+**Access resolution, re-done on every call, nothing cached** (`NoteService.ResolveAccessAsync`): (a) the live file
+exists in the caller's own folder → **Owner** (a stat, no DB query); (b) else a `NoteShares` row for
+`(noteId, me)` → the row's owner with Edit/Read; (c) else `NoteNotFoundException`. So an unshared foreign id is
+still a 404 and the own-folder guarantee holds, and revoking or downgrading takes effect on the recipient's next
+action (permissions are not in cookie claims). `NoteSharingService.RequireOwnerAsync` gives a recipient
+`NoteAccessDeniedException` and a stranger `NoteNotFoundException`.
+
+**Permission matrix.** Read: view/search/export PDF, Leave. Edit: the same plus the **body only** (text body,
+checklist add/toggle, images). Owner only: title, tags, type, share management, trash/restore/purge.
+`INoteService.GetWithAccessAsync` returns the note with its `NoteAccess` (`Level`, `OwnerUserId`,
+`OwnerDisplayName`, `IsOwner`, `CanEditBody`).
+
+**Edit writes are a body-only compare-and-swap merge** (`NoteService.ReplaceBodyAsync`), never `WriteAsync`
+(which creates a missing file): `ReadRawAsync(owner)` → deserialize → take **only `Body`** from the caller (Title,
+Tags, Type, CreatedAt stay the file's, `UpdatedAt` = now) → `ReplaceIfUnchangedAsync`, up to 3 tries, then an
+`IOException`. So a trashed/purged/archived note is never recreated, a recipient's metadata is never persisted
+(differing Title/Tags are **ignored**; only a Type change throws `NoteAccessDeniedException`, since throwing on a
+rename would break every recipient autosave after the owner renames), and the owner's concurrent rename or the
+auto-tagger's tags survive a recipient's save. The `Metadata` scope also reindexes the owner's row
+(`IndexAsync(ownerId, …)`); `ContentOnly` writes only the file, so the `ContentOnly` staleness (index `Body`/`UpdatedAt`,
+list order, search) applies to recipients' edits too. Saves are last-writer-wins between owner and recipient
+(the owner's `WriteAsync` sends its whole in-memory note); the CAS only closes the read-to-write window.
+The auto-tagger runs per owner and a recipient's merge re-reads the file, so auto-added tags survive.
+
+**Behaviour change for owners:** `AutosaveAsync` now requires the live file to exist (resolver step a). Before,
+an autosave after the note was trashed in another tab silently recreated a live copy next to the trash copy;
+now it throws `NoteNotFoundException` (which is also what stops a recipient whose share was revoked from forking
+the note into their own folder).
+
+**Trash, restore, purge, users.** `TrashAsync`/`RestoreAsync`/`PurgeAsync` stay own-folder only, so a recipient's
+call is a natural no-op (`RestoreAsync` throws `NoteNotFoundException`). Trash keeps the share rows; recipients
+lose the note because the index row is deleted and the live file is gone (reads, image requests and PDF export
+404, and a recipient's write throws `NoteNotFoundException` — the CAS finds no file). `RestoreAsync` reindexes and
+the shares reappear with the same permissions. `PurgeAsync` deletes the file, then the share rows (only if the note
+isn't live). Deleting a user archives their folder, then the row delete cascades their shares as owner and as
+recipient; the owner's orphaned index rows remain but are unreachable through any share. `LeaveAsync` has no
+existence check, so it works while the note is trashed. A file removed outside the app leaves a harmless
+invisible share row that applies again if the file returns. `FileSystemNoteFileStore.ResolveFolderAsync`
+creates `{ownerId}/` as a side effect, so a read in the window between a folder archive and the row delete can
+recreate an empty owner folder (harmless).
+
+**Listing and search** stay one SQL query over `NoteIndexEntries` (`PostgresNoteIndexRepository.SearchAsync`):
+`e.UserId == me OR EXISTS(NoteShares s WHERE s.NoteId == e.Id AND s.OwnerUserId == e.UserId AND
+s.SharedWithUserId == me)` for `NoteListScope.All`, only the `EXISTS` for `NoteListScope.SharedWithMe`
+(`NoteSearchQuery`'s 4th parameter); requiring `s.OwnerUserId == e.UserId` means a stale or foreign share row
+can never expose another folder's entry. `NoteSummary` keeps its positional constructor and gains init
+properties `OwnerUserId`, `SharedWithMe` (`SharedNoteInfo`: owner, display name, permission — null for own
+notes) and `OutgoingShareCount`. Text, tag and type filters cover shared notes. **Tag suggestions and
+`GetDistinctTagsAsync` stay own-only**, because recipients can't edit tags. If the `OR EXISTS` ever hurts the
+`(UserId, UpdatedAt)` index for large collections, rewrite it as a `Concat` of the own and shared queries.
+
+**Recipient picker.** `SearchCandidatesAsync` lists every account except the owner and the note's current
+recipients, `ILIKE` over username and first/last name (`Username` has a non-deterministic collation, which
+`ILIKE` refuses, so it is compared under `EF.Functions.Collate(…, "default")`), escaped with `SqlLikePattern`,
+ordered by username, limit clamped 1..20. **It never matches on or returns an email.** Display names come from
+`UserDisplayName.Format` (pure static, like `UserInitials`).
+
 ## PDF export (optional)
 
 **Off unless `GOTENBERG_URL` is set** (`PdfExportOptions`, read in `AddJNotesCore` like `OIDC_*`; `IsEnabled` needs an absolute http(s) URL). Both halves check it: `NoteView` renders the **Export PDF** button only when enabled, and `Program.cs` maps `GET /notes/{id:guid}/pdf` only when enabled. With it off, the route is simply unmapped (404), not a handler that refuses.
 
-**A plain anchor to a minimal-API endpoint, not an `@onclick`.** Only a real HTTP response can hand the browser a file. The button is `Href` + `Target="_blank"`: Blazor's router ignores anchors with a non-`_self` target, so the browser does a real GET with the cookie. The endpoint (`Export/NotePdfEndpoints.cs`) returns `Content-Disposition: inline` with a title-derived name (`PdfFileName`), so the PDF opens in the new tab and "Save" proposes that name. It resolves `INoteExportService` in an ordinary request scope, where `HttpContext` always exists, so the `ICurrentUserContext` gotcha doesn't apply. The ownership check is the usual one: `INoteService.GetAsync` only reads the caller's folder, so another user's id is a 404. If Gotenberg is down or errors, `GotenbergPdfRenderer` throws `PdfRenderingException` and the endpoint returns **503 with its own small HTML page**. It needs a body, or `UseStatusCodePagesWithReExecute` would show "Not found".
+**A plain anchor to a minimal-API endpoint, not an `@onclick`.** Only a real HTTP response can hand the browser a file. The button is `Href` + `Target="_blank"`: Blazor's router ignores anchors with a non-`_self` target, so the browser does a real GET with the cookie. The endpoint (`Export/NotePdfEndpoints.cs`) returns `Content-Disposition: inline` with a title-derived name (`PdfFileName`), so the PDF opens in the new tab and "Save" proposes that name. It resolves `INoteExportService` in an ordinary request scope, where `HttpContext` always exists, so the `ICurrentUserContext` gotcha doesn't apply. The access check is `INoteService.GetAsync`, which resolves owner-or-shared, so an id the caller neither owns nor was given is a 404; **any access level, Read included, may export** (it is a read), and stored images come through `INoteService.OpenImageAsync` (the same access rules as the app, from the owner's folder). If Gotenberg is down or errors, `GotenbergPdfRenderer` throws `PdfRenderingException` and the endpoint returns **503 with its own small HTML page**. It needs a body, or `UseStatusCodePagesWithReExecute` would show "Not found".
 
-**Gotenberg's HTML route with a self-contained document, never its URL route.** Gotenberg has no cookie, and our pages are interactive circuits in the user's (dark) theme. `NotePdfDocumentBuilder` (pure static) builds `index.html` with an inline light stylesheet (`Export/note-pdf.css`, an embedded resource with literal colours, no `--mud-*` variables). Everything the page loads is sent as a flat sibling file in the same multipart request: stored images (read through `IImageService`, so per-user), the vendored Roboto `.woff2` files (the Gotenberg image has no Roboto), and `mermaid.min.js` only when a diagram exists.
+**Gotenberg's HTML route with a self-contained document, never its URL route.** Gotenberg has no cookie, and our pages are interactive circuits in the user's (dark) theme. `NotePdfDocumentBuilder` (pure static) builds `index.html` with an inline light stylesheet (`Export/note-pdf.css`, an embedded resource with literal colours, no `--mud-*` variables). Everything the page loads is sent as a flat sibling file in the same multipart request: stored images (read through `INoteService.OpenImageAsync`, so access-checked), the vendored Roboto `.woff2` files (the Gotenberg image has no Roboto), and `mermaid.min.js` only when a diagram exists.
 
 **Nothing user-controlled may make Chromium fetch.** `PdfMarkdownRenderer` shares `MarkdownRenderer.CreateBaseBuilder()` (tables, `DisableHtml`, mermaid) but not `ImageLinkMarkdownExtension`. It rewrites only `images/<stored name>` to the bare file name, and turns every other image (external URL, `data:`, odd path) into a plain link. As a second layer, compose starts Gotenberg with `--chromium-allow-list=^file:///tmp/.*`, because mermaid's sanitizer still allows an `<img>` inside a label.
 
@@ -636,6 +727,11 @@ their own provider because they need things the fixture doesn't expose (`ISetupS
 `CoreServicesFixture` also swaps in `RecordingPdfRenderer`/`StubPdfExportAssetSource` and enables
 `PdfExportOptions`, so `NoteExportService` runs without Gotenberg. It likewise swaps in
 `RecordingTagModelClient` (with an `OnCall` hook) and a `TestTimeProvider` and sets `OLLAMA_URL`, so `NoteAutoTagger` runs without Ollama and backoff is testable. No hosted services run in tests.
+`CoreServicesFixture` also exposes `NoteSharing` (`INoteSharingService`), `ShareRepository`
+(`INoteShareRepository`) and `UserManagement`, plus `CreateUserAsync(username, role)` and `ActAs(userId)` for
+users beyond A and B; `Integration/NoteSharingTests` (access, permissions, listing/search, trash/purge, user
+deletion, images, PDF, the locked-file CAS conflict) and `NoteShareRepositoryTests` (check constraint, cascades,
+recipient search) build on them.
 
 ## CSS
 

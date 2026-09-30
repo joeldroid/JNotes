@@ -15,6 +15,7 @@ see [Authentication](#authentication) below for that flow, adding more users, an
 - **Checklist notes** — markdown task lists (`- [ ] item`) rendered as interactive checkboxes. Add items and group them into categories (markdown `##` headings) from the note view or the editor without touching markdown; checking an item moves it below the unchecked ones in its category.
 - **PDF export (optional)** — an **Export PDF** button on a note opens it as a light-themed A4 PDF (images, diagrams and checklists included), rendered by a [Gotenberg](https://gotenberg.dev) container. Off unless `GOTENBERG_URL` is set.
 - **Auto-tagging (optional)** — when `OLLAMA_URL` points at an [Ollama](https://ollama.com) server, a background task tags notes that have no tags using a local model (Microsoft's `phi4` by default). It never changes tags you've written.
+- **Note sharing (Read/Edit)** — share a single note with any other user, as view-only or editable (body only); shared notes appear in **All Notes**, in search and on a **Shared with Me** page. See [Sharing notes](#sharing-notes).
 - **Multi-user with real accounts** — admin-created users, each with their own notes and settings;
   sign in with a password, OIDC, or both.
 - **Portable storage** — every note is `notes/<user-id>/<id>.md` with a small YAML front matter
@@ -37,7 +38,7 @@ tests/
 
 `JNotes.Web` never touches the filesystem or EF Core/PostgreSQL directly — it only consumes
 `INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
-`IUserManagementService`, `IImageService`, `INoteExportService`, and `INoteAutoTagger` from `JNotes.Core`. This is enforced at build time via
+`IUserManagementService`, `IImageService`, `INoteExportService`, `INoteAutoTagger`, and `INoteSharingService` from `JNotes.Core`. This is enforced at build time via
 `Microsoft.CodeAnalysis.BannedApiAnalyzers` (`src/JNotes.Web/BannedSymbols.txt`).
 
 ### Styling
@@ -267,6 +268,34 @@ that account links to the IdP automatically the first time they sign in with a m
 Once OIDC is configured, an admin can turn password login off entirely from
 Administration → Security (refused if OIDC isn't configured, so you can't lock everyone out).
 
+## Sharing notes
+
+Any user can share any of their own notes with any other user on the instance; there is no admin switch for it.
+
+**How to share.** Open a note and click **Share**. Search for a person by username or name, choose **View only** or **Can edit**, and click **Add**. You can change someone's permission or remove them at any time, and it takes effect on their next action. The note view shows "Shared with N", and a note you've shared shows a "Shared · N" chip in the list.
+
+**What each permission allows.**
+
+| | Owner | Can edit | View only |
+| --- | --- | --- | --- |
+| Read the note, search it, export it as PDF | yes | yes | yes |
+| Edit the body (text, or checklist items and checking them) | yes | yes | no |
+| Paste or upload images into the body | yes | yes (stored in the owner's folder) | no |
+| Change the title or tags | yes | no | no |
+| Share it, change or remove people | yes | no | no |
+| Move it to Trash, restore, delete it permanently | yes | no | no |
+| **Leave** the share | n/a | yes | yes |
+
+A shared note appears in the recipient's **All Notes** and search results with a "Shared by …" chip, and on the **Shared with Me** page. A recipient can **Leave** a share from the note view; the owner can share it again.
+
+**Trash and deleting.** When the owner moves a shared note to Trash it disappears for the people it's shared with (their list, and any open page, report it as not found). Restoring it brings everyone back with the same permissions. Deleting it permanently from Trash removes the shares. Deleting a user account removes the shares they gave and received, but never their notes (see [Authentication](#authentication)).
+
+**Where things live.** Sharing changes nothing on disk: a shared note stays in its owner's folder (`notes/<owner-id>/<note-id>.md`, images under `notes/<owner-id>/images/`), and nothing is copied. Who has access is stored in the PostgreSQL `NoteShares` table, not in the note's front matter, so it is not part of the portable files and is lost with the database (for example by `docker compose down -v`). The note's file format is unchanged.
+
+**Edits by more than one person.** Saves are last-writer-wins, as with two browser tabs. An editor's save writes only the body and keeps the owner's title and tags, so a rename or tag change made in the meantime isn't undone. If access is removed while someone has the note open in the editor, their next save is refused with a message that the change was not saved.
+
+**Privacy.** To pick a recipient, every signed-in user can search all accounts by username, first name and last name (email addresses are never shown or searched). Anyone with access to a note can see its images and, for a Can edit recipient, add images to the owner's folder.
+
 ## Note file format
 
 Each note is `notes/<user-id>/<note-id>.md`, one markdown file per note, per user:
@@ -296,3 +325,5 @@ editor pointed at the folder. Deleting a note (or the link) doesn't delete its i
 
 JNotes keeps checked items after unchecked ones within each run of adjacent checklist items, but the
 file is still ordinary markdown — you can reorder it by hand.
+
+Sharing a note adds nothing to the front matter (see [Sharing notes](#sharing-notes)).

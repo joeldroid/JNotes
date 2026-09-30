@@ -5,6 +5,16 @@
         <div class="jn-note-main">
             <div class="jn-note-title">
                 <MudChip T="string" Size="Size.Small" Variant="Variant.Filled">@(Note.Type == NoteType.Checklist ? "Checklist" : "Text")</MudChip>
+                @if (Note.SharedWithMe is { } shared)
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Class="jn-share-chip"
+                             Icon="@Icons.Material.Outlined.People">Shared by @shared.OwnerDisplayName · @(shared.Permission == NoteSharePermission.Edit ? "Can edit" : "View only")</MudChip>
+                }
+                else if (Note.OutgoingShareCount > 0)
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Class="jn-share-chip"
+                             Icon="@Icons.Material.Outlined.People">Shared · @Note.OutgoingShareCount</MudChip>
+                }
                 <strong>@(string.IsNullOrWhiteSpace(Note.Title) ? "Untitled note" : Note.Title)</strong>
             </div>
             @if (Note.Tags.Count > 0)

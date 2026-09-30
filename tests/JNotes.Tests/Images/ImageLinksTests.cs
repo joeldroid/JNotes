@@ -41,4 +41,25 @@ public class ImageLinksTests
         Assert.Null(ImageLinks.ToServedUrl("https://example.com/images/" + Stored));
         Assert.Null(ImageLinks.ToServedUrl("/images/" + Stored));
     }
+
+    [Fact]
+    public void NoteScopedPrefix_is_the_notes_id_images_route()
+    {
+        var id = Guid.Parse("11111111-2222-3333-4444-555555555555");
+
+        Assert.Equal("/notes/11111111-2222-3333-4444-555555555555/images/", ImageLinks.NoteScopedPrefix(id));
+    }
+
+    [Fact]
+    public void ToNoteScopedServedUrl_rewrites_only_an_exact_stored_image_link()
+    {
+        var id = Guid.NewGuid();
+
+        Assert.Equal($"/notes/{id}/images/{Stored}", ImageLinks.ToNoteScopedServedUrl("images/" + Stored, id));
+        Assert.Null(ImageLinks.ToNoteScopedServedUrl("https://example.com/images/" + Stored, id));
+        Assert.Null(ImageLinks.ToNoteScopedServedUrl("images/../" + Stored, id));
+        Assert.Null(ImageLinks.ToNoteScopedServedUrl("images/" + Stored.ToUpperInvariant(), id));
+        Assert.Null(ImageLinks.ToNoteScopedServedUrl("images/other.png", id));
+        Assert.Null(ImageLinks.ToNoteScopedServedUrl("/images/" + Stored, id));
+    }
 }
