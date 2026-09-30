@@ -363,6 +363,27 @@ public class NoteSharingTests : IAsyncLifetime
         Assert.Empty(await _fixture.ShareRepository.ListForNoteAsync(_fixture.UserAId, note.Id));
     }
 
+    [Theory]
+    [InlineData(NoteSharePermission.Read)]
+    [InlineData(NoteSharePermission.Edit)]
+    public async Task A_note_the_owner_trashed_is_not_in_the_recipients_trash_and_the_recipient_cannot_restore_it(NoteSharePermission permission)
+    {
+        var note = await CreateSharedWithBAsync(permission);
+
+        _fixture.ActAsUserA();
+        await Notes.TrashAsync(note.Id);
+
+        _fixture.ActAsUserB();
+        Assert.Empty(await Notes.ListTrashAsync());
+        await Assert.ThrowsAsync<NoteNotFoundException>(() => Notes.RestoreAsync(note.Id));
+        Assert.Empty(await Notes.ListAsync(new NoteSearchQuery()));
+        Assert.Empty(await Notes.ListTrashAsync());
+
+        // Still in the owner's trash, untouched by the recipient's attempt.
+        _fixture.ActAsUserA();
+        Assert.Equal(note.Id, Assert.Single(await Notes.ListTrashAsync()).Id);
+    }
+
     [Fact]
     public async Task Listing_as_a_recipient_merges_own_and_shared_notes_newest_first_with_share_info()
     {
