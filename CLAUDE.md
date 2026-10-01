@@ -28,6 +28,8 @@ dotnet watch --project src/JNotes.Web run       # live-reloads C#, Razor, and ww
 # `jnotes` database and App_Data/notes — see "Tests" for throwaway-database rules.
 
 # EF Core migrations — startup project is Core, NOT Web: Web deliberately has no EF Core Design reference.
+# The schema is a single `InitialCreate` baseline (nothing has shipped yet); a model change made after it
+# gets a new migration like normal, and the baseline is regenerated only by deliberately resetting them.
 dotnet ef migrations add <Name> --project src/JNotes.Core --startup-project src/JNotes.Core -o Data/Migrations
 dotnet ef database update --project src/JNotes.Core --startup-project src/JNotes.Core
 # `dotnet ef` is a local tool (.config/dotnet-tools.json) — run `dotnet tool restore` once after cloning.
@@ -129,10 +131,9 @@ for future per-user preferences. PDF export is light via its own `note-pdf.css`,
   `_listVersion` in `ChecklistPanel`).
 
 **Data Protection keys are persisted at `DATA_PROTECTION_KEYS_PATH`** (`Program.cs`), defaulting to
-a `keys` folder beside `NOTES_PATH` — this reproduces the old `{DB_PATH's directory}/keys/` location
-for both existing defaults, since a possibly-remote PostgreSQL means there's no longer a "next to
-the database" directory to derive from. They sign the auth cookie; at the default (ephemeral
-container filesystem) every restart regenerates them and silently signs everyone out.
+a `keys` folder beside `NOTES_PATH` (a possibly-remote PostgreSQL gives no local directory to derive
+it from). They sign the auth cookie; at the default (ephemeral container filesystem) every restart
+regenerates them and silently signs everyone out.
 
 ## Authentication and users
 
@@ -152,8 +153,8 @@ container filesystem) every restart regenerates them and silently signs everyone
   `IsValidEmail` via `[GeneratedRegex]`). Enforced in two layers: `EfUserRepository.CreateUserAsync`
   throws `InvalidUsernameException`/`InvalidEmailException` so every creation path is covered, and
   `/setup` and the "Add user" form check up front so the error shows beside the form. Usernames
-  must be lowercase (a non-deterministic ICU collation, `jnotes_case_insensitive` — `JNotesDbContext`'s
-  PostgreSQL equivalent of SQLite's NOCASE — already makes lookups case-insensitive, but mixed-case
+  must be lowercase (a non-deterministic ICU collation, `jnotes_case_insensitive`, declared in
+  `JNotesDbContext` — already makes lookups case-insensitive, but mixed-case
   input would render inconsistently; note Npgsql's four-argument `HasCollation(name, locale, provider,
   deterministic)` and EF Core's one-argument relational `HasCollation`, which sets the *database*
   default instead, are both in the `Microsoft.EntityFrameworkCore` namespace, so the wrong overload
@@ -305,8 +306,7 @@ container filesystem) every restart regenerates them and silently signs everyone
   match title OR body OR *any tag* with `ILIKE` in one translatable LINQ query —
   `jsonb_array_elements_text` isn't expressible in LINQ, and Npgsql's `text[]` mapping has no "any
   element ILIKE" translation. This also makes the exact-tag filter and `GetDistinctTagsAsync` indexed
-  SQL instead of "load every note into memory and filter". (The pre-Redis SQLite index had a join
-  table for the same reason.)
+  SQL instead of "load every note into memory and filter".
 - **`NoteIndexUserTags` is a per-user distinct-tag projection of `NoteIndexTags`** (`UserId`, `Tag`,
   `NoteCount` = distinct indexed notes carrying it, `LastUsedAt` = max `UpdatedAt` of them), backing tag
   auto-suggest (`INoteService.SuggestTagsAsync`, the `TagInput` component) and `GetDistinctTagsAsync`. It
@@ -625,9 +625,9 @@ list order, search) applies to recipients' edits too. Saves are last-writer-wins
 (the owner's `WriteAsync` sends its whole in-memory note); the CAS only closes the read-to-write window.
 The auto-tagger runs per owner and a recipient's merge re-reads the file, so auto-added tags survive.
 
-**Behaviour change for owners:** `AutosaveAsync` now requires the live file to exist (resolver step a). Before,
-an autosave after the note was trashed in another tab silently recreated a live copy next to the trash copy;
-now it throws `NoteNotFoundException` (which is also what stops a recipient whose share was revoked from forking
+**Owners' autosave needs a live file:** `AutosaveAsync` requires the live file to exist (resolver step a), so an
+autosave after the note was trashed in another tab throws `NoteNotFoundException` instead of silently recreating
+a live copy next to the trash copy (which is also what stops a recipient whose share was revoked from forking
 the note into their own folder).
 
 **Trash, restore, purge, users.** `TrashAsync`/`RestoreAsync`/`PurgeAsync` stay own-folder only, so a recipient's
@@ -678,7 +678,7 @@ Compose: the `gotenberg` service sits behind the `pdf` profile, with no publishe
 
 **Layering**, in `JNotes.Core/Tagging/`: pure static helpers (`AutoTagPromptBuilder`, `AutoTagResponseParser`, `AutoTagNormalizer`, `AutoTagSchedule`, `AutoTagCandidates`); `ITagModelClient`/`OllamaTagModelClient` (typed `HttpClient`, `POST /api/chat`, non-streaming, JSON-schema `format`, `num_ctx` 8192) whose failures are `AutoTagException` with an `AutoTagFailureKind` (`Unavailable`: connection, 5xx incl. 503 overloaded, 429, 404 model missing; `Timeout`; `BadResponse`: garbage, 200 with `error`, other 4xx). The client logs at Debug only, never an exception object (its message carries host:port), and its `HttpClient` has `RemoveAllLoggers()` because the default handler logs the request URL on every call — **the Ollama URL, note text, titles and tags are never logged**. `INoteAutoTagger`/`NoteAutoTagger` (scoped, **explicit `userId`** like `IImageCleanupService`, since its caller has no current user) is driven by `Web/Tagging/AutoTagBackgroundService` — the image-cleanup pattern: one scope per pass, initial 1-minute delay then a `PeriodicTimer`, never rethrows. A pass takes up to `BatchSize` notes across all users (users shuffled, per-user candidates interleaved round-robin), one at a time; it deliberately bypasses `NoteService` (implicit user, and its autosave stamps `UpdatedAt`). Web never talks to Ollama.
 
-**Which notes:** live, indexed notes with **zero tags**, some title or body, and index `UpdatedAt` older than `AutoTagSchedule.MinNoteAge` (10 min), newest first (`PostgresAutoTagStateRepository.GetCandidateNoteIdsAsync`, one `NOT EXISTS` query over `NoteIndexTags` and the attempt table). The index only *nominates*: the file is re-read raw first and the note is deferred if it now has tags, is blank, or its mtime is too recent. Tagged notes are never touched and tags are never added to existing ones. The first enable **backfills** existing untagged notes, throttled by batch and interval; setting `OLLAMA_URL` is the opt-in. Vocabulary is the note owner's own tags (`INoteIndexRepository.SuggestTagsAsync(userId, …)`), so a matching tag takes *their* spelling; normalisation is as before (lowercase kebab-case, generic tags dropped, at most 5).
+**Which notes:** live, indexed notes with **zero tags**, some title or body, and index `UpdatedAt` older than `AutoTagSchedule.MinNoteAge` (10 min), newest first (`PostgresAutoTagStateRepository.GetCandidateNoteIdsAsync`, one `NOT EXISTS` query over `NoteIndexTags` and the attempt table). The index only *nominates*: the file is re-read raw first and the note is deferred if it now has tags, is blank, or its mtime is too recent. Tagged notes are never touched and tags are never added to existing ones. The first enable **backfills** existing untagged notes, throttled by batch and interval; setting `OLLAMA_URL` is the opt-in. Vocabulary is the note owner's own tags (`INoteIndexRepository.SuggestTagsAsync(userId, …)`), so a matching tag takes *their* spelling; normalisation is lowercase kebab-case, generic tags dropped, at most 5.
 
 **`NoteAutoTagAttempts` is not derived and not `NoteIndex*`** (`NoteAutoTagAttempt`, PK `(UserId, NoteId)`, `Outcome` as a string, FK to `Users` with cascade, no FK to the truncatable index). It is the tagger's memory, so it can't be rebuilt from the files: truncating it is safe but re-attempts every untagged note once, including ones whose tags a user removed. One final attempt per note (`Tagged`/`NoTags`/`Skipped`), so tags a user later removes never come back and "nothing useful" isn't retried. Per-note failures (`BadResponse`, `Timeout`, IO/parse) back off 1 h/6 h/24 h/72 h (`AutoTagSchedule.RetryDelay`), and the fifth becomes `GaveUp`. `Unavailable` records nothing and stops the pass (cooldown = the next interval tick); `Timeout` records a failure *and* stops it, so one huge note can't block the queue.
 
@@ -758,7 +758,6 @@ still look fine. If touching the Dockerfile, verify in a real browser (or at lea
 `/var/lib/postgresql` — mounting `/var/lib/postgresql/data` (the older convention) is **silently
 ignored**: data lands in an anonymous volume and `initdb` re-runs on every container recreate, with
 no error. `docker-compose.yml` mounts the named volume at `/var/lib/postgresql` for this reason.
-Unlike the Redis service PostgreSQL replaced, this volume is **not optional**: PostgreSQL now holds
-user accounts and settings (the `NoteIndex*` tables beside them are still a derived cache, rebuilt on
-"Rescan Now"), which exist nowhere else — `docker compose down -v` deletes them, and a wrong mount
+This volume is **not optional**: PostgreSQL holds user accounts, settings and share grants (the
+`NoteIndex*` tables beside them are a derived cache, rebuilt on "Rescan Now"), which exist nowhere else — `docker compose down -v` deletes them, and a wrong mount
 path silently does the same on every restart.

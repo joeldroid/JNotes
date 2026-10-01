@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace JNotes.Core.Data.Migrations
 {
     [DbContext(typeof(JNotesDbContext))]
-    [Migration("20260930112829_AddNoteShares")]
-    partial class AddNoteShares
+    [Migration("20260930213805_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

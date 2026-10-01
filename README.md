@@ -38,7 +38,7 @@ tests/
 
 `JNotes.Web` never touches the filesystem or EF Core/PostgreSQL directly — it only consumes
 `INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
-`IUserManagementService`, `IImageService`, `INoteExportService`, `INoteAutoTagger`, and `INoteSharingService` from `JNotes.Core`. This is enforced at build time via
+`IUserManagementService`, `IImageService`, `IImageCleanupService`, `INoteExportService`, `INoteAutoTagger`, and `INoteSharingService` from `JNotes.Core`. This is enforced at build time via
 `Microsoft.CodeAnalysis.BannedApiAnalyzers` (`src/JNotes.Web/BannedSymbols.txt`).
 
 ### Styling
@@ -95,14 +95,6 @@ beside it are **not** rebuildable and do need a backup — see the `pg_dump` cal
 On first run with no users in the database, every request redirects to a setup screen where you
 pick the admin's username and password — see [Authentication](#authentication) below.
 
-> **Upgrading from a SQLite/Redis version of JNotes?** There is no automated migration. Your notes
-> are untouched (they're files), but user accounts and settings do not carry over: point
-> `POSTGRES_HOST`/`POSTGRES_DB`/etc. at an empty database and you'll go through the `/setup` screen
-> again. The re-created user gets a **new** user id, so rename `notes/<old-user-id>/` to
-> `notes/<new-user-id>/` (find the new id in Administration) to get the old
-> notes back, then Administration → "Rescan Now". You can delete the old `jnotes.db`/`-wal`/`-shm` files
-> and stop your Redis container.
-
 ### Configuration
 
 | Environment variable | Required | Default | Purpose |
@@ -141,12 +133,10 @@ All of these take effect at startup only — changing one requires an app/contai
 
 > **What are the Data Protection keys, and why do they need their own path?** ASP.NET Core signs the
 > auth cookie with them — without persisting them somewhere durable, every restart generates a fresh
-> set and silently signs everyone out (nothing errors; sessions just stop working). They used to be
-> derived from `DB_PATH`'s directory, back when the database was a local SQLite file; a PostgreSQL
-> connection string doesn't point at a local path, so they got their own setting,
-> `DATA_PROTECTION_KEYS_PATH`. Left unset, it falls back to a `keys` folder beside `NOTES_PATH`,
-> reproducing the old default location either way — just make sure wherever it points is on
-> persistent storage, not a container's ephemeral filesystem.
+> set and silently signs everyone out (nothing errors; sessions just stop working). A PostgreSQL
+> connection string doesn't point at a local path, so they have their own setting,
+> `DATA_PROTECTION_KEYS_PATH`. Left unset, it falls back to a `keys` folder beside `NOTES_PATH` — just
+> make sure wherever it points is on persistent storage, not a container's ephemeral filesystem.
 
 > **Backing up the database?** Use `pg_dump` (e.g.
 > `docker compose exec postgres pg_dump -U jnotes jnotes > jnotes.sql`), not a plain file copy —
@@ -190,8 +180,7 @@ The app listens on `http://localhost:8080`. Notes and the Data Protection keys a
 directly with any editor and they'll be picked up next time the app starts (or via Administration →
 Rescan Now while it's running). The **database is a named Docker volume** (`jnotes-pgdata`), not a
 file under `./data` — deleting `./data` no longer resets accounts, and `docker compose down -v`
-does. As with running locally, upgrading from a SQLite/Redis version means starting fresh (see the
-note above) — there's no automated migration.
+does.
 
 > **Note on file permissions:** the container runs as its base image's non-root user. If Docker
 > can't write to `./data` on your host (uncommon, but possible with some Docker Engine/Linux
