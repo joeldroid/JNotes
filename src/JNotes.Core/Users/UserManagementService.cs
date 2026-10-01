@@ -39,6 +39,7 @@ public sealed class UserManagementService : IUserManagementService
 
         // File-move before DB-delete: if the move fails, the account still fully exists and this
         // can just be retried, rather than leaving an index-less orphaned file tree on disk.
+        // The row delete below also cascades the user's NoteShares, both as owner and as recipient.
         await _fileStore.ArchiveUserFolderAsync(targetUserId, cancellationToken);
         await _userRepository.DeleteUserAsync(targetUserId, cancellationToken);
     }

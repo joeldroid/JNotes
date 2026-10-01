@@ -133,4 +133,46 @@ public class MarkdownRendererTests
 
         Assert.Contains($"href=\"images/{StoredImage}\"", html);
     }
+
+    [Fact]
+    public void RenderToHtml_with_a_note_id_serves_an_uploaded_image_from_the_note_scoped_route()
+    {
+        var noteId = Guid.NewGuid();
+
+        var html = _renderer.RenderToHtml($"![shot](images/{StoredImage})", noteId);
+
+        Assert.Contains($"<img src=\"/notes/{noteId}/images/{StoredImage}\" alt=\"shot\" />", html);
+        Assert.DoesNotContain($"src=\"/images/{StoredImage}\"", html);
+    }
+
+    [Theory]
+    [InlineData("images/../0123456789abcdef0123456789abcdef.png")]
+    [InlineData("images/other.png")]
+    [InlineData("https://example.com/0123456789abcdef0123456789abcdef.png")]
+    public void RenderToHtml_with_a_note_id_leaves_other_image_urls_alone(string url)
+    {
+        var html = _renderer.RenderToHtml($"![x]({url})", Guid.NewGuid());
+
+        Assert.Contains($"src=\"{url}\"", html);
+    }
+
+    [Fact]
+    public void RenderToHtml_with_a_note_id_still_escapes_html_inside_a_mermaid_block()
+    {
+        const string markdown = "```mermaid\nflowchart LR\n  A[\"</pre><script>alert('x')</script>\"]\n```";
+
+        var html = _renderer.RenderToHtml(markdown, Guid.NewGuid());
+
+        Assert.Contains("<pre class=\"mermaid\">", html);
+        Assert.DoesNotContain("<script>", html);
+        Assert.Contains("&lt;/pre&gt;", html);
+    }
+
+    [Fact]
+    public void RenderToHtml_with_a_note_id_still_encodes_raw_html()
+    {
+        var html = _renderer.RenderToHtml("<script>alert('x')</script>", Guid.NewGuid());
+
+        Assert.DoesNotContain("<script>", html);
+    }
 }

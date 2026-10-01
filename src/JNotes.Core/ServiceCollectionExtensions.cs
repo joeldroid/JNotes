@@ -5,6 +5,7 @@ using JNotes.Core.Indexing;
 using JNotes.Core.Notes;
 using JNotes.Core.Serialization;
 using JNotes.Core.Settings;
+using JNotes.Core.Sharing;
 using JNotes.Core.Storage;
 using JNotes.Core.Tagging;
 using JNotes.Core.Time;
@@ -24,7 +25,7 @@ namespace JNotes.Core;
 /// this (plus <see cref="HostExtensions"/>) — it never registers a <see cref="DbContext"/> or
 /// file-store implementation itself, which is what keeps Web from having a reason to reach past
 /// <c>INoteService</c>/<c>ISettingsService</c>/<c>INoteIndexReconciler</c>/<c>IUserRepository</c>/
-/// <c>IUserManagementService</c>/<c>IImageService</c>/<c>INoteExportService</c>/<c>INoteAutoTagger</c> into Core's internals.
+/// <c>IUserManagementService</c>/<c>IImageService</c>/<c>INoteExportService</c>/<c>INoteAutoTagger</c>/<c>INoteSharingService</c> into Core's internals.
 /// Two deliberate exceptions: <c>ICurrentUserContext</c> and <c>IPdfExportAssetSource</c> are declared
 /// in Core but registered by <c>JNotes.Web</c> itself, not here — the former's only implementation
 /// needs <c>IHttpContextAccessor</c>, an ASP.NET Core hosting type Core has never depended on; the
@@ -157,6 +158,9 @@ public static class ServiceCollectionExtensions
         // through the singleton IDbContextFactory, exactly as SettingsService/EfUserRepository do.
         services.AddSingleton<INoteIndexRepository, PostgresNoteIndexRepository>();
         services.AddScoped<INoteService, NoteService>();
+        // Not derived from the files, unlike the NoteIndex* tables — see NoteShare.
+        services.AddSingleton<INoteShareRepository, PostgresNoteShareRepository>();
+        services.AddScoped<INoteSharingService, NoteSharingService>();
         services.AddScoped<INoteIndexReconciler, NoteIndexReconciler>();
         // Scoped, matching INoteIndexReconciler/IUserRepository — the singleton background service
         // that drives this must never capture it directly; it creates a scope per tick instead.

@@ -15,6 +15,7 @@ see [Authentication](#authentication) below for that flow, adding more users, an
 - **Checklist notes** — markdown task lists (`- [ ] item`) rendered as interactive checkboxes. Add items and group them into categories (markdown `##` headings) from the note view or the editor without touching markdown; checking an item moves it below the unchecked ones in its category.
 - **PDF export (optional)** — an **Export PDF** button on a note opens it as a light-themed A4 PDF (images, diagrams and checklists included), rendered by a [Gotenberg](https://gotenberg.dev) container. Off unless `GOTENBERG_URL` is set.
 - **Auto-tagging (optional)** — when `OLLAMA_URL` points at an [Ollama](https://ollama.com) server, a background task tags notes that have no tags using a local model (Microsoft's `phi4` by default). It never changes tags you've written.
+- **Note sharing (Read/Edit)** — share a single note with any other user, as view-only or editable (body only); shared notes appear in **All Notes**, in search and on a **Shared with Me** page. See [Sharing notes](#sharing-notes).
 - **Multi-user with real accounts** — admin-created users, each with their own notes and settings;
   sign in with a password, OIDC, or both.
 - **Portable storage** — every note is `notes/<user-id>/<id>.md` with a small YAML front matter
@@ -37,7 +38,7 @@ tests/
 
 `JNotes.Web` never touches the filesystem or EF Core/PostgreSQL directly — it only consumes
 `INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
-`IUserManagementService`, `IImageService`, `INoteExportService`, and `INoteAutoTagger` from `JNotes.Core`. This is enforced at build time via
+`IUserManagementService`, `IImageService`, `IImageCleanupService`, `INoteExportService`, `INoteAutoTagger`, and `INoteSharingService` from `JNotes.Core`. This is enforced at build time via
 `Microsoft.CodeAnalysis.BannedApiAnalyzers` (`src/JNotes.Web/BannedSymbols.txt`).
 
 ### Styling
@@ -94,14 +95,6 @@ beside it are **not** rebuildable and do need a backup — see the `pg_dump` cal
 On first run with no users in the database, every request redirects to a setup screen where you
 pick the admin's username and password — see [Authentication](#authentication) below.
 
-> **Upgrading from a SQLite/Redis version of JNotes?** There is no automated migration. Your notes
-> are untouched (they're files), but user accounts and settings do not carry over: point
-> `POSTGRES_HOST`/`POSTGRES_DB`/etc. at an empty database and you'll go through the `/setup` screen
-> again. The re-created user gets a **new** user id, so rename `notes/<old-user-id>/` to
-> `notes/<new-user-id>/` (find the new id in Administration) to get the old
-> notes back, then Administration → "Rescan Now". You can delete the old `jnotes.db`/`-wal`/`-shm` files
-> and stop your Redis container.
-
 ### Configuration
 
 | Environment variable | Required | Default | Purpose |
@@ -140,12 +133,10 @@ All of these take effect at startup only — changing one requires an app/contai
 
 > **What are the Data Protection keys, and why do they need their own path?** ASP.NET Core signs the
 > auth cookie with them — without persisting them somewhere durable, every restart generates a fresh
-> set and silently signs everyone out (nothing errors; sessions just stop working). They used to be
-> derived from `DB_PATH`'s directory, back when the database was a local SQLite file; a PostgreSQL
-> connection string doesn't point at a local path, so they got their own setting,
-> `DATA_PROTECTION_KEYS_PATH`. Left unset, it falls back to a `keys` folder beside `NOTES_PATH`,
-> reproducing the old default location either way — just make sure wherever it points is on
-> persistent storage, not a container's ephemeral filesystem.
+> set and silently signs everyone out (nothing errors; sessions just stop working). A PostgreSQL
+> connection string doesn't point at a local path, so they have their own setting,
+> `DATA_PROTECTION_KEYS_PATH`. Left unset, it falls back to a `keys` folder beside `NOTES_PATH` — just
+> make sure wherever it points is on persistent storage, not a container's ephemeral filesystem.
 
 > **Backing up the database?** Use `pg_dump` (e.g.
 > `docker compose exec postgres pg_dump -U jnotes jnotes > jnotes.sql`), not a plain file copy —
@@ -189,8 +180,7 @@ The app listens on `http://localhost:8080`. Notes and the Data Protection keys a
 directly with any editor and they'll be picked up next time the app starts (or via Administration →
 Rescan Now while it's running). The **database is a named Docker volume** (`jnotes-pgdata`), not a
 file under `./data` — deleting `./data` no longer resets accounts, and `docker compose down -v`
-does. As with running locally, upgrading from a SQLite/Redis version means starting fresh (see the
-note above) — there's no automated migration.
+does.
 
 > **Note on file permissions:** the container runs as its base image's non-root user. If Docker
 > can't write to `./data` on your host (uncommon, but possible with some Docker Engine/Linux
@@ -267,6 +257,34 @@ that account links to the IdP automatically the first time they sign in with a m
 Once OIDC is configured, an admin can turn password login off entirely from
 Administration → Security (refused if OIDC isn't configured, so you can't lock everyone out).
 
+## Sharing notes
+
+Any user can share any of their own notes with any other user on the instance; there is no admin switch for it.
+
+**How to share.** Open a note and click **Share**. Search for a person by username or name, choose **View only** or **Can edit**, and click **Add**. You can change someone's permission or remove them at any time, and it takes effect on their next action. The note view shows "Shared with N", and a note you've shared shows a "Shared · N" chip in the list.
+
+**What each permission allows.**
+
+| | Owner | Can edit | View only |
+| --- | --- | --- | --- |
+| Read the note, search it, export it as PDF | yes | yes | yes |
+| Edit the body (text, or checklist items and checking them) | yes | yes | no |
+| Paste or upload images into the body | yes | yes (stored in the owner's folder) | no |
+| Change the title or tags | yes | no | no |
+| Share it, change or remove people | yes | no | no |
+| Move it to Trash, restore, delete it permanently | yes | no | no |
+| **Leave** the share | n/a | yes | yes |
+
+A shared note appears in the recipient's **All Notes** and search results with a "Shared by …" chip, and on the **Shared with Me** page. A recipient can **Leave** a share from the note view; the owner can share it again.
+
+**Trash and deleting.** When the owner moves a shared note to Trash it disappears for the people it's shared with (their list, and any open page, report it as not found). Restoring it brings everyone back with the same permissions. Deleting it permanently from Trash removes the shares. Deleting a user account removes the shares they gave and received, but never their notes (see [Authentication](#authentication)).
+
+**Where things live.** Sharing changes nothing on disk: a shared note stays in its owner's folder (`notes/<owner-id>/<note-id>.md`, images under `notes/<owner-id>/images/`), and nothing is copied. Who has access is stored in the PostgreSQL `NoteShares` table, not in the note's front matter, so it is not part of the portable files and is lost with the database (for example by `docker compose down -v`). The note's file format is unchanged.
+
+**Edits by more than one person.** Saves are last-writer-wins, as with two browser tabs. An editor's save writes only the body and keeps the owner's title and tags, so a rename or tag change made in the meantime isn't undone. If access is removed while someone has the note open in the editor, their next save is refused with a message that the change was not saved.
+
+**Privacy.** To pick a recipient, every signed-in user can search all accounts by username, first name and last name (email addresses are never shown or searched). Anyone with access to a note can see its images and, for a Can edit recipient, add images to the owner's folder.
+
 ## Note file format
 
 Each note is `notes/<user-id>/<note-id>.md`, one markdown file per note, per user:
@@ -296,3 +314,5 @@ editor pointed at the folder. Deleting a note (or the link) doesn't delete its i
 
 JNotes keeps checked items after unchecked ones within each run of adjacent checklist items, but the
 file is still ordinary markdown — you can reorder it by hand.
+
+Sharing a note adds nothing to the front matter (see [Sharing notes](#sharing-notes)).

@@ -120,6 +120,34 @@ namespace JNotes.Core.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "NoteShares",
+                columns: table => new
+                {
+                    NoteId = table.Column<Guid>(type: "uuid", nullable: false),
+                    SharedWithUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    OwnerUserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Permission = table.Column<string>(type: "text", nullable: false),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_NoteShares", x => new { x.NoteId, x.SharedWithUserId });
+                    table.CheckConstraint("CK_NoteShares_NotSelf", "\"OwnerUserId\" <> \"SharedWithUserId\"");
+                    table.ForeignKey(
+                        name: "FK_NoteShares_Users_OwnerUserId",
+                        column: x => x.OwnerUserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_NoteShares_Users_SharedWithUserId",
+                        column: x => x.SharedWithUserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "UserSettings",
                 columns: table => new
                 {
@@ -148,6 +176,16 @@ namespace JNotes.Core.Data.Migrations
                 name: "IX_NoteIndexTags_Tag",
                 table: "NoteIndexTags",
                 column: "Tag");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_NoteShares_OwnerUserId_NoteId",
+                table: "NoteShares",
+                columns: new[] { "OwnerUserId", "NoteId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_NoteShares_SharedWithUserId",
+                table: "NoteShares",
+                column: "SharedWithUserId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Users_Email",
@@ -181,6 +219,9 @@ namespace JNotes.Core.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "NoteIndexUserTags");
+
+            migrationBuilder.DropTable(
+                name: "NoteShares");
 
             migrationBuilder.DropTable(
                 name: "Settings");

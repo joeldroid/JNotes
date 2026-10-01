@@ -87,6 +87,36 @@ namespace JNotes.Core.Data.Migrations
                     b.ToTable("NoteIndexUserTags", (string)null);
                 });
 
+            modelBuilder.Entity("JNotes.Core.Data.NoteShare", b =>
+                {
+                    b.Property<Guid>("NoteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SharedWithUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Permission")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("NoteId", "SharedWithUserId");
+
+                    b.HasIndex("SharedWithUserId");
+
+                    b.HasIndex("OwnerUserId", "NoteId");
+
+                    b.ToTable("NoteShares", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_NoteShares_NotSelf", "\"OwnerUserId\" <> \"SharedWithUserId\"");
+                        });
+                });
+
             modelBuilder.Entity("JNotes.Core.Data.SettingEntry", b =>
                 {
                     b.Property<string>("Key")
@@ -223,6 +253,21 @@ namespace JNotes.Core.Data.Migrations
                     b.HasOne("JNotes.Core.Indexing.NoteIndexEntry", null)
                         .WithMany()
                         .HasForeignKey("NoteIndexEntryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("JNotes.Core.Data.NoteShare", b =>
+                {
+                    b.HasOne("JNotes.Core.Data.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("JNotes.Core.Data.UserAccount", null)
+                        .WithMany()
+                        .HasForeignKey("SharedWithUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

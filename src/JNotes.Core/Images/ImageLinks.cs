@@ -24,6 +24,13 @@ public static class ImageLinks
     public static string? ToServedUrl(string markdownUrl) =>
         ToStoredFileName(markdownUrl) is { } fileName ? ServedPrefix + fileName : null;
 
+    /// <summary>The note-scoped route prefix (<c>/notes/{id}/images/</c>) a non-owner's images are served from.</summary>
+    public static string NoteScopedPrefix(Guid noteId) => $"/notes/{noteId}/{FolderName}/";
+
+    /// <summary>Like <see cref="ToServedUrl"/>, but for the note-scoped route a recipient of <paramref name="noteId"/> reads through.</summary>
+    public static string? ToNoteScopedServedUrl(string markdownUrl, Guid noteId) =>
+        ToStoredFileName(markdownUrl) is { } fileName ? NoteScopedPrefix(noteId) + fileName : null;
+
     /// <summary>
     /// The stored file name in a markdown image URL, or <c>null</c> — only an exact
     /// <c>images/{valid stored name}</c> qualifies.

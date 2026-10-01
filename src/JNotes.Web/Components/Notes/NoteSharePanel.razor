@@ -1,0 +1,107 @@
+@* The content of NoteView's share dialog: who the note is shared with, and a picker to add someone.
+   Injects nothing on purpose — the routed page owns every INoteSharingService call and hands the current shares
+   and the recipient search in, and receives the user's intent through the callbacks. It is only ever rendered
+   inside the owner-only block of NoteView, so a recipient's circuit never gets its handler ids. *@
+
+<MudStack Spacing="3">
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap" Class="jn-share-add">
+        <div class="jn-share-picker">
+            <MudAutocomplete @key="(Version, _pickerVersion)" T="ShareRecipientCandidate" Value="_candidate" ValueChanged="OnCandidateChanged"
+                             SearchFunc="SearchAsync" ToStringFunc="CandidateText"
+                             DebounceInterval="250" MinCharacters="0" MaxItems="11" Disabled="Disabled"
+                             Placeholder="Search people…" aria-label="Add a person" Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                             ResetValueOnEmptyText="true" CoerceText="false" CoerceValue="false" />
+        </div>
+        <MudSelect T="NoteSharePermission" @bind-Value="_newPermission" Disabled="Disabled" aria-label="Permission for the new person"
+                   Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Class="jn-share-permission">
+            <MudSelectItem Value="NoteSharePermission.Read">View only</MudSelectItem>
+            <MudSelectItem Value="NoteSharePermission.Edit">Can edit</MudSelectItem>
+        </MudSelect>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Disabled="@(Disabled || _candidate is null)"
+                   StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="AddAsync">Add</MudButton>
+    </MudStack>
+
+    @if (Shares.Count == 0)
+    {
+        <MudText Color="Color.Secondary">Not shared with anyone yet.</MudText>
+    }
+    else
+    {
+        <div class="jn-share-list">
+            @foreach (var share in Shares)
+            {
+                var current = share;
+                @* @key carries Version: MudSelect keeps its own state, so after a refused change it would stay where the
+                   user clicked unless the row is rebuilt (same gotcha as ChecklistPanel's _listVersion). *@
+                <div class="jn-share-row" @key="(Version, current.UserId)">
+                    <div class="jn-share-who">
+                        <MudText Typo="Typo.body1">@current.DisplayName</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@current.Username</MudText>
+                    </div>
+                    <MudSelect T="NoteSharePermission" Value="current.Permission" Disabled="Disabled" aria-label="@($"Permission for {current.DisplayName}")"
+                               ValueChanged="@(permission => OnPermissionChanged.InvokeAsync((current.UserId, permission)))"
+                               Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true" Class="jn-share-permission">
+                        <MudSelectItem Value="NoteSharePermission.Read">View only</MudSelectItem>
+                        <MudSelectItem Value="NoteSharePermission.Edit">Can edit</MudSelectItem>
+                    </MudSelect>
+                    <MudIconButton Icon="@Icons.Material.Outlined.Close" Size="Size.Small" Disabled="Disabled"
+                                   aria-label="@($"Stop sharing with {current.DisplayName}")" title="Stop sharing"
+                                   OnClick="@(() => OnRemove.InvokeAsync(current.UserId))" />
+                </div>
+            }
+        </div>
+    }
+</MudStack>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<NoteShareEntry> Shares { get; set; } = [];
+
+    /// <summary>Candidates for the typed text (the page calls <c>INoteSharingService.SearchRecipientsAsync</c>).</summary>
+    [Parameter, EditorRequired] public Func<string?, CancellationToken, Task<IReadOnlyList<ShareRecipientCandidate>>> SearchRecipients { get; set; } = default!;
+
+    [Parameter] public EventCallback<(Guid UserId, NoteSharePermission Permission)> OnShare { get; set; }
+
+    [Parameter] public EventCallback<(Guid UserId, NoteSharePermission Permission)> OnPermissionChanged { get; set; }
+
+    [Parameter] public EventCallback<Guid> OnRemove { get; set; }
+
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>The page bumps this after every mutation; it is part of each row's <c>@key</c> so the rows are rebuilt from the model.</summary>
+    [Parameter] public int Version { get; set; }
+
+    private ShareRecipientCandidate? _candidate;
+    private NoteSharePermission _newPermission = NoteSharePermission.Read;
+    // Bumped after an add so the autocomplete is rebuilt empty.
+    private int _pickerVersion;
+
+    private async Task<IEnumerable<ShareRecipientCandidate>> SearchAsync(string? value, CancellationToken token)
+    {
+        try
+        {
+            return await SearchRecipients(value?.Trim(), token);
+        }
+        catch (OperationCanceledException)
+        {
+            return [];
+        }
+    }
+
+    private static string CandidateText(ShareRecipientCandidate? candidate) =>
+        candidate is null ? "" : $"{candidate.DisplayName} ({candidate.Username})";
+
+    private void OnCandidateChanged(ShareRecipientCandidate? candidate) => _candidate = candidate;
+
+    private async Task AddAsync()
+    {
+        if (_candidate is null)
+        {
+            return;
+        }
+
+        var candidate = _candidate;
+        _candidate = null;
+        _pickerVersion++;
+        await OnShare.InvokeAsync((candidate.UserId, _newPermission));
+    }
+}

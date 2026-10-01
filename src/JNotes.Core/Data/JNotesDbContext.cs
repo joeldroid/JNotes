@@ -31,6 +31,12 @@ public sealed class JNotesDbContext(DbContextOptions<JNotesDbContext> options) :
     /// </summary>
     public DbSet<NoteAutoTagAttempt> NoteAutoTagAttempts => Set<NoteAutoTagAttempt>();
 
+    /// <summary>
+    /// Per-note sharing grants — see <see cref="NoteShare"/>. NOT a derived cache (unlike NoteIndex*): it can't
+    /// be rebuilt from the files.
+    /// </summary>
+    public DbSet<NoteShare> NoteShares => Set<NoteShare>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // PostgreSQL's equivalent of SQLite's NOCASE: a non-deterministic ICU collation makes both the
@@ -115,6 +121,29 @@ public sealed class JNotesDbContext(DbContextOptions<JNotesDbContext> options) :
             entity.HasOne<UserAccount>()
                 .WithMany()
                 .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<NoteShare>(entity =>
+        {
+            entity.ToTable("NoteShares", t => t.HasCheckConstraint("CK_NoteShares_NotSelf", "\"OwnerUserId\" <> \"SharedWithUserId\""));
+            // The resolver's lookup, and one owner per (note, recipient).
+            entity.HasKey(e => new { e.NoteId, e.SharedWithUserId });
+            // The owner's share list, purge and count.
+            entity.HasIndex(e => new { e.OwnerUserId, e.NoteId });
+            // Incoming shares.
+            entity.HasIndex(e => e.SharedWithUserId);
+            // Stored as the enum's name, like UserAccount.Role.
+            entity.Property(e => e.Permission).HasConversion<string>();
+            // Both sides cascade with their account (PostgreSQL allows multiple cascade paths). Deliberately no FK
+            // to NoteIndexEntries (the index is truncatable, this table isn't) and no NoteIndex* prefix.
+            entity.HasOne<UserAccount>()
+                .WithMany()
+                .HasForeignKey(e => e.OwnerUserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<UserAccount>()
+                .WithMany()
+                .HasForeignKey(e => e.SharedWithUserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

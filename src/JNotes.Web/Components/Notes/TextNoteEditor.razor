@@ -24,7 +24,7 @@
     {
         <div>
             <MudPaper Outlined="true" Class="note-editor-preview">
-                <MarkdownPreview Markdown="@Body" />
+                <MarkdownPreview Markdown="@Body" ImagesNoteId="ImagesNoteId" />
             </MudPaper>
         </div>
     }
@@ -33,6 +33,15 @@
 @code {
     [Parameter, EditorRequired] public string Body { get; set; } = "";
     [Parameter] public EventCallback<string> BodyChanged { get; set; }
+
+    /// <summary>Set when the editor's user isn't the note's owner: the preview then reads images through the note-scoped route.</summary>
+    [Parameter] public Guid? ImagesNoteId { get; set; }
+
+    /// <summary>
+    /// Stores an uploaded image for this note and returns its stored name. The page supplies it for a shared note (the
+    /// image goes to the owner's folder via <c>INoteService.SaveImageAsync</c>); when null the editor saves to the user's own folder.
+    /// </summary>
+    [Parameter] public Func<Stream, CancellationToken, Task<string>>? SaveImage { get; set; }
 
     private bool _showPreview = true;
     private ElementReference _textareaRef;
@@ -92,12 +101,14 @@
         try
         {
             await using var stream = await openStream();
-            var storedFileName = await ImageService.SaveAsync(stream);
+            var storedFileName = SaveImage is null
+                ? await ImageService.SaveAsync(stream)
+                : await SaveImage(stream, CancellationToken.None);
 
             _toolbarModule ??= await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/markdown-toolbar.js");
             await _toolbarModule.InvokeVoidAsync("insertAtCursor", _textareaRef, ImageLinks.ToMarkdown(fileName, storedFileName));
         }
-        catch (Exception ex) when (ex is UnsupportedImageException or ImageTooLargeException)
+        catch (Exception ex) when (ex is UnsupportedImageException or ImageTooLargeException or NoteAccessDeniedException or NoteNotFoundException)
         {
             _imageError = ex.Message;
         }

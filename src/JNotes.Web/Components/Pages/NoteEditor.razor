@@ -28,12 +28,33 @@ else
 
     <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Wrap="Wrap.Wrap" Spacing="2" Class="mb-3">
         <div class="jn-title-block jn-editor-fields">
-            <MudTextField @bind-Value="_note.Title" @bind-Value:after="OnMetadataEdited" Immediate="true"
-                          Placeholder="Untitled note" aria-label="Title" Variant="Variant.Outlined" Margin="Margin.Dense"
-                          Typo="Typo.h6" Error="@(_titleError is not null)" ErrorText="@_titleError" />
-            <div class="mt-2">
-                <TagInput Tags="_note.Tags" TagsChanged="OnTagsChanged" SuggestTags="SuggestTagsAsync" />
-            </div>
+            @if (IsOwner)
+            {
+                <MudTextField @bind-Value="_note.Title" @bind-Value:after="OnMetadataEdited" Immediate="true"
+                              Placeholder="Untitled note" aria-label="Title" Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Typo="Typo.h6" Error="@(_titleError is not null)" ErrorText="@_titleError" />
+                <div class="mt-2">
+                    <TagInput Tags="_note.Tags" TagsChanged="OnTagsChanged" SuggestTags="SuggestTagsAsync" />
+                </div>
+            }
+            else
+            {
+                @* An Edit recipient changes the body only: title and tags are read-only text, and TagInput (which has no
+                   Disabled parameter) isn't rendered at all, so OnMetadataEdited can never fire for them. *@
+                <MudText Typo="Typo.h6" HtmlTag="h1" Class="mb-1">@(string.IsNullOrWhiteSpace(_note.Title) ? "Untitled note" : _note.Title)</MudText>
+                @if (_note.Tags.Count > 0)
+                {
+                    <div class="jn-tags">
+                        @foreach (var tag in _note.Tags)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@tag</MudChip>
+                        }
+                    </div>
+                }
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">
+                    Shared by @_access?.OwnerDisplayName — you can edit the body; only the owner can change the title or tags.
+                </MudText>
+            }
         </div>
         <div class="jn-editor-actions">
             <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
@@ -48,8 +69,11 @@ else
                 {
                     <MudButton Href="@($"/notes/{_note.Id}")" Variant="Variant.Outlined" Color="Color.Primary"
                                StartIcon="@Icons.Material.Filled.Close">Close</MudButton>
-                    <MudButton Variant="Variant.Outlined" Color="Color.Error" title="Move to Trash"
-                               StartIcon="@Icons.Material.Outlined.DeleteOutline" OnClick="TrashAsync">Delete</MudButton>
+                    @if (IsOwner)
+                    {
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" title="Move to Trash"
+                                   StartIcon="@Icons.Material.Outlined.DeleteOutline" OnClick="TrashAsync">Delete</MudButton>
+                    }
                 }
             </MudStack>
             <MudText Typo="Typo.caption" Color="Color.Secondary">@SaveStatusText</MudText>
@@ -71,7 +95,8 @@ else
     }
     else
     {
-        <TextNoteEditor @bind-Body="_note.Body" @bind-Body:after="OnContentEdited" />
+        <TextNoteEditor @bind-Body="_note.Body" @bind-Body:after="OnContentEdited"
+                        ImagesNoteId="@(IsOwner ? null : _note.Id)" SaveImage="SharedImageSaver" />
     }
 }
 
@@ -86,6 +111,10 @@ else
     [Parameter] public string? TypeName { get; set; }
 
     private Note? _note;
+    // How the current user relates to an existing note (null for a draft, which is always the author's own).
+    private NoteAccess? _access;
+    // Set once a save found the note gone or the access revoked/downgraded: every further edit and the final flush are skipped.
+    private bool _accessLost;
     private bool _notFound;
     private bool _isSaving;
     private bool _hasUnsavedChanges;
@@ -108,6 +137,13 @@ else
 
     private bool IsNew => TypeName is not null;
 
+    // Drafts, and notes the user owns. False for an Edit recipient (Read recipients never get this far — see OnParametersSetAsync).
+    private bool IsOwner => IsNew || _access is null || _access.IsOwner;
+
+    // An Edit recipient's pasted images go to the owner's folder through INoteService; owners use the editor's own IImageService path.
+    private Func<Stream, CancellationToken, Task<string>>? SharedImageSaver =>
+        IsOwner || _note is null ? null : (stream, ct) => NoteService.SaveImageAsync(_note.Id, stream, ct);
+
     // Only a draft with something in it is worth a "discard?" prompt; an untouched empty one isn't.
     private bool HasDraftContent =>
         IsNew && !_draftSaved && _note is not null
@@ -124,9 +160,11 @@ else
         _notFound = false;
         _saveError = null;
         _titleError = null;
+        _accessLost = false;
 
         if (IsNew)
         {
+            _access = null;
             // Built here rather than in OnInitializedAsync: /notes/new/text -> /notes/new/checklist
             // reuses this instance and only the parameters change.
             if (!Enum.TryParse<NoteType>(TypeName, ignoreCase: true, out var type) || !Enum.IsDefined(type))
@@ -145,7 +183,17 @@ else
 
         try
         {
-            _note = await NoteService.GetAsync(Id);
+            var result = await NoteService.GetWithAccessAsync(Id);
+            if (result.Access.Level == NoteAccessLevel.Read)
+            {
+                // A Read recipient can't edit: send them to the read-only view (replace, so Back doesn't bounce them here again).
+                _note = null;
+                NavigationManager.NavigateTo($"/notes/{Id}", replace: true);
+                return;
+            }
+
+            _note = result.Note;
+            _access = result.Access;
             _hasUnsavedChanges = false;
         }
         catch (NoteNotFoundException)
@@ -156,6 +204,11 @@ else
 
     private void OnContentEdited()
     {
+        if (_accessLost)
+        {
+            return;
+        }
+
         _hasUnsavedChanges = true;
         if (!IsNew)
         {
@@ -165,6 +218,11 @@ else
 
     private void OnMetadataEdited()
     {
+        if (_accessLost)
+        {
+            return;
+        }
+
         _hasUnsavedChanges = true;
         _titleError = null;
         if (!IsNew)
@@ -197,7 +255,7 @@ else
     /// </summary>
     private async Task SaveNowAsync(NoteSaveScope scope)
     {
-        if (_note is null)
+        if (_note is null || _accessLost)
         {
             return;
         }
@@ -208,9 +266,28 @@ else
         await _saveGate.WaitAsync();
         try
         {
-            _note = await NoteService.AutosaveAsync(_note, scope);
+            var saved = await NoteService.AutosaveAsync(_note, scope);
+            if (!ReferenceEquals(saved, _note))
+            {
+                // An Edit recipient's save comes back as the owner's file with only the body merged in: adopt the
+                // owner's current title/tags (a concurrent rename or auto-tag) but keep the body being typed, which
+                // may already be ahead of what was just saved.
+                _note.Title = saved.Title;
+                _note.Tags = saved.Tags;
+                _note.UpdatedAt = saved.UpdatedAt;
+            }
+
             _hasUnsavedChanges = false;
             _saveError = null;
+        }
+        catch (Exception ex) when (ex is NoteNotFoundException or NoteAccessDeniedException)
+        {
+            // Unshared, made read-only or deleted while this editor was open — access is re-checked on every save.
+            // Nothing was written; stop autosaving and say so loudly, since the latest typing is only in this page.
+            _accessLost = true;
+            _contentDebouncer.Cancel();
+            _metadataDebouncer.Cancel();
+            _saveError = "This note is no longer available to you (unshared, made read-only, or deleted). Your latest changes were NOT saved — copy them before leaving.";
         }
         catch (Exception ex)
         {
@@ -329,7 +406,7 @@ else
         _metadataDebouncer.Dispose();
 
         // A new note is a draft: leaving without Save must not create it, so there's nothing to flush.
-        if (!IsNew && _hasUnsavedChanges && _note is not null)
+        if (!IsNew && !_accessLost && _hasUnsavedChanges && _note is not null)
         {
             // Best-effort final flush so navigating away right after typing doesn't lose the last
             // stretch of edits — always the full scope, so the index isn't left stale either.

@@ -1,4 +1,3 @@
-using JNotes.Core.Images;
 using JNotes.Core.Notes;
 using JNotes.Core.Time;
 using Microsoft.Extensions.Options;
@@ -8,7 +7,6 @@ namespace JNotes.Core.Export;
 /// <inheritdoc cref="INoteExportService"/>
 public sealed class NoteExportService(
     INoteService notes,
-    IImageService images,
     IPdfRenderer renderer,
     IPdfExportAssetSource assetSource,
     IAppTimeZoneProvider timeZone,
@@ -21,8 +19,8 @@ public sealed class NoteExportService(
             throw new InvalidOperationException("PDF export is not enabled (GOTENBERG_URL).");
         }
 
-        // GetAsync reads only the current user's folder: another user's id is a NoteNotFoundException,
-        // which is the ownership check.
+        // GetAsync resolves owner-or-shared: an id the caller neither owns nor has been given is a
+        // NoteNotFoundException, which is the access check. Any access level (Read included) may export — it's a read.
         var note = await notes.GetAsync(noteId, cancellationToken);
 
         // Same format as NoteView, plus the zone id so the PDF stands alone.
@@ -49,7 +47,8 @@ public sealed class NoteExportService(
             foreach (var imageName in document.ImageFileNames)
             {
                 // A missing image just renders broken, as it does in the app.
-                if (await images.OpenAsync(imageName, cancellationToken) is { } image)
+                // Through the note, so a recipient's images come from the owner's folder under the same access rules as the app.
+                if (await notes.OpenImageAsync(noteId, imageName, cancellationToken) is { } image)
                 {
                     assets.Add(new PdfRenderAsset(imageName, image.Stream));
                 }

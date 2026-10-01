@@ -30,6 +30,9 @@ public sealed class FileSystemNoteFileStore : INoteFileStore
         return _serializer.Deserialize(content);
     }
 
+    public async Task<bool> ExistsAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default) =>
+        File.Exists(await ResolvePathAsync(userId, noteId, cancellationToken));
+
     public async Task<string> ReadRawAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default)
     {
         var path = await ResolvePathAsync(userId, noteId, cancellationToken);

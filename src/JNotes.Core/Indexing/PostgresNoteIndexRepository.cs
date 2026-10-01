@@ -1,5 +1,7 @@
 using JNotes.Core.Data;
 using JNotes.Core.Notes;
+using JNotes.Core.Sharing;
+using JNotes.Core.Users;
 using Microsoft.EntityFrameworkCore;
 
 namespace JNotes.Core.Indexing;
@@ -29,7 +31,13 @@ public sealed class PostgresNoteIndexRepository : INoteIndexRepository
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
-        var entries = db.NoteIndex.AsNoTracking().Where(e => e.UserId == userId);
+        // Requiring s.OwnerUserId == e.UserId means a stale or foreign share row can never expose an entry from
+        // a folder its "owner" doesn't own.
+        var entries = db.NoteIndex.AsNoTracking();
+        entries = query.Scope == NoteListScope.SharedWithMe
+            ? entries.Where(e => db.NoteShares.Any(s => s.NoteId == e.Id && s.OwnerUserId == e.UserId && s.SharedWithUserId == userId))
+            : entries.Where(e => e.UserId == userId
+                || db.NoteShares.Any(s => s.NoteId == e.Id && s.OwnerUserId == e.UserId && s.SharedWithUserId == userId));
 
         if (query.Type is { } type)
         {
@@ -60,10 +68,22 @@ public sealed class PostgresNoteIndexRepository : INoteIndexRepository
             .Select(e => new
             {
                 e.Id,
+                e.UserId,
                 e.Title,
                 e.NoteType,
                 e.CreatedAt,
                 e.UpdatedAt,
+                OutgoingShareCount = e.UserId == userId
+                    ? db.NoteShares.Count(s => s.OwnerUserId == userId && s.NoteId == e.Id)
+                    : 0,
+                Permission = db.NoteShares
+                    .Where(s => s.NoteId == e.Id && s.OwnerUserId == e.UserId && s.SharedWithUserId == userId)
+                    .Select(s => (NoteSharePermission?)s.Permission)
+                    .FirstOrDefault(),
+                Owner = db.Users
+                    .Where(u => u.Id == e.UserId && e.UserId != userId)
+                    .Select(u => new { u.Username, u.FirstName, u.LastName })
+                    .FirstOrDefault(),
                 Tags = db.NoteIndexTags
                     .Where(t => t.NoteIndexEntryId == e.Id)
                     .OrderBy(t => t.Ordinal)
@@ -79,10 +99,19 @@ public sealed class PostgresNoteIndexRepository : INoteIndexRepository
                 Enum.Parse<Models.NoteType>(r.NoteType, ignoreCase: true),
                 r.Tags,
                 r.CreatedAt,
-                r.UpdatedAt))
+                r.UpdatedAt)
+            {
+                OwnerUserId = r.UserId,
+                OutgoingShareCount = r.OutgoingShareCount,
+                SharedWithMe = r.UserId != userId && r.Permission is { } permission && r.Owner is { } owner
+                    ? new SharedNoteInfo(r.UserId, UserDisplayName.Format(owner.FirstName, owner.LastName, owner.Username), permission)
+                    : null,
+            })
             .ToList();
     }
 
+    // Own-only on purpose: recipients can't edit tags, so the tag vocabulary (auto-suggest, distinct tags) never
+    // includes tags from notes shared with the user.
     public async Task<IReadOnlyList<string>> GetDistinctTagsAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);

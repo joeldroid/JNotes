@@ -1,4 +1,7 @@
+using JNotes.Core.Images;
 using Markdig;
+using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
 
 namespace JNotes.Core.Serialization;
 
@@ -22,5 +25,23 @@ public sealed class MarkdownRenderer : IMarkdownRenderer
         // the source is HTML-escaped, so this is not a hole in DisableHtml().
         .Use<MermaidMarkdownExtension>();
 
+    // Same base, but with no ImageLinkMarkdownExtension: RenderToHtml(markdown, noteId) rewrites image URLs itself.
+    private static readonly MarkdownPipeline BasePipeline = CreateBaseBuilder().Build();
+
     public string RenderToHtml(string markdown) => Markdown.ToHtml(markdown, Pipeline);
+
+    public string RenderToHtml(string markdown, Guid noteScopedImagesFor)
+    {
+        var document = Markdown.Parse(markdown, BasePipeline);
+
+        foreach (var link in document.Descendants<LinkInline>())
+        {
+            if (link.IsImage && ImageLinks.ToNoteScopedServedUrl(link.Url ?? "", noteScopedImagesFor) is { } url)
+            {
+                link.Url = url;
+            }
+        }
+
+        return document.ToHtml(BasePipeline);
+    }
 }

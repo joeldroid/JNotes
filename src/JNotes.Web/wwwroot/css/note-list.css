@@ -41,6 +41,11 @@
     gap: 0.5rem;
 }
 
+/* "Shared by …" / "Shared · N" chip beside the type chip: never squeezed by a long title. */
+.jn-share-chip {
+    flex-shrink: 0;
+}
+
 .jn-tags {
     display: flex;
     flex-wrap: wrap;
