@@ -11,7 +11,9 @@ namespace JNotes.Core.Notes;
 /// </summary>
 public interface INoteService
 {
-    /// <summary>Fast, index-only search — never reads note files.</summary>
+    /// <summary>
+    /// Fast, index-only search — never reads note files. Honours <see cref="NoteSearchQuery.Limit"/>, SQL-side.
+    /// </summary>
     Task<IReadOnlyList<NoteSummary>> ListAsync(NoteSearchQuery query, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<string>> GetDistinctTagsAsync(CancellationToken cancellationToken = default);

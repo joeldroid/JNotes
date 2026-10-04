@@ -1,0 +1,25 @@
+@* The sidebar's "Recent" list. Injects nothing: MainLayout loads the data (see the ICurrentUserContext gotcha in
+   CLAUDE.md) and passes it through NavMenu. Highlighting is MudNavLink's own Prefix match, so /notes/{id}/edit
+   counts as the note being open too. *@
+@if (Notes is { Count: > 0 })
+{
+    <div class="jn-nav-recent">
+        <MudDivider Class="my-2" />
+        <h2 class="jn-nav-recent-heading" id="jn-nav-recent-heading">Recent</h2>
+        <MudNavMenu Dense="true" Class="jn-nav-recent-list" aria-labelledby="jn-nav-recent-heading">
+            @foreach (var note in Notes)
+            {
+                <MudNavLink @key="note.Id" Href="@($"/notes/{note.Id}")"
+                            Icon="@(note.Type == NoteType.Checklist ? Icons.Material.Outlined.Checklist : Icons.Material.Outlined.Description)"
+                            title="@DisplayTitle(note)">@DisplayTitle(note)</MudNavLink>
+            }
+        </MudNavMenu>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public IReadOnlyList<NoteSummary>? Notes { get; set; }
+
+    private static string DisplayTitle(NoteSummary n) => string.IsNullOrWhiteSpace(n.Title) ? "Untitled" : n.Title;
+}

@@ -182,4 +182,71 @@ public class NoteIndexRepositoryTests : IAsyncLifetime
         var found = Assert.Single(results);
         Assert.Equal(checklistNote.Id, found.Id);
     }
+
+    [Fact]
+    public async Task SearchAsync_with_a_limit_returns_only_the_newest_rows_in_order()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var entries = Enumerable.Range(0, 12)
+            .Select(i => NewEntry(_fixture.UserAId, updatedAt: now.AddMinutes(-i)))
+            .ToList();
+        foreach (var entry in entries)
+        {
+            await _fixture.IndexRepository.UpsertAsync(entry, []);
+        }
+
+        var limited = await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(Limit: 10));
+        var unlimited = await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery());
+
+        Assert.Equal(entries.Take(10).Select(e => e.Id), limited.Select(r => r.Id));
+        Assert.Equal(12, unlimited.Count);
+    }
+
+    [Fact]
+    public async Task SearchAsync_applies_the_limit_after_filters()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var matchOld = NewEntry(_fixture.UserAId, title: "needle old", updatedAt: now.AddMinutes(-30));
+        var matchMid = NewEntry(_fixture.UserAId, title: "needle mid", updatedAt: now.AddMinutes(-20));
+        var matchNew = NewEntry(_fixture.UserAId, title: "needle new", updatedAt: now.AddMinutes(-10));
+        var otherA = NewEntry(_fixture.UserAId, title: "other a", updatedAt: now.AddMinutes(-2));
+        var otherB = NewEntry(_fixture.UserAId, title: "other b", updatedAt: now.AddMinutes(-1));
+        foreach (var entry in new[] { matchOld, matchMid, matchNew, otherA, otherB })
+        {
+            await _fixture.IndexRepository.UpsertAsync(entry, []);
+        }
+
+        var results = await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(SearchText: "needle", Limit: 2));
+
+        Assert.Equal([matchNew.Id, matchMid.Id], results.Select(r => r.Id));
+    }
+
+    [Fact]
+    public async Task SearchAsync_breaks_UpdatedAt_ties_deterministically()
+    {
+        var sameTime = DateTimeOffset.UtcNow.AddMinutes(-5);
+        var entries = Enumerable.Range(0, 3).Select(_ => NewEntry(_fixture.UserAId, updatedAt: sameTime)).ToList();
+        foreach (var entry in entries)
+        {
+            await _fixture.IndexRepository.UpsertAsync(entry, []);
+        }
+
+        var first = await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(Limit: 2));
+        var second = await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(Limit: 2));
+
+        // PostgreSQL orders uuids bytewise, which matches the ordinal order of the lowercase hex "D" form
+        // (not Guid.CompareTo's order).
+        var expected = entries.Select(e => e.Id).OrderByDescending(id => id.ToString(), StringComparer.Ordinal).Take(2);
+        Assert.Equal(expected, first.Select(r => r.Id));
+        Assert.Equal(expected, second.Select(r => r.Id));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task SearchAsync_rejects_a_limit_below_one(int limit)
+    {
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(Limit: limit)));
+    }
 }

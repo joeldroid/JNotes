@@ -413,6 +413,48 @@ public class NoteSharingTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_limited_listing_merges_own_and_shared_notes_newest_first()
+    {
+        _fixture.ActAsUserA();
+        var unshared = await Notes.CreateAsync(NoteType.Text, "A's unshared", [], "x");
+        await Task.Delay(20);
+        var shared = await CreateSharedWithBAsync(NoteSharePermission.Read, title: "From A");
+        await Task.Delay(20);
+        var ownOlder = await Notes.CreateAsync(NoteType.Text, "B older", [], "x");
+        await Task.Delay(20);
+        var ownNewer = await Notes.CreateAsync(NoteType.Text, "B newer", [], "x");
+
+        var limited = await Notes.ListAsync(new NoteSearchQuery(Limit: 2));
+        Assert.Equal([ownNewer.Id, ownOlder.Id], limited.Select(n => n.Id));
+
+        var all = await Notes.ListAsync(new NoteSearchQuery(Limit: 10));
+        Assert.Equal([ownNewer.Id, ownOlder.Id, shared.Id], all.Select(n => n.Id));
+        Assert.DoesNotContain(all, n => n.Id == unshared.Id);
+        Assert.Null(all[0].SharedWithMe);
+        Assert.NotNull(all[2].SharedWithMe);
+    }
+
+    [Fact]
+    public async Task A_trashed_or_left_note_drops_out_of_a_limited_listing()
+    {
+        var shared = await CreateSharedWithBAsync(NoteSharePermission.Read);
+        Assert.Equal(shared.Id, Assert.Single(await Notes.ListAsync(new NoteSearchQuery(Limit: 10))).Id);
+
+        _fixture.ActAsUserA();
+        await Notes.TrashAsync(shared.Id);
+        _fixture.ActAsUserB();
+        Assert.Empty(await Notes.ListAsync(new NoteSearchQuery(Limit: 10)));
+
+        _fixture.ActAsUserA();
+        await Notes.RestoreAsync(shared.Id);
+        _fixture.ActAsUserB();
+        Assert.Equal(shared.Id, Assert.Single(await Notes.ListAsync(new NoteSearchQuery(Limit: 10))).Id);
+
+        await Sharing.LeaveAsync(shared.Id);
+        Assert.Empty(await Notes.ListAsync(new NoteSearchQuery(Limit: 10)));
+    }
+
+    [Fact]
     public async Task Listing_as_the_owner_shows_the_outgoing_share_count_and_no_incoming_info()
     {
         var note = await CreateSharedWithBAsync(NoteSharePermission.Read);

@@ -89,6 +89,8 @@ non-null `HttpContext` while the DI scope is being built, and scoped services co
 So every routed page must resolve `NoteService` (or `ICurrentUserContext`) from its *first*
 lifecycle method (`OnInitializedAsync`/`OnParametersSetAsync`); deferring it behind a later
 interaction gets a wrong user or, since it throws on an unauthenticated principal, an exception.
+`MainLayout` also injects `INoteService` (constructed at circuit start alongside `ICurrentUserContext`)
+for the sidebar's Recent list, and only *calls* it after an `IsAuthenticated` check.
 
 **Two revalidation mechanisms — both needed.** A user can be deleted or change role while holding
 a valid cookie or open circuit. `CookiePrincipalValidator` (`OnValidatePrincipal`) only fires when
@@ -227,7 +229,7 @@ regenerates them and silently signs everyone out.
   item is fine. Profile editing (`/account`) and Administration (`/settings`) are reached only from this
   widget, so there is no top-level nav entry for either.
 - **Order:** Search, New Note (the dropdown button below), All Notes, Shared with Me (a plain `MudNavLink` to
-  `/shared`), divider, Trash (Search and New Note
+  `/shared`), divider, Trash, then (signed-in only, when there are notes) a **Recent** section (Search and New Note
   share one `<AuthorizeView Context="auth">` outside `MudNavMenu`; the divider is a plain `MudDivider`). Icons are MudBlazor's
   built-in `Icons.Material.*` (compiled SVG path strings — no icon font, no network). The vendored UI
   dependencies are Roboto and mermaid, under `wwwroot/lib/`; MudBlazor itself comes from NuGet. The
@@ -246,10 +248,23 @@ regenerates them and silently signs everyone out.
   `NavMenu` also renders for `NotFound`/`Error` (`[AllowAnonymous]`, same `MainLayout`), and an anonymous
   circuit never gets a handler id for markup `AuthorizeView` didn't render; the context is renamed so it
   can't collide with `ActivatorContent`'s own `context`.
-  **No active-route indication, deliberately:** neither the button nor the menu items reflect an open
-  `/notes/new/{type}` draft (the editor page itself makes that obvious), so `NavMenu` needs no
-  `LocationChanged` subscription. `.mud-menu` is `inline-flex` by default, so `nav-menu.css` stretches
-  it (and its button) to the sidebar's full width explicitly.
+  **No active-route indication on the New Note button, deliberately:** neither the button nor its menu items
+  reflect an open `/notes/new/{type}` draft (the editor page itself makes that obvious), so `NavMenu` needs no
+  `LocationChanged` subscription (`MainLayout` owns the one that refreshes Recent). `.mud-menu` is `inline-flex`
+  by default, so `nav-menu.css` stretches it (and its button) to the sidebar's full width explicitly.
+- **Recent notes** (up to 10, below Trash). `MainLayout` loads
+  `INoteService.ListAsync(new NoteSearchQuery(Limit: 10))` — scope All (own + shared with me), index
+  `UpdatedAt` order, so the `ContentOnly` staleness applies (a body-only edit doesn't reorder it until a
+  `Metadata` save or rescan) — in `OnInitializedAsync` and on **every `LocationChanged`** (query-string-only
+  changes included). Each refresh cancels any in-flight one, re-checks authentication (a deleted user's
+  index rows survive), and on error logs a warning and keeps the previous list. It passes the list down
+  `MainLayout` → `NavMenu` → `RecentNotes.razor` (`Components/Layout/`, injects nothing, same "layout queries,
+  children inject nothing" pattern as `AccountMenu`), rendered inside `<AuthorizeView Context="auth">` before
+  `AccountMenu`, which must stay the last child. Entries are `MudNavLink Href="/notes/{id}"` with a
+  type icon and "Untitled" for an empty title; the open note is highlighted by `MudNavLink`'s default
+  `Prefix` match, so `/notes/{id}/edit` counts too (no URL parsing). The heading is an `h2` because
+  `Routes.razor`'s `FocusOnNavigate` targets `h1`. There is deliberately no timer or push: the list does
+  **not** refresh without a navigation (Restore/Purge on `/trash`, another user's edit, Rescan Now).
 - **Search** is a single free-text box (title, body, tags) with no type/tag options. Enter navigates
   to `/?q=<url-encoded text>` (empty → `/`); `NoteList.razor` reads it via
   `[SupplyParameterFromQuery(Name = "q")]` and refreshes from `OnParametersSetAsync`, not
@@ -645,7 +660,8 @@ recreate an empty owner folder (harmless).
 **Listing and search** stay one SQL query over `NoteIndexEntries` (`PostgresNoteIndexRepository.SearchAsync`):
 `e.UserId == me OR EXISTS(NoteShares s WHERE s.NoteId == e.Id AND s.OwnerUserId == e.UserId AND
 s.SharedWithUserId == me)` for `NoteListScope.All`, only the `EXISTS` for `NoteListScope.SharedWithMe`
-(`NoteSearchQuery`'s 4th parameter); requiring `s.OwnerUserId == e.UserId` means a stale or foreign share row
+(`NoteSearchQuery`'s 4th parameter; its 5th, `Limit`, is an SQL `LIMIT` applied after every filter, ordered
+`UpdatedAt` then `Id` descending so ties are deterministic, and must be >= 1); requiring `s.OwnerUserId == e.UserId` means a stale or foreign share row
 can never expose another folder's entry. `NoteSummary` keeps its positional constructor and gains init
 properties `OwnerUserId`, `SharedWithMe` (`SharedNoteInfo`: owner, display name, permission — null for own
 notes) and `OutgoingShareCount`. Text, tag and type filters cover shared notes. **Tag suggestions and

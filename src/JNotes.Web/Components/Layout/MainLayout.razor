@@ -5,6 +5,8 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IUserRepository UserRepository
 @inject ICurrentUserContext CurrentUser
+@inject INoteService NoteService
+@inject ILogger<MainLayout> Logger
 
 @* The app is dark-only: App.razor sets <html data-theme="dark"> once, and this stays in step. *@
 <MudThemeProvider Theme="JNotesTheme.Instance" IsDarkMode="true" ObserveSystemDarkModeChange="false" />
@@ -28,7 +30,7 @@
        search box state) exists once. *@
     <MudDrawer @bind-Open="_drawerOpen" Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md"
                ClipMode="DrawerClipMode.Always" Elevation="0">
-        <NavMenu DisplayName="@_displayName" Initials="@_initials" />
+        <NavMenu DisplayName="@_displayName" Initials="@_initials" RecentNotes="_recentNotes" />
     </MudDrawer>
 
     <MudMainContent>
@@ -50,6 +52,11 @@
     private string _displayName = "";
     private string _initials = "";
 
+    private const int RecentNotesCount = 10;
+    private IReadOnlyList<NoteSummary>? _recentNotes;
+    private CancellationTokenSource? _recentCts;
+    private bool _disposed;
+
     protected override async Task OnInitializedAsync()
     {
         Navigation.LocationChanged += OnLocationChanged;
@@ -57,7 +64,8 @@
         // Guarded on IsAuthenticated (not just wrapped in <AuthorizeView> in the markup) —
         // MainLayout is also used by NotFound/Error with [AllowAnonymous], so this can run for a
         // signed-out visitor too. ICurrentUserContext.UserId throws in that case, so it must never be
-        // touched outside this check.
+        // touched outside this check. INoteService is injected above for the same reason as ICurrentUserContext
+        // (built at circuit start, while HttpContext still exists) but is only ever *called* after an auth check.
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         if (authState.User.Identity?.IsAuthenticated == true)
         {
@@ -67,10 +75,45 @@
                 _displayName = user.FirstName is { Length: > 0 } firstName ? firstName : user.Username;
                 _initials = UserInitials.Compute(user.FirstName, user.LastName, user.Username);
             }
+
+            await RefreshRecentAsync();
         }
     }
 
-    // Below the drawer breakpoint it's an overlay, so picking a destination should dismiss it.
+    // Re-checks auth every time: a deleted/demoted user's open circuit flips via the revalidating provider,
+    // and a deleted user's index rows survive (CLAUDE.md, Note sharing), so never trust a cached flag.
+    private async Task RefreshRecentAsync()
+    {
+        _recentCts?.Cancel();
+        _recentCts?.Dispose();
+        var cts = _recentCts = new CancellationTokenSource();
+        try
+        {
+            var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            if (auth.User.Identity?.IsAuthenticated != true)
+            {
+                _recentNotes = null;
+                return;
+            }
+
+            var notes = await NoteService.ListAsync(new NoteSearchQuery(Limit: RecentNotesCount), cts.Token);
+            if (!cts.IsCancellationRequested)
+            {
+                _recentNotes = notes;
+            }
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            // Keep the previous list; a failed sidebar query must never kill the circuit.
+            Logger.LogWarning(ex, "Could not load recent notes for the sidebar.");
+        }
+    }
+
+    // Below the drawer breakpoint it's an overlay, so picking a destination should dismiss it. Every navigation
+    // also re-queries the sidebar's Recent list (cancelling a still-running load, so rapid navigation collapses).
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => _ = InvokeAsync(async () =>
     {
         try
@@ -84,10 +127,19 @@
         catch (JSDisconnectedException)
         {
         }
+
+        await RefreshRecentAsync();
+        if (!_disposed)
+        {
+            StateHasChanged();
+        }
     });
 
     public void Dispose()
     {
+        _disposed = true;
         Navigation.LocationChanged -= OnLocationChanged;
+        _recentCts?.Cancel();
+        _recentCts?.Dispose();
     }
 }

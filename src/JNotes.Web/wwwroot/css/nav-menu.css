@@ -1,7 +1,7 @@
 /* App chrome: the app bar brand, page padding, the sidebar's search box, and the account widget
    (AccountMenu.razor: at the bottom of the sidebar below md, at the right of the app bar from md up).
    Everything else in the sidebar is MudNavMenu/MudNavLink and styles itself, except the New Note
-   dropdown button (.jn-nav-new) below. */
+   dropdown button (.jn-nav-new) and the "Recent" notes list (.jn-nav-recent) below. */
 .jn-brand {
     display: inline-flex;
     align-items: center;
@@ -81,6 +81,31 @@
     /* The dropdown arrow is the one thing the nav links don't have: pin it to the right edge. */
     & .mud-button-icon-end {
         margin-inline: auto 0;
+    }
+}
+
+/* "Recent" (RecentNotes.razor): up to 10 compact MudNavLinks under Trash. Titles are one line, ellipsised. */
+.jn-nav-recent {
+    min-width: 0;
+
+    & .jn-nav-recent-heading {
+        margin: 0.25rem 16px 0.25rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--mud-palette-text-secondary);
+    }
+
+    & .mud-nav-link {
+        min-width: 0;
+    }
+
+    & .mud-nav-link-text {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 }
 

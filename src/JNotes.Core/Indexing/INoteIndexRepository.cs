@@ -17,7 +17,8 @@ public interface INoteIndexRepository
 {
     /// <summary>
     /// <paramref name="userId"/>'s own notes plus (per <see cref="NoteSearchQuery.Scope"/>) the notes other users have
-    /// shared with them, newest first. Shared rows carry <see cref="NoteSummary.SharedWithMe"/>; own rows carry
+    /// shared with them, newest first (ties by id; at most <see cref="NoteSearchQuery.Limit"/> rows when set).
+    /// Shared rows carry <see cref="NoteSummary.SharedWithMe"/>; own rows carry
     /// <see cref="NoteSummary.OutgoingShareCount"/>.
     /// </summary>
     Task<IReadOnlyList<NoteSummary>> SearchAsync(Guid userId, NoteSearchQuery query, CancellationToken cancellationToken = default);

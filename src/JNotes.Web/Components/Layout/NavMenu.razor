@@ -32,12 +32,18 @@
         </div>
     </AuthorizeView>
 
-    <MudNavMenu Class="jn-nav-list">
+    <MudNavMenu Class="jn-nav-list" aria-label="Main navigation">
         <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.StickyNote2">All Notes</MudNavLink>
         <MudNavLink Href="/shared" Icon="@Icons.Material.Outlined.People">Shared with Me</MudNavLink>
         <MudDivider Class="my-2" />
         <MudNavLink Href="/trash" Icon="@Icons.Material.Outlined.DeleteOutline">Trash</MudNavLink>
     </MudNavMenu>
+
+    @* Signed-in only: NavMenu also renders for NotFound/Error ([AllowAnonymous]). MainLayout never loads the
+       list for an anonymous user either; this is the markup half. *@
+    <AuthorizeView Context="auth">
+        <RecentNotes Notes="RecentNotes" />
+    </AuthorizeView>
 
     @* Must stay the last child of div.jn-nav: .jn-account { margin-top: auto } bottom-anchors it (below md
        only - at md and up the same widget lives in MainLayout's app bar and this copy is d-md-none). *@
@@ -50,6 +56,9 @@
 
     [Parameter]
     public string Initials { get; set; } = "";
+
+    [Parameter]
+    public IReadOnlyList<NoteSummary>? RecentNotes { get; set; }
 
     private string _searchText = "";
 

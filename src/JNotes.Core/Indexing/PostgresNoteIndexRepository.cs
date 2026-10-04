@@ -29,6 +29,11 @@ public sealed class PostgresNoteIndexRepository : INoteIndexRepository
 
     public async Task<IReadOnlyList<NoteSummary>> SearchAsync(Guid userId, NoteSearchQuery query, CancellationToken cancellationToken = default)
     {
+        if (query.Limit is < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(query), query.Limit, "Limit must be at least 1.");
+        }
+
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
 
         // Requiring s.OwnerUserId == e.UserId means a stale or foreign share row can never expose an entry from
@@ -62,9 +67,13 @@ public sealed class PostgresNoteIndexRepository : INoteIndexRepository
             entries = entries.Where(e => db.NoteIndexTags.Any(t => t.NoteIndexEntryId == e.Id && t.Tag == tag));
         }
 
+        // Id breaks UpdatedAt ties so a LIMIT is deterministic. The Take sits before the Select so it becomes a SQL
+        // LIMIT and the per-row subqueries below only run for the rows kept.
+        var ordered = entries.OrderByDescending(e => e.UpdatedAt).ThenByDescending(e => e.Id);
+        IQueryable<NoteIndexEntry> page = query.Limit is { } limit ? ordered.Take(limit) : ordered;
+
         // Projected to an anonymous type and mapped afterwards: Enum.Parse has no SQL translation.
-        var rows = await entries
-            .OrderByDescending(e => e.UpdatedAt)
+        var rows = await page
             .Select(e => new
             {
                 e.Id,
