@@ -229,7 +229,9 @@ regenerates them and silently signs everyone out.
   item is fine. Profile editing (`/account`) and Administration (`/settings`) are reached only from this
   widget, so there is no top-level nav entry for either.
 - **Order:** Search, New Note (the dropdown button below), All Notes, Shared with Me (a plain `MudNavLink` to
-  `/shared`), divider, Trash, then (signed-in only, when there are notes) a **Recent** section (Search and New Note
+  `/shared`), then (signed-in only, when there are notes) a **Recent** section, then a divider and Trash in its own
+  `MudNavMenu.jn-nav-trash` (`margin-top: auto` bottom-anchors it; below md the account section follows directly
+  beneath it) (Search and New Note
   share one `<AuthorizeView Context="auth">` outside `MudNavMenu`; the divider is a plain `MudDivider`). Icons are MudBlazor's
   built-in `Icons.Material.*` (compiled SVG path strings — no icon font, no network). The vendored UI
   dependencies are Roboto and mermaid, under `wwwroot/lib/`; MudBlazor itself comes from NuGet. The
@@ -252,7 +254,7 @@ regenerates them and silently signs everyone out.
   reflect an open `/notes/new/{type}` draft (the editor page itself makes that obvious), so `NavMenu` needs no
   `LocationChanged` subscription (`MainLayout` owns the one that refreshes Recent). `.mud-menu` is `inline-flex`
   by default, so `nav-menu.css` stretches it (and its button) to the sidebar's full width explicitly.
-- **Recent notes** (up to 10, below Trash). `MainLayout` loads
+- **Recent notes** (up to 10, below Shared with Me). `MainLayout` loads
   `INoteService.ListAsync(new NoteSearchQuery(Limit: 10))` — scope All (own + shared with me), index
   `UpdatedAt` order (a body-only `ContentOnly` save bumps the row's `UpdatedAt`, so an edited note rises on the
   next navigation) — in `OnInitializedAsync` and on **every `LocationChanged`** (query-string-only
