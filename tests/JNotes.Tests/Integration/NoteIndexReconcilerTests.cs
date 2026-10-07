@@ -79,37 +79,35 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task RescanAsync_catches_up_a_note_left_stale_by_a_ContentOnly_autosave()
+    public async Task RescanAsync_heals_a_title_edit_that_rode_along_in_a_ContentOnly_autosave()
     {
-        // A ContentOnly autosave is, by design, indistinguishable to the reconciler from "a file
-        // edited outside the app" — this is what makes it self-healing with no new sync mechanism.
+        // The editor saves its whole in-memory note at ContentOnly scope, so a title edit can reach the file
+        // before its own Metadata save does. ContentOnly leaves the indexed mtime behind, so a rescan re-parses.
         var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Original title", [], "original body");
-        var indexedBefore = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
 
         await Task.Delay(TimeSpan.FromMilliseconds(1100)); // ensure the filesystem mtime actually advances
+        note.Title = "Renamed";
         note.Body = "autosaved body";
         await _fixture.NoteService.AutosaveAsync(note, NoteSaveScope.ContentOnly);
-
-        // Still stale immediately after the autosave — this is the known, deliberate trade-off.
         var indexedRightAfter = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
-        Assert.Equal(indexedBefore.UpdatedAt, indexedRightAfter.UpdatedAt);
+        Assert.Equal("Original title", indexedRightAfter.Title);
 
         var result = await _fixture.Reconciler.RescanAsync(_fixture.UserAId);
 
-        Assert.Equal(0, result.Added);
         Assert.Equal(1, result.Updated);
         var indexedAfterRescan = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
-        Assert.True(indexedAfterRescan.UpdatedAt > indexedBefore.UpdatedAt);
+        Assert.Equal("Renamed", indexedAfterRescan.Title);
     }
 
     [Fact]
-    public async Task RescanAsync_backfills_the_indexed_body_so_search_finds_a_ContentOnly_autosaved_change()
+    public async Task RescanAsync_backfills_the_indexed_body_when_the_body_was_edited_outside_the_app()
     {
         var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Note", [], "original body");
         await Task.Delay(TimeSpan.FromMilliseconds(1100)); // ensure the filesystem mtime actually advances
 
-        note.Body = "contains a needle";
-        await _fixture.NoteService.AutosaveAsync(note, NoteSaveScope.ContentOnly);
+        var current = await _fixture.FileStore.ReadAsync(_fixture.UserAId, note.Id);
+        current.Body = "contains a needle";
+        await _fixture.FileStore.WriteAsync(_fixture.UserAId, current); // bypasses NoteService's index update
         Assert.Empty(await _fixture.NoteService.ListAsync(new NoteSearchQuery(SearchText: "needle")));
 
         await _fixture.Reconciler.RescanAsync(_fixture.UserAId);

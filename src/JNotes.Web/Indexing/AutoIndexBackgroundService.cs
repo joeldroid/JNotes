@@ -6,7 +6,7 @@ namespace JNotes.Web.Indexing;
 
 /// <summary>
 /// Periodically reconciles every user's note index against their note files, catching up
-/// ContentOnly autosaves and hand-edited files without waiting for a restart or a manual
+/// hand-edited files (and any save whose index write failed) without waiting for a restart or a manual
 /// "Rescan Now". Interval comes from AUTO_INDEX_INTERVAL_MINUTES (0 disables). Lives in
 /// JNotes.Web rather than Core because BackgroundService is a hosting-layer type Core has never
 /// depended on — the same split as ICurrentUserContext; all the actual work is Core's

@@ -158,6 +158,54 @@ public class NoteIndexRepositoryTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task UpdateContentAsync_changes_only_body_and_UpdatedAt()
+    {
+        var indexedAt = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var entry = NewEntry(_fixture.UserAId, title: "Keep me", body: "old body", updatedAt: indexedAt, indexedFileWriteTimeUtc: indexedAt);
+        await _fixture.IndexRepository.UpsertAsync(entry, ["keep-tag"]);
+
+        var later = indexedAt.AddMinutes(5);
+        await _fixture.IndexRepository.UpdateContentAsync(_fixture.UserAId, entry.Id, "new body", later);
+
+        var found = Assert.Single(await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(SearchText: "new body")));
+        Assert.Equal("Keep me", found.Title);
+        Assert.Equal(["keep-tag"], found.Tags);
+        Assert.Equal(later, found.UpdatedAt);
+        Assert.Empty(await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(SearchText: "old body")));
+
+        // The indexed mtime stays behind the file's so the reconciler re-parses the note once.
+        var times = await _fixture.IndexRepository.GetIndexedFileWriteTimesAsync(_fixture.UserAId);
+        Assert.Equal(indexedAt, times[entry.Id]);
+    }
+
+    [Fact]
+    public async Task UpdateContentAsync_ignores_an_older_UpdatedAt_than_the_row_already_has()
+    {
+        var newer = new DateTimeOffset(2026, 1, 1, 0, 10, 0, TimeSpan.Zero);
+        var entry = NewEntry(_fixture.UserAId, body: "newer body", updatedAt: newer);
+        await _fixture.IndexRepository.UpsertAsync(entry, []);
+
+        await _fixture.IndexRepository.UpdateContentAsync(_fixture.UserAId, entry.Id, "stale body", newer.AddMinutes(-5));
+
+        var found = Assert.Single(await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(SearchText: "newer body")));
+        Assert.Equal(newer, found.UpdatedAt);
+        Assert.Empty(await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(SearchText: "stale body")));
+    }
+
+    [Fact]
+    public async Task UpdateContentAsync_is_a_noop_for_an_unknown_id_or_another_users_note()
+    {
+        var entry = NewEntry(_fixture.UserAId, body: "mine");
+        await _fixture.IndexRepository.UpsertAsync(entry, []);
+
+        await _fixture.IndexRepository.UpdateContentAsync(_fixture.UserAId, Guid.NewGuid(), "x", DateTimeOffset.UtcNow.AddMinutes(1));
+        await _fixture.IndexRepository.UpdateContentAsync(_fixture.UserBId, entry.Id, "hijacked", DateTimeOffset.UtcNow.AddMinutes(1));
+
+        Assert.Single(await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(SearchText: "mine")));
+        Assert.Empty(await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(SearchText: "hijacked")));
+    }
+
+    [Fact]
     public async Task GetIndexedFileWriteTimesAsync_round_trips_the_mtime_at_index_resolution()
     {
         var subMicrosecond = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero).AddTicks(1234567);

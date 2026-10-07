@@ -81,12 +81,11 @@ public sealed class NoteService : INoteService
         AutosaveAsync(note, NoteSaveScope.Metadata, cancellationToken);
 
     public Task<Note> SetChecklistItemCheckedAsync(Guid noteId, int lineIndex, bool isChecked, CancellationToken cancellationToken = default) =>
-        // A checkbox change is a body edit like any other — it doesn't need the index either.
+        // A checkbox change is a body edit like any other: ContentOnly, a one-row index update.
         MutateChecklistBodyAsync(noteId, body => ChecklistMarkdownParser.SetItemChecked(body, lineIndex, isChecked), cancellationToken);
 
     public Task<Note> AddChecklistItemAsync(Guid noteId, string text, int? categoryHeadingLine = null, CancellationToken cancellationToken = default) =>
-        // Same reasoning as SetChecklistItemCheckedAsync: body only, so ContentOnly — the new
-        // item's text isn't searchable until the next Metadata save or reconciliation pass.
+        // Same reasoning as SetChecklistItemCheckedAsync: body only, so ContentOnly.
         MutateChecklistBodyAsync(noteId, body => ChecklistMarkdownParser.AppendItemsToCategory(body, text, categoryHeadingLine), cancellationToken);
 
     public Task<Note> AddChecklistCategoryAsync(Guid noteId, string name, CancellationToken cancellationToken = default) =>
@@ -109,7 +108,7 @@ public sealed class NoteService : INoteService
             return await AutosaveAsync(note, NoteSaveScope.ContentOnly, cancellationToken);
         }
 
-        return await ReplaceBodyAsync(
+        var merged = await ReplaceBodyAsync(
             access.OwnerUserId,
             noteId,
             current =>
@@ -118,6 +117,8 @@ public sealed class NoteService : INoteService
                 current.Body = mutate(current.Body);
             },
             cancellationToken);
+        await IndexSavedAsync(access.OwnerUserId, merged, NoteSaveScope.ContentOnly, cancellationToken);
+        return merged;
     }
 
     private static void RequireChecklist(Note note)
@@ -152,11 +153,7 @@ public sealed class NoteService : INoteService
                 },
                 cancellationToken);
 
-            if (scope == NoteSaveScope.Metadata)
-            {
-                await IndexAsync(ownerId, merged, await _fileStore.GetLastWriteTimeUtcAsync(ownerId, note.Id, cancellationToken), cancellationToken);
-            }
-
+            await IndexSavedAsync(ownerId, merged, scope, cancellationToken);
             return merged;
         }
 
@@ -164,12 +161,13 @@ public sealed class NoteService : INoteService
 
         if (scope == NoteSaveScope.ContentOnly)
         {
-            // File only — deliberately doesn't touch NoteIndexReconciler.IndexedFileWriteTimeUtc,
-            // so this is indistinguishable from "a file edited outside the app" to the reconciler,
-            // which already knows how to catch the index up (Title/UpdatedAt/tags) the next time it
-            // runs (startup, or Settings -> Rescan Now). No new sync mechanism needed — see
-            // NoteIndexReconciler.RescanAsync.
+            // File first, then a one-row index update (Body/UpdatedAt only), so search and list order see the
+            // edit straight away. Title/tags and the indexed mtime are deliberately left alone: the editor
+            // saves its whole in-memory note here, so a title/tag edit may be riding along ahead of its own
+            // Metadata save, and the lagging mtime lets NoteIndexReconciler.RescanAsync re-parse and heal it.
+            // The same reconciler heals the case where this index write fails after the file is saved.
             await _fileStore.WriteAsync(ownerId, note, cancellationToken);
+            await IndexSavedAsync(ownerId, note, scope, cancellationToken);
             return note;
         }
 
@@ -348,6 +346,23 @@ public sealed class NoteService : INoteService
         await _fileStore.WriteAsync(ownerId, note, cancellationToken);
         var writeTimeUtc = await _fileStore.GetLastWriteTimeUtcAsync(ownerId, note.Id, cancellationToken);
         await IndexAsync(ownerId, note, writeTimeUtc, cancellationToken);
+    }
+
+    /// <summary>
+    /// Brings the owner's index row up to date after <paramref name="note"/> was written to the file:
+    /// everything for <see cref="NoteSaveScope.Metadata"/>, just Body/UpdatedAt for <see cref="NoteSaveScope.ContentOnly"/>.
+    /// </summary>
+    private async Task IndexSavedAsync(Guid ownerId, Note note, NoteSaveScope scope, CancellationToken cancellationToken)
+    {
+        if (scope == NoteSaveScope.Metadata)
+        {
+            var writeTimeUtc = await _fileStore.GetLastWriteTimeUtcAsync(ownerId, note.Id, cancellationToken);
+            await IndexAsync(ownerId, note, writeTimeUtc, cancellationToken);
+        }
+        else
+        {
+            await _indexRepository.UpdateContentAsync(ownerId, note.Id, note.Body, note.UpdatedAt, cancellationToken);
+        }
     }
 
     private async Task IndexAsync(Guid ownerId, Note note, DateTimeOffset writeTimeUtc, CancellationToken cancellationToken)

@@ -84,11 +84,9 @@ public class NoteServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SetChecklistItemCheckedAsync_does_not_update_the_index_immediately()
+    public async Task SetChecklistItemCheckedAsync_updates_the_index_immediately()
     {
-        // Same self-healing trade-off as a ContentOnly autosave: checking an item is a body edit, so
-        // the index (and therefore list ordering) only catches up on the next thing that touches it —
-        // a title/tag edit, explicit Save, or reconciliation.
+        // Checking an item is a ContentOnly save: a one-row index update, so list order sees it at once.
         var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Groceries", [], "- [ ] milk");
         var indexedBefore = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
         await Task.Delay(TimeSpan.FromMilliseconds(10));
@@ -96,7 +94,7 @@ public class NoteServiceTests : IAsyncLifetime
         await _fixture.NoteService.SetChecklistItemCheckedAsync(note.Id, lineIndex: 0, isChecked: true);
 
         var indexedAfter = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
-        Assert.Equal(indexedBefore.UpdatedAt, indexedAfter.UpdatedAt);
+        Assert.True(indexedAfter.UpdatedAt > indexedBefore.UpdatedAt);
     }
 
     [Fact]
@@ -200,43 +198,26 @@ public class NoteServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AddChecklistItemAsync_does_not_update_the_index_immediately()
+    public async Task AddChecklistItemAsync_makes_the_new_item_searchable_immediately()
     {
         var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Groceries", [], "- [ ] milk");
-        var indexedBefore = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
         await Task.Delay(TimeSpan.FromMilliseconds(10));
 
-        await _fixture.NoteService.AddChecklistItemAsync(note.Id, "eggs");
-
-        var indexedAfter = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
-        Assert.Equal(indexedBefore.UpdatedAt, indexedAfter.UpdatedAt);
-    }
-
-    [Fact]
-    public async Task AddChecklistItemAsync_then_a_rescan_makes_the_new_item_searchable()
-    {
-        // Pins the documented ContentOnly staleness contract: the new item's text isn't indexed
-        // until reconciliation catches the file up, and then it is.
-        var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Groceries", [], "- [ ] milk");
-        await Task.Delay(TimeSpan.FromMilliseconds(50));
-
         await _fixture.NoteService.AddChecklistItemAsync(note.Id, "zucchini");
-        Assert.Empty(await _fixture.NoteService.ListAsync(new NoteSearchQuery(SearchText: "zucchini")));
-
-        await _fixture.Reconciler.RescanAsync(_fixture.UserAId);
 
         var found = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery(SearchText: "zucchini")));
         Assert.Equal(note.Id, found.Id);
     }
 
     [Fact]
-    public async Task AutosaveAsync_with_ContentOnly_scope_writes_the_file_but_leaves_the_index_untouched()
+    public async Task AutosaveAsync_with_ContentOnly_scope_updates_the_indexed_body_and_UpdatedAt_but_not_title_or_tags()
     {
-        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Original title", [], "original body");
+        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Original title", ["keep"], "original body");
         var indexedBefore = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
         await Task.Delay(TimeSpan.FromMilliseconds(10));
 
         note.Body = "new body from autosave";
+        note.Title = "Renamed but not yet saved as metadata";
         await _fixture.NoteService.AutosaveAsync(note, NoteSaveScope.ContentOnly);
 
         var reloaded = await _fixture.NoteService.GetAsync(note.Id);
@@ -244,8 +225,44 @@ public class NoteServiceTests : IAsyncLifetime
 
         var indexedAfter = Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery()));
         Assert.Equal(indexedBefore.Title, indexedAfter.Title);
-        Assert.Equal(indexedBefore.UpdatedAt, indexedAfter.UpdatedAt);
+        Assert.Equal(["keep"], indexedAfter.Tags);
+        Assert.True(indexedAfter.UpdatedAt > indexedBefore.UpdatedAt);
+        Assert.Single(await _fixture.NoteService.ListAsync(new NoteSearchQuery(SearchText: "new body from autosave")));
+        Assert.Empty(await _fixture.NoteService.ListAsync(new NoteSearchQuery(SearchText: "original body")));
     }
+
+    [Fact]
+    public async Task AutosaveAsync_with_ContentOnly_scope_moves_the_note_to_the_top_of_the_list()
+    {
+        var older = await _fixture.NoteService.CreateAsync(NoteType.Text, "Older", [], "a");
+        await Task.Delay(TimeSpan.FromMilliseconds(10));
+        await _fixture.NoteService.CreateAsync(NoteType.Text, "Newer", [], "b");
+        await Task.Delay(TimeSpan.FromMilliseconds(10));
+
+        older.Body = "edited";
+        await _fixture.NoteService.AutosaveAsync(older, NoteSaveScope.ContentOnly);
+
+        var listed = await _fixture.NoteService.ListAsync(new NoteSearchQuery());
+        Assert.Equal(["Older", "Newer"], listed.Select(n => n.Title));
+    }
+
+    [Fact]
+    public async Task AutosaveAsync_with_ContentOnly_scope_advances_the_tag_LastUsedAt_used_to_rank_suggestions()
+    {
+        var first = await _fixture.NoteService.CreateAsync(NoteType.Text, "First", ["alpha"], "a");
+        await Task.Delay(TimeSpan.FromMilliseconds(10));
+        await _fixture.NoteService.CreateAsync(NoteType.Text, "Second", ["beta"], "b");
+        await Task.Delay(TimeSpan.FromMilliseconds(10));
+
+        // Both tags are on one note each, so ties fall to LastUsedAt: "beta" leads until "alpha"'s note is edited.
+        Assert.Equal(["beta", "alpha"], await _fixture.NoteService.SuggestTagsAsync(null, []));
+
+        first.Body = "edited";
+        await _fixture.NoteService.AutosaveAsync(first, NoteSaveScope.ContentOnly);
+
+        Assert.Equal(["alpha", "beta"], await _fixture.NoteService.SuggestTagsAsync(null, []));
+    }
+
 
     [Fact]
     public async Task AutosaveAsync_with_Metadata_scope_writes_both_the_file_and_the_index_immediately()

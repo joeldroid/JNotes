@@ -40,9 +40,9 @@ public interface INoteService
     /// <summary>
     /// Persists <paramref name="note"/> at whatever scope actually changed — see
     /// <see cref="NoteSaveScope"/>. Always bumps <see cref="Note.UpdatedAt"/>: even a
-    /// <see cref="NoteSaveScope.ContentOnly"/> save is a real edit, so the file's own timestamp
-    /// should reflect it — the index just doesn't find out about it until the next thing that
-    /// does touch the index (a <see cref="NoteSaveScope.Metadata"/> save, or reconciliation).
+    /// <see cref="NoteSaveScope.ContentOnly"/> save is a real edit, so the file's timestamp and the
+    /// index row's Body/UpdatedAt both reflect it (only a <see cref="NoteSaveScope.Metadata"/> save
+    /// also rewrites the title and tag rows).
     /// Works on the current user's own note or one shared with them at Edit permission. An Edit recipient's save
     /// persists only <see cref="Note.Body"/> (Title/Tags come from the file; the returned note carries them), and
     /// never creates a file.

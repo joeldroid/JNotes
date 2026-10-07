@@ -19,10 +19,11 @@ public sealed class NoteIndexEntry
     /// <summary>
     /// A copy of the note's body, kept here purely so search can match on content without opening
     /// every file — never rendered from here (<c>NoteService.GetAsync</c> still reads the file for
-    /// that). A <see cref="Notes.NoteSaveScope.ContentOnly"/> autosave doesn't update this
-    /// immediately, same as it doesn't update anything else in the index — it catches up on the
-    /// next <see cref="Notes.NoteSaveScope.Metadata"/> save or reconciliation pass, like everything
-    /// else here.
+    /// that). Every save through <c>NoteService</c> updates it, including a
+    /// <see cref="Notes.NoteSaveScope.ContentOnly"/> autosave (via
+    /// <c>INoteIndexRepository.UpdateContentAsync</c>); it only lags behind edits made outside the app,
+    /// a save whose index write failed, or a title/tag edit not yet saved at <c>Metadata</c> scope,
+    /// until the next reconciliation pass.
     /// </summary>
     public required string Body { get; set; }
 

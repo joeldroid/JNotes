@@ -210,6 +210,33 @@ public sealed class PostgresNoteIndexRepository : INoteIndexRepository
         await transaction.CommitAsync(cancellationToken);
     }
 
+    public async Task UpdateContentAsync(Guid userId, Guid noteId, string body, DateTimeOffset updatedAt, CancellationToken cancellationToken = default)
+    {
+        await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+
+        // IndexedFileWriteTimeUtc is deliberately not set — see INoteIndexRepository.UpdateContentAsync.
+        var rows = await db.NoteIndex
+            .Where(e => e.Id == noteId && e.UserId == userId && e.UpdatedAt <= updatedAt)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(e => e.Body, body)
+                .SetProperty(e => e.UpdatedAt, updatedAt), cancellationToken);
+        if (rows == 0)
+        {
+            return;
+        }
+
+        // NoteIndexUserTags.LastUsedAt is the max UpdatedAt of a tag's notes, so the bumped UpdatedAt can move it.
+        // The tag rows themselves are untouched; a note carries a handful of tags, so this stays cheap.
+        var tags = await db.NoteIndexTags
+            .Where(t => t.NoteIndexEntryId == noteId)
+            .Select(t => t.Tag)
+            .ToArrayAsync(cancellationToken);
+        await RecomputeUserTagsAsync(db, userId, tags, cancellationToken);
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     public async Task DeleteAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default)
     {
         await using var db = await _dbContextFactory.CreateDbContextAsync(cancellationToken);

@@ -28,6 +28,15 @@ public interface INoteIndexRepository
     /// <summary>Inserts or fully replaces the index row and tag set for <paramref name="entry"/>.Id, using <paramref name="entry"/>.UserId.</summary>
     Task UpsertAsync(NoteIndexEntry entry, IReadOnlyList<string> tags, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Updates only Body and UpdatedAt of an existing row — the cheap index write for a body-only save. Title, type,
+    /// tag rows and <c>IndexedFileWriteTimeUtc</c> are untouched: leaving the mtime behind the file's means the
+    /// reconciler still re-parses the note once, which heals any title/tag edit that rode along in the same save
+    /// before its own <c>Metadata</c> save landed. No-ops if no row exists (the reconciler will index the note) or
+    /// the row already has a newer <c>UpdatedAt</c>, so an out-of-order write can't roll back a newer indexed body.
+    /// </summary>
+    Task UpdateContentAsync(Guid userId, Guid noteId, string body, DateTimeOffset updatedAt, CancellationToken cancellationToken = default);
+
     /// <summary>No-ops if no row exists for <paramref name="noteId"/> owned by <paramref name="userId"/>.</summary>
     Task DeleteAsync(Guid userId, Guid noteId, CancellationToken cancellationToken = default);
 

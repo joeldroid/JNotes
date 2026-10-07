@@ -150,9 +150,9 @@ public class NoteSharingTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task An_edit_recipients_content_save_writes_the_owners_file_and_leaves_the_index_alone()
+    public async Task An_edit_recipients_content_save_writes_the_owners_file_and_updates_the_owners_index_row()
     {
-        var note = await CreateSharedWithBAsync(NoteSharePermission.Edit, body: "original body");
+        var note = await CreateSharedWithBAsync(NoteSharePermission.Edit, title: "Original", tags: ["alpha"], body: "original body");
         _fixture.ActAsUserA();
         var indexedBefore = Assert.Single(await Notes.ListAsync(new NoteSearchQuery()));
         _fixture.ActAsUserB();
@@ -165,12 +165,35 @@ public class NoteSharingTests : IAsyncLifetime
         Assert.Equal("edited by bob", (await _fixture.FileStore.ReadAsync(_fixture.UserAId, note.Id)).Body);
         Assert.False(File.Exists(NotePath(_fixture.UserBId, note.Id)));
 
-        // ContentOnly never touches the index: A's row still has the old UpdatedAt and the old body.
+        // The owner's row gets the new body and UpdatedAt (so search and list order see it), nothing else.
         _fixture.ActAsUserA();
         var indexedAfter = Assert.Single(await Notes.ListAsync(new NoteSearchQuery()));
-        Assert.Equal(indexedBefore.UpdatedAt, indexedAfter.UpdatedAt);
-        Assert.Empty(await Notes.ListAsync(new NoteSearchQuery("edited by bob")));
-        Assert.Single(await Notes.ListAsync(new NoteSearchQuery("original body")));
+        Assert.True(indexedAfter.UpdatedAt > indexedBefore.UpdatedAt);
+        Assert.Equal("Original", indexedAfter.Title);
+        Assert.Equal(["alpha"], indexedAfter.Tags);
+        Assert.Single(await Notes.ListAsync(new NoteSearchQuery("edited by bob")));
+        Assert.Empty(await Notes.ListAsync(new NoteSearchQuery("original body")));
+
+        // ...and the recipient finds it too.
+        _fixture.ActAsUserB();
+        Assert.Single(await Notes.ListAsync(new NoteSearchQuery("edited by bob")));
+    }
+
+    [Fact]
+    public async Task An_edit_recipients_checklist_toggle_updates_the_owners_index_row()
+    {
+        _fixture.ActAsUserA();
+        var note = await Notes.CreateAsync(NoteType.Checklist, "Shopping", [], "- [ ] milk");
+        await Sharing.ShareAsync(note.Id, _fixture.UserBId, NoteSharePermission.Edit);
+        var indexedBefore = Assert.Single(await Notes.ListAsync(new NoteSearchQuery()));
+        await Task.Delay(20);
+
+        _fixture.ActAsUserB();
+        await Notes.AddChecklistItemAsync(note.Id, "zucchini");
+
+        _fixture.ActAsUserA();
+        var indexedAfter = Assert.Single(await Notes.ListAsync(new NoteSearchQuery("zucchini")));
+        Assert.True(indexedAfter.UpdatedAt > indexedBefore.UpdatedAt);
     }
 
     [Fact]

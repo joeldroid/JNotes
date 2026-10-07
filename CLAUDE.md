@@ -254,8 +254,8 @@ regenerates them and silently signs everyone out.
   by default, so `nav-menu.css` stretches it (and its button) to the sidebar's full width explicitly.
 - **Recent notes** (up to 10, below Trash). `MainLayout` loads
   `INoteService.ListAsync(new NoteSearchQuery(Limit: 10))` — scope All (own + shared with me), index
-  `UpdatedAt` order, so the `ContentOnly` staleness applies (a body-only edit doesn't reorder it until a
-  `Metadata` save or rescan) — in `OnInitializedAsync` and on **every `LocationChanged`** (query-string-only
+  `UpdatedAt` order (a body-only `ContentOnly` save bumps the row's `UpdatedAt`, so an edited note rises on the
+  next navigation) — in `OnInitializedAsync` and on **every `LocationChanged`** (query-string-only
   changes included). Each refresh cancels any in-flight one, re-checks authentication (a deleted user's
   index rows survive), and on error logs a warning and keeps the previous list. It passes the list down
   `MainLayout` → `NavMenu` → `RecentNotes.razor` (`Components/Layout/`, injects nothing, same "layout queries,
@@ -333,8 +333,8 @@ regenerates them and silently signs everyone out.
   touch it). The key `(UserId, Tag)` uses the default deterministic collation, so "Work" and "work" stay two
   rows (matching `NoteIndexTags` and the exact tag filter). Matching is case-insensitive `ILIKE`, prefix
   matches first, then `NoteCount`, then `LastUsedAt`. No FK to Users (like `NoteIndexEntries`); trashed
-  notes contribute no tags because they have no index row; a `ContentOnly` save never touches it (the same
-  staleness trade-off as `Body`). Suggestions are scoped by `ICurrentUserContext` inside `NoteService`, so
+  notes contribute no tags because they have no index row; a `ContentOnly` save leaves tag rows alone but
+  recomputes the note's tags' `LastUsedAt` (the bumped `UpdatedAt`), so counts and ranking stay right. Suggestions are scoped by `ICurrentUserContext` inside `NoteService`, so
   a page can't ask for another user's tags. In the editor, `TagInput` (`Components/Notes/`, injects
   nothing — `NoteEditor` passes a `SuggestTags` delegate) shows tags as chips plus a
   `MudAutocomplete<string>`; typed text that matches no suggestion is offered last as "Add new tag …",
@@ -361,15 +361,20 @@ The view's whole content (header, meta, body) sits in a centered `.note-view` co
 `--note-view-max-width` (56rem, `note-view.css`); the editor's two-pane split deliberately stays full width.
 **Shared notes (see "Note sharing"):** `NoteView` and `NoteEditor` load through `INoteService.GetWithAccessAsync` and gate by `NoteAccess`. Buttons by level: **Owner** — Edit, Share (shows "Shared with N"), Export PDF, Delete; **Edit** recipient — Edit, Export PDF, **Leave**; **Read** recipient — Export PDF, **Leave** (`ChecklistPanel ReadOnly`, no Edit). Recipients also see a "Shared by X · Can edit/View only" chip in `.jn-meta`. Leave confirms in a `MudMessageBox`, calls `INoteSharingService.LeaveAsync`, then goes to `/shared`. The **share dialog** is an inline `MudDialog` (the `Settings.razor` pattern) rendered **only inside `@if (_access.IsOwner)`**, so a recipient's circuit never gets its handler ids; it hosts `NoteSharePanel` (`Components/Notes/`, injects nothing — the page passes a `SearchRecipients` delegate and the current `Shares`, and receives `OnShare`/`OnPermissionChanged`/`OnRemove`). `ShareAsync` is an upsert, so adding and changing permission are one handler. The page bumps `_sharesVersion` after every mutation and the panel puts its `Version` in each row's `@key` — a `MudSelect` keeps its own state after a refused change (same gotcha as `_listVersion`). `NoteEditor` for an **Edit** recipient renders the title as text and the tags as read-only chips (`TagInput` has no `Disabled` parameter, so it isn't rendered and `OnMetadataEdited` can never fire), hides Delete, and passes `ImagesNoteId`/`SaveImage` to `TextNoteEditor`; a **Read** recipient is redirected (`replace: true`) to the view. `SaveNowAsync` catches `NoteNotFoundException`/`NoteAccessDeniedException`, sets **`_accessLost`**, cancels both debouncers and shows "no longer available … NOT saved"; `OnContentEdited`/`OnMetadataEdited` and `DisposeAsync`'s flush then do nothing. A recipient's save returns the owner's merged note, so the editor adopts only its Title/Tags/UpdatedAt and keeps the body being typed. `SharedWithMe.razor` (`/shared`) is a thin routed page like `NoteList` (`NoteListScope.SharedWithMe`, `NoteGroupList`). `NoteListItem` shows a "Shared by X · …" chip (recipient) or "Shared · N" (owner).
 
-**Autosave (existing notes only) has two scopes, and the cheaper one is deliberately incomplete.**
+**Autosave (existing notes only) has two scopes, and the cheaper one is deliberately narrow.**
 `NoteService.AutosaveAsync(note, NoteSaveScope)` is what the editor's debounced autosave,
 checklist changes, and `UpdateAsync` funnel through — there's no Save button.
-- `ContentOnly` (body edits, checklist toggles/adds) writes only the file, never the index. It's the
-  same "file changed, index doesn't know yet" state as a hand edit, so the reconciler catches it up
-  for free. Trade-off: the note doesn't move in the `UpdatedAt`-sorted list, and its indexed
-  `Body` (used by search) stays stale, until a `Metadata` save or a reconciliation pass.
-- `Metadata` (title/tag edits) writes the file **and** reindexes immediately
-  (`PostgresNoteIndexRepository.UpsertAsync` replaces the row and its tag rows, in one transaction).
+- `ContentOnly` (body edits, checklist toggles/adds) writes the file, then one narrow index `UPDATE`
+  (`INoteIndexRepository.UpdateContentAsync`: `Body` and `UpdatedAt` only, guarded by `UpdatedAt <=` so an
+  out-of-order write can't roll back a newer body, plus a recompute of the note's tags' `LastUsedAt`). Search
+  and list order see the edit immediately. It deliberately does **not** touch the title, the tag rows or
+  `IndexedFileWriteTimeUtc`: the editor saves its whole in-memory note here, so a title/tag edit can reach the
+  file ahead of its own `Metadata` save, and the lagging mtime makes the reconciler re-parse the note once and
+  heal that drift (also what heals a failed index write — the file is saved first, and the index exception
+  propagates to the caller like a `Metadata` save's).
+- `Metadata` (title/tag edits) writes the file **and** fully reindexes immediately
+  (`PostgresNoteIndexRepository.UpsertAsync` replaces the row and its tag rows, in one transaction, and records
+  the post-write mtime so the reconciler skips it).
 
 **`NoteEditor.razor` autosave:** two independent debounces (`AutosaveDebouncer`,
 `Components/Notes/`) for content and metadata, but the actual save is serialized through one
@@ -378,8 +383,8 @@ debounces and takes the same gate. `DisposeAsync` does one best-effort `Metadata
 anything unsaved (navigating away right after typing) so file and index catch up together.
 
 **Search matches body content**, not just title: `NoteIndexEntry.Body` is a full copy, kept in sync
-by the same file-first-then-index path and reconciler as `Title`, with the `ContentOnly` staleness
-above. `PostgresNoteIndexRepository.SearchAsync` filters in SQL with `EF.Functions.ILike('%term%')`
+by the same file-first-then-index path and reconciler as `Title`; a `ContentOnly` save updates it too (see
+above). `PostgresNoteIndexRepository.SearchAsync` filters in SQL with `EF.Functions.ILike('%term%')`
 over `Title`/`Body` and an `EXISTS` over `NoteIndexTags` — deliberately `ILIKE`, not
 `tsvector`/`plainto_tsquery`, which would stem words and stop matching partial words (a silent
 search-behavior change this migration was explicit about avoiding). The term is escaped
@@ -635,8 +640,8 @@ Tags, Type, CreatedAt stay the file's, `UpdatedAt` = now) → `ReplaceIfUnchange
 (differing Title/Tags are **ignored**; only a Type change throws `NoteAccessDeniedException`, since throwing on a
 rename would break every recipient autosave after the owner renames), and the owner's concurrent rename or the
 auto-tagger's tags survive a recipient's save. The `Metadata` scope also reindexes the owner's row
-(`IndexAsync(ownerId, …)`); `ContentOnly` writes only the file, so the `ContentOnly` staleness (index `Body`/`UpdatedAt`,
-list order, search) applies to recipients' edits too. Saves are last-writer-wins between owner and recipient
+(`IndexAsync(ownerId, …)`); `ContentOnly` makes the same narrow `UpdateContentAsync` call on the **owner's** row
+(`Body`/`UpdatedAt`), so a recipient's body edit reaches search and list order for both users at once. Saves are last-writer-wins between owner and recipient
 (the owner's `WriteAsync` sends its whole in-memory note); the CAS only closes the read-to-write window.
 The auto-tagger runs per owner and a recipient's merge re-reads the file, so auto-added tags survive.
 
