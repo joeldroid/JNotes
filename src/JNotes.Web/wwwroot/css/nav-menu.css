@@ -84,7 +84,7 @@
     }
 }
 
-/* "Recent" (RecentNotes.razor): up to 10 compact MudNavLinks under Trash. Titles are one line, ellipsised. */
+/* "Recent" (RecentNotes.razor): up to 10 compact MudNavLinks under All Notes / Shared with Me. Titles are one line, ellipsised. */
 .jn-nav-recent {
     min-width: 0;
 
@@ -109,10 +109,20 @@
     }
 }
 
+/* Trash (NavMenu.razor) is bottom-anchored; below md the account section follows it, so only one of the
+   two takes the free space. */
+.jn-nav-trash {
+    margin-top: auto;
+}
+
 .jn-account {
     margin-top: auto;
     padding-top: 0.75rem;
     border-top: 1px solid var(--mud-palette-lines-default);
+}
+
+.jn-nav-trash ~ .jn-account {
+    margin-top: 0.75rem;
 }
 
 .jn-account-toggle {

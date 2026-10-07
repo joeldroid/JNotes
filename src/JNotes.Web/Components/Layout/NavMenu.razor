@@ -35,8 +35,6 @@
     <MudNavMenu Class="jn-nav-list" aria-label="Main navigation">
         <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Outlined.StickyNote2">All Notes</MudNavLink>
         <MudNavLink Href="/shared" Icon="@Icons.Material.Outlined.People">Shared with Me</MudNavLink>
-        <MudDivider Class="my-2" />
-        <MudNavLink Href="/trash" Icon="@Icons.Material.Outlined.DeleteOutline">Trash</MudNavLink>
     </MudNavMenu>
 
     @* Signed-in only: NavMenu also renders for NotFound/Error ([AllowAnonymous]). MainLayout never loads the
@@ -45,8 +43,15 @@
         <RecentNotes Notes="RecentNotes" />
     </AuthorizeView>
 
-    @* Must stay the last child of div.jn-nav: .jn-account { margin-top: auto } bottom-anchors it (below md
-       only - at md and up the same widget lives in MainLayout's app bar and this copy is d-md-none). *@
+    @* Trash sits at the bottom of the sidebar: .jn-nav-trash { margin-top: auto } bottom-anchors it, and
+       below md the account section follows directly beneath it. *@
+    <MudNavMenu Class="jn-nav-trash" aria-label="Trash">
+        <MudDivider Class="my-2" />
+        <MudNavLink Href="/trash" Icon="@Icons.Material.Outlined.DeleteOutline">Trash</MudNavLink>
+    </MudNavMenu>
+
+    @* Must stay the last child of div.jn-nav, directly after the Trash menu (below md only - at md and up the
+       same widget lives in MainLayout's app bar and this copy is d-md-none). *@
     <AccountMenu DisplayName="@DisplayName" Initials="@Initials" />
 </div>
 
