@@ -1,6 +1,32 @@
-# JNotes
+<p align="center">
+  <img src="src/JNotes.Web/wwwroot/img/jnotes-logo-512.png" alt="JNotes logo" width="160" height="160">
+</p>
 
-A self-hosted, multi-user note-taking app built with Blazor Server (.NET 10). Notes are stored
+<h1 align="center">JNotes</h1>
+
+<p align="center">
+  <strong>A self-hosted, multi-user note-taking app. Your notes stay plain markdown files you own.</strong>
+</p>
+
+<p align="center">
+  <img alt=".NET 10" src="https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white">
+  <img alt="Blazor Server" src="https://img.shields.io/badge/Blazor-Server-512BD4?logo=blazor&logoColor=white">
+  <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-index%20%26%20accounts-4169E1?logo=postgresql&logoColor=white">
+  <img alt="Docker" src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white">
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> ·
+  <a href="#running-locally">Running locally</a> ·
+  <a href="#running-with-docker">Docker</a> ·
+  <a href="#authentication">Authentication</a> ·
+  <a href="#sharing-notes">Sharing</a> ·
+  <a href="#note-file-format">File format</a>
+</p>
+
+---
+
+JNotes is built with Blazor Server (.NET 10). Notes are stored
 as portable markdown files on disk — copy the folder and every note is a readable `.md` file in
 any editor. A single PostgreSQL database holds user accounts and settings, and the note index that
 makes notes fast to search/list; the index tables are a derived cache, never the source of truth —
@@ -20,6 +46,7 @@ see [Authentication](#authentication) below for that flow, adding more users, an
   sign in with a password, OIDC, or both.
 - **Portable storage** — every note is `notes/<user-id>/<id>.md` with a small YAML front matter
   header (title, tags, type, timestamps) followed by the markdown body.
+- **Recent notes and Trash** — the sidebar lists your ten most recently updated notes, with **Trash** pinned to the bottom; deleting a note moves it to Trash until you delete it permanently.
 - **Responsive UI** — [MudBlazor](https://mudblazor.com) (Material design) with a dark theme, usable on both desktop and mobile.
 - **Self-healing index** — the note index is reconciled against the notes folder at startup and
   on demand (Administration → Rescan Now), so edits made directly to the files (outside the app, or
