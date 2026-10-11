@@ -1,0 +1,17 @@
+# Pull requests into main: build and test only. Uses no secrets (fork PRs don't get any) and pushes nothing.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    uses: ./.github/workflows/build-test.yml

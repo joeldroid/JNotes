@@ -9,6 +9,8 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/joeldroid/JNotes/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/joeldroid/JNotes/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/joeldroid/JNotes/actions/workflows/docker-publish.yml"><img alt="Publish" src="https://github.com/joeldroid/JNotes/actions/workflows/docker-publish.yml/badge.svg"></a>
   <img alt=".NET 10" src="https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white">
   <img alt="Blazor Server" src="https://img.shields.io/badge/Blazor-Server-512BD4?logo=blazor&logoColor=white">
   <img alt="PostgreSQL" src="https://img.shields.io/badge/PostgreSQL-index%20%26%20accounts-4169E1?logo=postgresql&logoColor=white">
@@ -196,11 +198,24 @@ dotnet ef database update --project src/JNotes.Core --startup-project src/JNotes
 `dotnet ef` is installed as a local tool (`.config/dotnet-tools.json`) — run `dotnet tool restore`
 once after cloning if `dotnet ef` isn't found.
 
+### Continuous integration
+
+GitHub Actions (`.github/workflows/`) runs on every pull request to `main`: it builds the solution
+and runs the full test suite against a `postgres:18-alpine` service container. No secrets are needed
+and nothing is pushed.
+
+Pushes to `main` and `v*` tags repeat the build and tests and, only if they pass, also publish
+`joeldroid/jnotes` to Docker Hub (`linux/amd64` only) with the tags `latest` (from `main`),
+`X.Y.Z`/`X.Y`/`X` (from a version tag) and `sha-<short>`. Publishing needs the repository variable
+`DOCKERHUB_USERNAME` and the secret `DOCKERHUB_TOKEN` (a Docker Hub access token with Read & Write).
+
 ## Running with Docker
 
 ```bash
 docker compose up --build
 ```
+
+A prebuilt image is also available: `docker pull joeldroid/jnotes`.
 
 The app listens on `http://localhost:8080`. Notes and the Data Protection keys are bind-mounted to
 `./data` on the host (`./data/notes/<user-id>/*.md`, `./data/keys`) — edit note files there

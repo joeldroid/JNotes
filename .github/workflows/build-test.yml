@@ -1,0 +1,88 @@
+# Reusable build + test job, called by ci.yml (pull requests) and docker-publish.yml (main/tags).
+# The integration tests need a real PostgreSQL (see CLAUDE.md "Tests"): each test class creates and
+# drops its own jnotes_test_<guid> database, so the user must have CREATEDB — the official image's
+# POSTGRES_USER is a superuser. No concurrency block here on purpose: a called workflow sharing the
+# caller's concurrency group would deadlock.
+name: Build and test
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  build-test:
+    name: Build and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        # Same image as docker-compose.yml / docker-compose.debug.yml.
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: jnotes
+          POSTGRES_USER: jnotes
+          POSTGRES_PASSWORD: jnotes
+        ports:
+          - 5432:5432
+        # tmpfs at /var/lib/postgresql (not .../data: postgres 18 keeps PGDATA in a versioned subfolder),
+        # like jnotes-debug-db — throwaway data, faster CREATE/DROP DATABASE.
+        options: >-
+          --tmpfs /var/lib/postgresql
+          --health-cmd "pg_isready -U jnotes -d jnotes"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+
+    env:
+      # Same as the tests' built-in default; explicit so CI doesn't silently depend on it.
+      JNOTES_TEST_POSTGRES_CONNECTION_STRING: Host=localhost;Port=5432;Database=jnotes;Username=jnotes;Password=jnotes
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # global.json pins 10.0.100 with rollForward latestMinor, so the newest 10.0 SDK satisfies it.
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # No packages.lock.json in the repo, so setup-dotnet's own cache can't be used; key on the project files.
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'global.json') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: dotnet restore JNotes.slnx
+
+      - name: Build
+        run: dotnet build JNotes.slnx -c Release --no-restore
+
+      - name: Test
+        run: >-
+          dotnet test JNotes.slnx -c Release --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory TestResults
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: TestResults/
+          if-no-files-found: ignore
+          retention-days: 14
