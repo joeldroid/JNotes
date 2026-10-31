@@ -13,8 +13,12 @@ internal sealed class NoteFrontMatter
 
     public string Title { get; set; } = string.Empty;
 
-    /// <summary>Lower-case <see cref="Models.NoteType"/> name, e.g. "text" or "checklist".</summary>
-    public string Type { get; set; } = string.Empty;
+    /// <summary>
+    /// Always written as <c>text</c> and ignored on read: kept so existing files stay byte-identical (the
+    /// auto-tagger's canonical-format guard) and the format stays stable; legacy <c>checklist</c> files open as
+    /// text notes. Must keep its position between <see cref="Title"/> and <see cref="Tags"/>.
+    /// </summary>
+    public string Type { get; set; } = "text";
 
     public List<string> Tags { get; set; } = [];
 

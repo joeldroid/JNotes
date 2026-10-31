@@ -175,4 +175,35 @@ public class MarkdownRendererTests
 
         Assert.DoesNotContain("<script>", html);
     }
+
+    [Fact]
+    public void RenderToHtml_renders_task_list_items_as_disabled_checkboxes()
+    {
+        var html = _renderer.RenderToHtml("- [ ] milk\n- [x] eggs");
+
+        // Pins the markup markdown-preview.css and note-pdf.css select on (`ul.contains-task-list`,
+        // `li.task-list-item > input[type="checkbox"]`): Markdig puts no class on the checkbox itself.
+        Assert.Contains("<ul class=\"contains-task-list\">", html);
+        var items = System.Text.RegularExpressions.Regex.Matches(html, "<li class=\"task-list-item\"><input ([^>]*)/> ([^<]*)</li>");
+        Assert.Equal(2, items.Count);
+        foreach (var item in items.Cast<System.Text.RegularExpressions.Match>())
+        {
+            var attributes = item.Groups[1].Value;
+            Assert.Contains("type=\"checkbox\"", attributes);
+            Assert.Contains("disabled=\"disabled\"", attributes);
+            Assert.DoesNotContain("class=", attributes);
+        }
+
+        Assert.Equal(("milk", false), (items[0].Groups[2].Value, items[0].Groups[1].Value.Contains("checked=\"checked\"")));
+        Assert.Equal(("eggs", true), (items[1].Groups[2].Value, items[1].Groups[1].Value.Contains("checked=\"checked\"")));
+    }
+
+    [Fact]
+    public void RenderToHtml_still_encodes_a_raw_input_element_typed_in_a_note()
+    {
+        var html = _renderer.RenderToHtml("<input type=\"checkbox\" onclick=\"alert(1)\">");
+
+        Assert.DoesNotContain("<input", html);
+        Assert.Contains("&lt;input", html);
+    }
 }

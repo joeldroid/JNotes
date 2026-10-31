@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace JNotes.Core.Data.Migrations
 {
     [DbContext(typeof(JNotesDbContext))]
-    [Migration("20260930213805_InitialCreate")]
+    [Migration("20261030215725_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -219,10 +219,6 @@ namespace JNotes.Core.Data.Migrations
 
                     b.Property<DateTimeOffset>("IndexedFileWriteTimeUtc")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("NoteType")
-                        .IsRequired()
-                        .HasColumnType("text");
 
                     b.Property<string>("Title")
                         .IsRequired()

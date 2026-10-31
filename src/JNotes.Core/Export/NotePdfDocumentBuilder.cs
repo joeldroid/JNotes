@@ -65,26 +65,11 @@ public static class NotePdfDocumentBuilder
         var title = string.IsNullOrWhiteSpace(note.Title) ? UntitledTitle : note.Title;
         var encodedTitle = WebUtility.HtmlEncode(title);
 
-        string bodyClass;
-        string bodyHtml;
-        IReadOnlyList<string> imageFileNames = [];
-        var hasMermaid = false;
-
-        if (note.Type == NoteType.Checklist)
-        {
-            bodyClass = "note-body checklist";
-            bodyHtml = RenderChecklist(note.Body);
-        }
-        else
-        {
-            var rendered = PdfMarkdownRenderer.Render(note.Body);
-            bodyClass = "note-body markdown";
-            bodyHtml = rendered.Html;
-            imageFileNames = rendered.ImageFileNames;
-            hasMermaid = rendered.Html.Contains(MermaidCodeBlockRenderer.OpeningTag, StringComparison.Ordinal);
-        }
-
-        var typeLabel = note.Type == NoteType.Checklist ? "Checklist" : "Text";
+        var rendered = PdfMarkdownRenderer.Render(note.Body);
+        const string bodyClass = "note-body markdown";
+        var bodyHtml = rendered.Html;
+        var imageFileNames = rendered.ImageFileNames;
+        var hasMermaid = rendered.Html.Contains(MermaidCodeBlockRenderer.OpeningTag, StringComparison.Ordinal);
 
         var html = new StringBuilder();
         html.Append("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>")
@@ -103,7 +88,7 @@ public static class NotePdfDocumentBuilder
             html.Append("</div>\n");
         }
 
-        html.Append("<div class=\"note-meta\">").Append(typeLabel).Append(" · ")
+        html.Append("<div class=\"note-meta\">")
             .Append(WebUtility.HtmlEncode(lastUpdatedText)).Append("</div></header>\n");
         html.Append("<main class=\"").Append(bodyClass).Append("\">").Append(bodyHtml).Append("</main></article>\n");
 
@@ -115,43 +100,6 @@ public static class NotePdfDocumentBuilder
         html.Append("<script>").Append(ReadyScript).Append("</script></body></html>");
 
         return new NotePdfDocument(html.ToString(), imageFileNames, hasMermaid);
-    }
-
-    // Mirrors ChecklistPanel: items only (prose isn't shown), grouped by category heading.
-    private static string RenderChecklist(string body)
-    {
-        var html = new StringBuilder();
-        foreach (var section in ChecklistMarkdownParser.ParseSections(body))
-        {
-            if (section.Title is null)
-            {
-                if (section.Items.Count == 0)
-                {
-                    continue;
-                }
-            }
-            else
-            {
-                html.Append("<h2>").Append(WebUtility.HtmlEncode(section.Title)).Append("</h2>\n");
-                if (section.Items.Count == 0)
-                {
-                    html.Append("<p class=\"empty\">No items.</p>\n");
-                    continue;
-                }
-            }
-
-            html.Append("<ul>\n");
-            foreach (var item in section.Items)
-            {
-                html.Append(item.IsChecked ? "<li class=\"checked\">" : "<li>")
-                    .Append("<span class=\"box\"></span><span class=\"text\">")
-                    .Append(WebUtility.HtmlEncode(item.Text)).Append("</span></li>\n");
-            }
-
-            html.Append("</ul>\n");
-        }
-
-        return html.Length == 0 ? "<p class=\"empty\">This checklist has no items.</p>" : html.ToString();
     }
 
     private static string LoadStylesheet()

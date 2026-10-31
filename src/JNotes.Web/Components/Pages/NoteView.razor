@@ -48,7 +48,7 @@ else
                 }
                 @if (PdfExportOptions.Value.IsEnabled)
                 {
-                    @* A plain new-tab anchor to /notes/{id}/pdf (not an @onclick): the PDF reflects the file at click time, so checklist changes made on this page are included. *@
+                    @* A plain new-tab anchor to /notes/{id}/pdf (not an @onclick): the PDF reflects the file at click time. *@
                     <MudButton Href="@($"/notes/{Id}/pdf")" Target="_blank" Rel="noopener" Variant="Variant.Outlined"
                                StartIcon="@Icons.Material.Outlined.PictureAsPdf" title="Export as PDF (opens in a new tab)">Export PDF</MudButton>
                 }
@@ -66,7 +66,6 @@ else
         </MudStack>
 
         <div class="jn-meta">
-            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled">@(_note.Type == NoteType.Checklist ? "Checklist" : "Text")</MudChip>
             @if (!_access.IsOwner)
             {
                 <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info"
@@ -80,18 +79,7 @@ else
             <MudAlert Severity="Severity.Error" Class="mb-3">@_actionError</MudAlert>
         }
 
-        @if (_note.Type == NoteType.Checklist)
-        {
-            // Checking items is the one change allowed from the view — it goes through NoteService,
-            // never a free body edit (that stays in the editor). A Read recipient's panel is inert.
-            <MudPaper Outlined="true" Class="pa-3">
-                <ChecklistPanel Body="@_note.Body" Disabled="_isMutating" ReadOnly="@(!_access.CanEditBody)" OnItemChecked="SetItemCheckedAsync" />
-            </MudPaper>
-        }
-        else
-        {
-            <MarkdownPreview Markdown="@_note.Body" ImagesNoteId="@(_access.IsOwner ? null : _note.Id)" />
-        }
+        <MarkdownPreview Markdown="@_note.Body" ImagesNoteId="@(_access.IsOwner ? null : _note.Id)" />
     </div>
 
     @if (_access.IsOwner)
@@ -107,7 +95,7 @@ else
                         <MudAlert Severity="Severity.Error" Dense="true">@_shareError</MudAlert>
                     }
                     <MudText Typo="Typo.body2" Color="Color.Secondary">
-                        People you share with can read this note; with “Can edit” they can also change its text or checklist items.
+                        People you share with can read this note; with “Can edit” they can also change its text.
                         Only you can rename, retag, share or delete it.
                     </MudText>
                     <NoteSharePanel Shares="_shares" SearchRecipients="SearchRecipientsAsync" Disabled="_sharesBusy" Version="_sharesVersion"
@@ -135,7 +123,6 @@ else
     private NoteAccess? _access;
     private bool _notFound;
     private bool _isDeleting;
-    private bool _isMutating;
     private string? _actionError;
 
     // Owner only: the note's recipients, and the share dialog's state. _sharesVersion goes into each row's @key
@@ -166,43 +153,6 @@ else
         catch (NoteNotFoundException)
         {
             _notFound = true;
-        }
-    }
-
-    private Task SetItemCheckedAsync((int LineIndex, bool IsChecked) change) =>
-        MutateChecklistAsync(
-            () => NoteService.SetChecklistItemCheckedAsync(Id, change.LineIndex, change.IsChecked),
-            "update the checklist");
-
-    private async Task MutateChecklistAsync(Func<Task<Note>> mutation, string action)
-    {
-        if (_note is null || _isMutating)
-        {
-            return;
-        }
-
-        // The panel disables its controls while a mutation is in flight, so two quick clicks can't
-        // race each other's file write (the editor serializes through a gate for the same reason).
-        _isMutating = true;
-        _actionError = null;
-        try
-        {
-            var result = await mutation();
-            _note.Body = result.Body;
-            _note.UpdatedAt = result.UpdatedAt;
-        }
-        catch (Exception ex) when (ex is NoteNotFoundException or NoteAccessDeniedException)
-        {
-            // Unshared, made read-only or deleted since this page loaded (access is re-checked on every call).
-            _actionError = "Your access to this note has changed — reload the page.";
-        }
-        catch (Exception ex)
-        {
-            _actionError = $"Couldn't {action}: {ex.Message}";
-        }
-        finally
-        {
-            _isMutating = false;
         }
     }
 

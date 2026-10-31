@@ -32,7 +32,7 @@
             {
                 var current = share;
                 @* @key carries Version: MudSelect keeps its own state, so after a refused change it would stay where the
-                   user clicked unless the row is rebuilt (same gotcha as ChecklistPanel's _listVersion). *@
+                   user clicked unless the row is rebuilt (same gotcha as Settings.razor's _securityVersion). *@
                 <div class="jn-share-row" @key="(Version, current.UserId)">
                     <div class="jn-share-who">
                         <MudText Typo="Typo.body1">@current.DisplayName</MudText>

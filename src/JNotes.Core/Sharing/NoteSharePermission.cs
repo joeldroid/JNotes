@@ -6,6 +6,6 @@ public enum NoteSharePermission
     /// <summary>View only.</summary>
     Read,
 
-    /// <summary>Change the body only (text, or checklist items and toggles) — never title, tags, sharing or deletion.</summary>
+    /// <summary>Change the body only — never title, tags, sharing or deletion.</summary>
     Edit,
 }

@@ -1,4 +1,3 @@
-using JNotes.Core.Models;
 using JNotes.Core.Tagging;
 
 namespace JNotes.Tests.Tagging;
@@ -7,11 +6,10 @@ public class AutoTagPromptBuilderTests
 {
     private static AutoTagPrompt Build(
         string? body,
-        NoteType type = NoteType.Text,
         string? title = "Title",
         string[]? current = null,
         string[]? vocabulary = null) =>
-        AutoTagPromptBuilder.Build(type, title, body, current ?? [], vocabulary ?? []);
+        AutoTagPromptBuilder.Build(title, body, current ?? [], vocabulary ?? []);
 
     [Fact]
     public void A_long_body_is_truncated_with_a_marker_and_a_short_one_is_unchanged()
@@ -64,12 +62,10 @@ public class AutoTagPromptBuilderTests
         Assert.Contains("Tags already on this note (do not repeat): alpha, beta", message);
     }
 
-    [Theory]
-    [InlineData(NoteType.Text, "Note type: text")]
-    [InlineData(NoteType.Checklist, "Note type: checklist")]
-    public void The_note_type_is_stated(NoteType type, string expected)
+    [Fact]
+    public void The_prompt_does_not_mention_a_note_type()
     {
-        Assert.Contains(expected, Build("b", type).UserMessage);
+        Assert.DoesNotContain("Note type", Build("b").UserMessage);
     }
 
     [Fact]

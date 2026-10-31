@@ -6,7 +6,7 @@ namespace JNotes.Tests.Notes;
 public class NoteGroupingTests
 {
     private static NoteSummary NoteAt(DateTimeOffset updatedAt, string title = "note") =>
-        new(Guid.NewGuid(), title, NoteType.Text, [], updatedAt, updatedAt);
+        new(Guid.NewGuid(), title, [], updatedAt, updatedAt);
 
     /// <summary>
     /// A reference "now", chosen fresh from the real clock but nudged onto a Wednesday, so the

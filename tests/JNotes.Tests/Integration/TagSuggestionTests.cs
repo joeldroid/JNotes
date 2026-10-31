@@ -22,7 +22,7 @@ public class TagSuggestionTests : IAsyncLifetime
         _fixture.Scope.ServiceProvider.GetRequiredService<IDbContextFactory<JNotesDbContext>>();
 
     private Task<Note> CreateAsync(string title, params string[] tags) =>
-        _fixture.NoteService.CreateAsync(NoteType.Text, title, tags, "body");
+        _fixture.NoteService.CreateAsync(title, tags, "body");
 
     private async Task<List<NoteIndexUserTag>> UserTagRowsAsync(Guid userId)
     {
@@ -141,7 +141,6 @@ public class TagSuggestionTests : IAsyncLifetime
         {
             Id = Guid.NewGuid(),
             Title = "External",
-            Type = NoteType.Text,
             Tags = ["external"],
             CreatedAt = now,
             UpdatedAt = now,

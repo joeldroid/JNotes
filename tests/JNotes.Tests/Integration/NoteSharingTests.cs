@@ -58,13 +58,12 @@ public class NoteSharingTests : IAsyncLifetime
     /// <summary>As A, creates a note and shares it with B at <paramref name="permission"/>. Leaves the fixture acting as B.</summary>
     private async Task<Note> CreateSharedWithBAsync(
         NoteSharePermission permission,
-        NoteType type = NoteType.Text,
         string title = "Shared note",
         string[]? tags = null,
         string body = "original body")
     {
         _fixture.ActAsUserA();
-        var note = await Notes.CreateAsync(type, title, tags ?? ["alpha"], body);
+        var note = await Notes.CreateAsync(title, tags ?? ["alpha"], body);
         await Sharing.ShareAsync(note.Id, _fixture.UserBId, permission);
         _fixture.ActAsUserB();
         return note;
@@ -74,7 +73,7 @@ public class NoteSharingTests : IAsyncLifetime
     public async Task An_unshared_foreign_note_is_not_found_and_nothing_is_created_for_the_caller()
     {
         _fixture.ActAsUserA();
-        var note = await Notes.CreateAsync(NoteType.Text, "Private", [], "secret");
+        var note = await Notes.CreateAsync("Private", [], "secret");
         var before = await File.ReadAllBytesAsync(NotePath(_fixture.UserAId, note.Id));
 
         _fixture.ActAsUserB();
@@ -82,7 +81,6 @@ public class NoteSharingTests : IAsyncLifetime
         {
             Id = note.Id,
             Title = "Hijack",
-            Type = NoteType.Text,
             CreatedAt = note.CreatedAt,
             UpdatedAt = note.UpdatedAt,
             Body = "overwritten",
@@ -118,7 +116,7 @@ public class NoteSharingTests : IAsyncLifetime
     public async Task The_owner_resolves_to_Owner_access_with_no_display_name()
     {
         _fixture.ActAsUserA();
-        var note = await Notes.CreateAsync(NoteType.Text, "Mine", [], "x");
+        var note = await Notes.CreateAsync("Mine", [], "x");
 
         var result = await Notes.GetWithAccessAsync(note.Id);
 
@@ -131,17 +129,14 @@ public class NoteSharingTests : IAsyncLifetime
     [Fact]
     public async Task A_read_recipient_cannot_write_and_the_owners_file_is_unchanged()
     {
-        var note = await CreateSharedWithBAsync(NoteSharePermission.Read, NoteType.Checklist, body: "- [ ] milk\n- [ ] eggs");
+        var note = await CreateSharedWithBAsync(NoteSharePermission.Read, body: "milk\neggs");
         var before = await File.ReadAllBytesAsync(NotePath(_fixture.UserAId, note.Id));
         var mine = await Notes.GetAsync(note.Id);
-        mine.Body = "- [ ] hacked";
+        mine.Body = "hacked";
 
         await Assert.ThrowsAsync<NoteAccessDeniedException>(() => Notes.AutosaveAsync(mine, NoteSaveScope.ContentOnly));
         await Assert.ThrowsAsync<NoteAccessDeniedException>(() => Notes.AutosaveAsync(mine, NoteSaveScope.Metadata));
         await Assert.ThrowsAsync<NoteAccessDeniedException>(() => Notes.UpdateAsync(mine));
-        await Assert.ThrowsAsync<NoteAccessDeniedException>(() => Notes.SetChecklistItemCheckedAsync(note.Id, 0, true));
-        await Assert.ThrowsAsync<NoteAccessDeniedException>(() => Notes.AddChecklistItemAsync(note.Id, "bread"));
-        await Assert.ThrowsAsync<NoteAccessDeniedException>(() => Notes.AddChecklistCategoryAsync(note.Id, "Dairy"));
         await Assert.ThrowsAsync<NoteAccessDeniedException>(() => Notes.SaveImageAsync(note.Id, PngStream()));
 
         Assert.Equal(before, await File.ReadAllBytesAsync(NotePath(_fixture.UserAId, note.Id)));
@@ -180,23 +175,6 @@ public class NoteSharingTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task An_edit_recipients_checklist_toggle_updates_the_owners_index_row()
-    {
-        _fixture.ActAsUserA();
-        var note = await Notes.CreateAsync(NoteType.Checklist, "Shopping", [], "- [ ] milk");
-        await Sharing.ShareAsync(note.Id, _fixture.UserBId, NoteSharePermission.Edit);
-        var indexedBefore = Assert.Single(await Notes.ListAsync(new NoteSearchQuery()));
-        await Task.Delay(20);
-
-        _fixture.ActAsUserB();
-        await Notes.AddChecklistItemAsync(note.Id, "zucchini");
-
-        _fixture.ActAsUserA();
-        var indexedAfter = Assert.Single(await Notes.ListAsync(new NoteSearchQuery("zucchini")));
-        Assert.True(indexedAfter.UpdatedAt > indexedBefore.UpdatedAt);
-    }
-
-    [Fact]
     public async Task An_edit_recipients_metadata_save_keeps_the_owners_title_and_tags_but_takes_the_body_and_reindexes()
     {
         var note = await CreateSharedWithBAsync(NoteSharePermission.Edit, title: "Original", tags: ["alpha"], body: "original body");
@@ -222,33 +200,6 @@ public class NoteSharingTests : IAsyncLifetime
         _fixture.ActAsUserB();
         Assert.Empty(await Notes.SuggestTagsAsync(null, []));
         Assert.Empty(await Notes.GetDistinctTagsAsync());
-    }
-
-    [Fact]
-    public async Task An_edit_recipient_cannot_change_the_note_type()
-    {
-        var note = await CreateSharedWithBAsync(NoteSharePermission.Edit);
-        var before = await File.ReadAllBytesAsync(NotePath(_fixture.UserAId, note.Id));
-        var mine = await Notes.GetAsync(note.Id);
-        mine.Type = NoteType.Checklist;
-
-        await Assert.ThrowsAsync<NoteAccessDeniedException>(() => Notes.AutosaveAsync(mine, NoteSaveScope.ContentOnly));
-
-        Assert.Equal(before, await File.ReadAllBytesAsync(NotePath(_fixture.UserAId, note.Id)));
-    }
-
-    [Fact]
-    public async Task An_edit_recipient_can_toggle_and_add_checklist_items_and_checked_items_sink_in_the_owners_file()
-    {
-        var note = await CreateSharedWithBAsync(NoteSharePermission.Edit, NoteType.Checklist, body: "- [ ] milk\n- [ ] eggs");
-
-        await Notes.SetChecklistItemCheckedAsync(note.Id, lineIndex: 0, isChecked: true);
-        await Notes.AddChecklistItemAsync(note.Id, "bread");
-
-        var body = (await _fixture.FileStore.ReadAsync(_fixture.UserAId, note.Id)).Body;
-        var lines = body.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        Assert.Equal(["- [ ] eggs", "- [ ] bread", "- [x] milk"], lines);
-        Assert.False(File.Exists(NotePath(_fixture.UserBId, note.Id)));
     }
 
     [Fact]
@@ -290,7 +241,7 @@ public class NoteSharingTests : IAsyncLifetime
     public async Task Sharing_with_yourself_or_an_unknown_user_is_refused()
     {
         _fixture.ActAsUserA();
-        var note = await Notes.CreateAsync(NoteType.Text, "Mine", [], "x");
+        var note = await Notes.CreateAsync("Mine", [], "x");
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => Sharing.ShareAsync(note.Id, _fixture.UserAId, NoteSharePermission.Read));
         await Assert.ThrowsAsync<InvalidOperationException>(() => Sharing.ShareAsync(note.Id, Guid.NewGuid(), NoteSharePermission.Read));
@@ -412,7 +363,7 @@ public class NoteSharingTests : IAsyncLifetime
     {
         var shared = await CreateSharedWithBAsync(NoteSharePermission.Read, title: "From A");
         await Task.Delay(20);
-        var own = await Notes.CreateAsync(NoteType.Text, "From B", [], "b body");
+        var own = await Notes.CreateAsync("From B", [], "b body");
 
         var listed = await Notes.ListAsync(new NoteSearchQuery());
 
@@ -439,13 +390,13 @@ public class NoteSharingTests : IAsyncLifetime
     public async Task A_limited_listing_merges_own_and_shared_notes_newest_first()
     {
         _fixture.ActAsUserA();
-        var unshared = await Notes.CreateAsync(NoteType.Text, "A's unshared", [], "x");
+        var unshared = await Notes.CreateAsync("A's unshared", [], "x");
         await Task.Delay(20);
         var shared = await CreateSharedWithBAsync(NoteSharePermission.Read, title: "From A");
         await Task.Delay(20);
-        var ownOlder = await Notes.CreateAsync(NoteType.Text, "B older", [], "x");
+        var ownOlder = await Notes.CreateAsync("B older", [], "x");
         await Task.Delay(20);
-        var ownNewer = await Notes.CreateAsync(NoteType.Text, "B newer", [], "x");
+        var ownNewer = await Notes.CreateAsync("B newer", [], "x");
 
         var limited = await Notes.ListAsync(new NoteSearchQuery(Limit: 2));
         Assert.Equal([ownNewer.Id, ownOlder.Id], limited.Select(n => n.Id));
@@ -496,9 +447,9 @@ public class NoteSharingTests : IAsyncLifetime
     public async Task The_SharedWithMe_scope_returns_only_incoming_notes()
     {
         var shared = await CreateSharedWithBAsync(NoteSharePermission.Read);
-        await Notes.CreateAsync(NoteType.Text, "B's own", [], "x");
+        await Notes.CreateAsync("B's own", [], "x");
         _fixture.ActAsUserA();
-        await Notes.CreateAsync(NoteType.Text, "A's unshared", [], "x");
+        await Notes.CreateAsync("A's unshared", [], "x");
 
         _fixture.ActAsUserB();
         var incoming = await Notes.ListAsync(new NoteSearchQuery(Scope: NoteListScope.SharedWithMe));
@@ -549,7 +500,7 @@ public class NoteSharingTests : IAsyncLifetime
     {
         var dave = await _fixture.CreateUserAsync("dave");
         _fixture.ActAs(dave);
-        var note = await Notes.CreateAsync(NoteType.Text, "Dave's note", [], "x");
+        var note = await Notes.CreateAsync("Dave's note", [], "x");
         await Sharing.ShareAsync(note.Id, _fixture.UserBId, NoteSharePermission.Read);
         _fixture.ActAsUserB();
         Assert.Single(await Notes.ListAsync(new NoteSearchQuery()));
@@ -567,8 +518,8 @@ public class NoteSharingTests : IAsyncLifetime
         _fixture.ActAsUserA();
         var mentioned = await Images.SaveAsync(PngStream());
         var unmentioned = await Images.SaveAsync(PngStream());
-        var readNote = await Notes.CreateAsync(NoteType.Text, "Read", [], $"![a](images/{mentioned})");
-        var editNote = await Notes.CreateAsync(NoteType.Text, "Edit", [], "no images written yet");
+        var readNote = await Notes.CreateAsync("Read", [], $"![a](images/{mentioned})");
+        var editNote = await Notes.CreateAsync("Edit", [], "no images written yet");
         await Sharing.ShareAsync(readNote.Id, _fixture.UserBId, NoteSharePermission.Read);
         await Sharing.ShareAsync(editNote.Id, _fixture.UserBId, NoteSharePermission.Edit);
 
@@ -621,7 +572,7 @@ public class NoteSharingTests : IAsyncLifetime
     {
         _fixture.ActAsUserA();
         var stored = await Images.SaveAsync(PngStream(64));
-        var note = await Notes.CreateAsync(NoteType.Text, "With picture", [], $"![a](images/{stored})");
+        var note = await Notes.CreateAsync("With picture", [], $"![a](images/{stored})");
         await Sharing.ShareAsync(note.Id, _fixture.UserBId, NoteSharePermission.Read);
 
         _fixture.ActAsUserB();
@@ -636,7 +587,7 @@ public class NoteSharingTests : IAsyncLifetime
     public async Task Exporting_an_unshared_note_is_still_not_found()
     {
         _fixture.ActAsUserA();
-        var note = await Notes.CreateAsync(NoteType.Text, "Private", [], "secret");
+        var note = await Notes.CreateAsync("Private", [], "secret");
 
         _fixture.ActAsUserB();
 
@@ -648,7 +599,7 @@ public class NoteSharingTests : IAsyncLifetime
     public async Task An_owner_autosave_after_trashing_the_note_is_not_found_and_does_not_recreate_a_live_file()
     {
         _fixture.ActAsUserA();
-        var note = await Notes.CreateAsync(NoteType.Text, "Doomed", [], "body");
+        var note = await Notes.CreateAsync("Doomed", [], "body");
         await Notes.TrashAsync(note.Id);
         note.Body = "typed in a stale tab";
 

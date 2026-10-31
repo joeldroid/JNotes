@@ -10,7 +10,7 @@
             @foreach (var note in Notes)
             {
                 <MudNavLink @key="note.Id" Href="@($"/notes/{note.Id}")"
-                            Icon="@(note.Type == NoteType.Checklist ? Icons.Material.Outlined.Checklist : Icons.Material.Outlined.Description)"
+                            Icon="@Icons.Material.Outlined.Description"
                             title="@DisplayTitle(note)">@DisplayTitle(note)</MudNavLink>
             }
         </MudNavMenu>

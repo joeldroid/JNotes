@@ -27,10 +27,6 @@ public sealed class NoteIndexEntry
     /// </summary>
     public required string Body { get; set; }
 
-    /// <summary>Stored as the string name of <see cref="Models.NoteType"/> (not an int) so a future
-    /// reordering of the enum can't silently corrupt existing rows.</summary>
-    public required string NoteType { get; set; }
-
     /// <summary>The note's own logical timestamp, from its front matter.</summary>
     public required DateTimeOffset CreatedAt { get; set; }
 

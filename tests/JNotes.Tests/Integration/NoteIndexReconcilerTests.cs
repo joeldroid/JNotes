@@ -20,7 +20,6 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
         {
             Id = Guid.NewGuid(),
             Title = "Added externally",
-            Type = NoteType.Text,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
             Body = "hello",
@@ -41,7 +40,7 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
     [Fact]
     public async Task RescanAsync_removes_the_index_row_for_a_file_deleted_outside_the_app()
     {
-        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "To be deleted", [], "body");
+        var note = await _fixture.NoteService.CreateAsync("To be deleted", [], "body");
 
         // Deleted directly through the file store (bypassing NoteService, so the index row is left behind).
         await _fixture.FileStore.DeleteAsync(_fixture.UserAId, note.Id);
@@ -59,7 +58,7 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
     [Fact]
     public async Task RescanAsync_reindexes_a_file_edited_outside_the_app_once_its_mtime_advances()
     {
-        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Original title", [], "body");
+        var note = await _fixture.NoteService.CreateAsync("Original title", [], "body");
 
         // Ensure the filesystem mtime actually advances before the external edit.
         await Task.Delay(TimeSpan.FromMilliseconds(1100));
@@ -83,7 +82,7 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
     {
         // The editor saves its whole in-memory note at ContentOnly scope, so a title edit can reach the file
         // before its own Metadata save does. ContentOnly leaves the indexed mtime behind, so a rescan re-parses.
-        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Original title", [], "original body");
+        var note = await _fixture.NoteService.CreateAsync("Original title", [], "original body");
 
         await Task.Delay(TimeSpan.FromMilliseconds(1100)); // ensure the filesystem mtime actually advances
         note.Title = "Renamed";
@@ -102,7 +101,7 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
     [Fact]
     public async Task RescanAsync_backfills_the_indexed_body_when_the_body_was_edited_outside_the_app()
     {
-        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Note", [], "original body");
+        var note = await _fixture.NoteService.CreateAsync("Note", [], "original body");
         await Task.Delay(TimeSpan.FromMilliseconds(1100)); // ensure the filesystem mtime actually advances
 
         var current = await _fixture.FileStore.ReadAsync(_fixture.UserAId, note.Id);
@@ -119,7 +118,7 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
     [Fact]
     public async Task RescanAsync_is_a_noop_when_nothing_changed_since_the_last_index()
     {
-        await _fixture.NoteService.CreateAsync(NoteType.Text, "Untouched", [], "body");
+        await _fixture.NoteService.CreateAsync("Untouched", [], "body");
 
         var result = await _fixture.Reconciler.RescanAsync(_fixture.UserAId);
 
@@ -132,7 +131,7 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
     [Fact]
     public async Task RescanAsync_records_an_error_and_preserves_the_existing_row_for_corrupted_front_matter()
     {
-        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Still good in the index", [], "body");
+        var note = await _fixture.NoteService.CreateAsync("Still good in the index", [], "body");
 
         // Corrupt the file directly on disk (not through any Core API) to simulate hand-editing gone wrong.
         var filePath = Path.Combine(_fixture.NotesFolder, _fixture.UserAId.ToString(), $"{note.Id}.md");
@@ -159,7 +158,6 @@ public class NoteIndexReconcilerTests : IAsyncLifetime
         {
             Id = Guid.NewGuid(),
             Title = "User A's externally-added note",
-            Type = NoteType.Text,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
             Body = "hello",

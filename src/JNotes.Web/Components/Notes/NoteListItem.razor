@@ -4,7 +4,6 @@
     <a class="jn-note-link" href="@($"/notes/{Note.Id}")">
         <div class="jn-note-main">
             <div class="jn-note-title">
-                <MudChip T="string" Size="Size.Small" Variant="Variant.Filled">@(Note.Type == NoteType.Checklist ? "Checklist" : "Text")</MudChip>
                 @if (Note.SharedWithMe is { } shared)
                 {
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Class="jn-share-chip"

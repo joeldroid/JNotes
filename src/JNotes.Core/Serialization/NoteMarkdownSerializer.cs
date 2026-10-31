@@ -36,16 +36,10 @@ public sealed class NoteMarkdownSerializer : INoteMarkdownSerializer
             throw new NoteParseException("Note front matter is empty.");
         }
 
-        if (!Enum.TryParse<NoteType>(frontMatter.Type, ignoreCase: true, out var noteType))
-        {
-            throw new NoteParseException($"Unknown note type '{frontMatter.Type}' in front matter.");
-        }
-
         return new Note
         {
             Id = frontMatter.Id,
             Title = frontMatter.Title,
-            Type = noteType,
             Tags = frontMatter.Tags.AsReadOnly(),
             CreatedAt = new DateTimeOffset(DateTime.SpecifyKind(frontMatter.Created, DateTimeKind.Utc)),
             UpdatedAt = new DateTimeOffset(DateTime.SpecifyKind(frontMatter.Updated, DateTimeKind.Utc)),
@@ -59,7 +53,7 @@ public sealed class NoteMarkdownSerializer : INoteMarkdownSerializer
         {
             Id = note.Id,
             Title = note.Title,
-            Type = note.Type.ToString().ToLowerInvariant(),
+            Type = "text",
             Tags = note.Tags.ToList(),
             Created = note.CreatedAt.UtcDateTime,
             Updated = note.UpdatedAt.UtcDateTime,

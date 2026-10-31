@@ -22,7 +22,6 @@ public class NoteIndexRepositoryTests : IAsyncLifetime
         Guid userId,
         string title = "Title",
         string body = "Body",
-        NoteType type = NoteType.Text,
         DateTimeOffset? updatedAt = null,
         DateTimeOffset? indexedFileWriteTimeUtc = null)
     {
@@ -34,7 +33,6 @@ public class NoteIndexRepositoryTests : IAsyncLifetime
             UserId = userId,
             Title = title,
             Body = body,
-            NoteType = type.ToString(),
             CreatedAt = now,
             UpdatedAt = updatedAt ?? now,
             IndexedFileWriteTimeUtc = indexedFileWriteTimeUtc ?? now,
@@ -215,20 +213,6 @@ public class NoteIndexRepositoryTests : IAsyncLifetime
         var times = await _fixture.IndexRepository.GetIndexedFileWriteTimesAsync(_fixture.UserAId);
 
         Assert.Equal(IndexTimestamp.ToIndexResolution(subMicrosecond), times[entry.Id]);
-    }
-
-    [Fact]
-    public async Task SearchAsync_filters_by_note_type()
-    {
-        var textNote = NewEntry(_fixture.UserAId, type: NoteType.Text);
-        var checklistNote = NewEntry(_fixture.UserAId, type: NoteType.Checklist);
-        await _fixture.IndexRepository.UpsertAsync(textNote, []);
-        await _fixture.IndexRepository.UpsertAsync(checklistNote, []);
-
-        var results = await _fixture.IndexRepository.SearchAsync(_fixture.UserAId, new NoteSearchQuery(Type: NoteType.Checklist));
-
-        var found = Assert.Single(results);
-        Assert.Equal(checklistNote.Id, found.Id);
     }
 
     [Fact]

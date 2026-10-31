@@ -53,7 +53,6 @@ public class UserManagementServiceTests : IAsyncLifetime
     {
         Id = Guid.NewGuid(),
         Title = "Test note",
-        Type = NoteType.Text,
         CreatedAt = DateTimeOffset.UtcNow,
         UpdatedAt = DateTimeOffset.UtcNow,
         Body = "hello",

@@ -4,7 +4,7 @@ namespace JNotes.Core.Notes;
 /// Buckets an already-sorted note list into relative-date sections for the default notes view.
 /// Pure — no clock/timezone reads of its own; <paramref name="nowUtc"/>/<paramref name="timeZone"/>
 /// are passed in (see <see cref="Time.IAppTimeZoneProvider"/>) so this is deterministic and easy to
-/// test, the same reasoning <c>ChecklistMarkdownParser</c> is a plain static class for.
+/// test, the same reasoning <c>UserInitials</c> is a plain static class for.
 /// </summary>
 public static class NoteGrouping
 {

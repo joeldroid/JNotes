@@ -7,11 +7,10 @@ public class NotePdfDocumentBuilderTests
 {
     private const string Stored = "0123456789abcdef0123456789abcdef.png";
 
-    private static Note MakeNote(NoteType type = NoteType.Text, string title = "Title", string body = "", params string[] tags) => new()
+    private static Note MakeNote(string title = "Title", string body = "", params string[] tags) => new()
     {
         Id = Guid.NewGuid(),
         Title = title,
-        Type = type,
         Tags = tags,
         CreatedAt = DateTimeOffset.UtcNow,
         UpdatedAt = DateTimeOffset.UtcNow,
@@ -51,14 +50,12 @@ public class NotePdfDocumentBuilderTests
         Assert.DoesNotContain("class=\"note-tags\"", NotePdfDocumentBuilder.Build(MakeNote(), "when").Html);
     }
 
-    [Theory]
-    [InlineData(NoteType.Text, "Text")]
-    [InlineData(NoteType.Checklist, "Checklist")]
-    public void The_meta_line_has_the_type_label_and_the_last_updated_text(NoteType type, string label)
+    [Fact]
+    public void The_meta_line_has_the_last_updated_text()
     {
-        var doc = NotePdfDocumentBuilder.Build(MakeNote(type), "Last updated 1/2/2026 (UTC)");
+        var doc = NotePdfDocumentBuilder.Build(MakeNote(), "Last updated 1/2/2026 (UTC)");
 
-        Assert.Contains($"<div class=\"note-meta\">{label} · Last updated 1/2/2026 (UTC)</div>", doc.Html);
+        Assert.Contains("<div class=\"note-meta\">Last updated 1/2/2026 (UTC)</div>", doc.Html);
     }
 
     [Fact]
@@ -106,58 +103,26 @@ public class NotePdfDocumentBuilderTests
     }
 
     [Fact]
-    public void Checklist_headings_become_h2_and_checked_items_are_marked()
+    public void A_task_list_renders_read_only_checkboxes()
     {
-        var doc = NotePdfDocumentBuilder.Build(
-            MakeNote(NoteType.Checklist, body: "## Groceries\n- [ ] milk\n- [x] eggs"), "when");
+        var doc = NotePdfDocumentBuilder.Build(MakeNote(body: "- [ ] milk\n- [x] eggs"), "when");
 
-        Assert.Contains("<h2>Groceries</h2>", doc.Html);
-        Assert.Contains("<li><span class=\"box\"></span><span class=\"text\">milk</span></li>", doc.Html);
-        Assert.Contains("<li class=\"checked\"><span class=\"box\"></span><span class=\"text\">eggs</span></li>", doc.Html);
-        Assert.Empty(doc.ImageFileNames);
+        // Pins the markup note-pdf.css selects on (`li.task-list-item > input[type="checkbox"]`): Markdig puts no
+        // class on the checkbox itself.
+        var items = System.Text.RegularExpressions.Regex.Matches(doc.Html, "<li class=\"task-list-item\"><input ([^>]*)/> ([^<]*)</li>");
+        Assert.Equal(2, items.Count);
+        foreach (var item in items.Cast<System.Text.RegularExpressions.Match>())
+        {
+            var attributes = item.Groups[1].Value;
+            Assert.Contains("type=\"checkbox\"", attributes);
+            Assert.Contains("disabled=\"disabled\"", attributes);
+            Assert.DoesNotContain("class=", attributes);
+        }
+
+        Assert.Equal(("milk", false), (items[0].Groups[2].Value, items[0].Groups[1].Value.Contains("checked=\"checked\"")));
+        Assert.Equal(("eggs", true), (items[1].Groups[2].Value, items[1].Groups[1].Value.Contains("checked=\"checked\"")));
+        Assert.DoesNotContain("class=\"box\"", doc.Html);
         Assert.False(doc.HasMermaid);
-    }
-
-    [Fact]
-    public void Checklist_item_text_is_encoded()
-    {
-        var doc = NotePdfDocumentBuilder.Build(MakeNote(NoteType.Checklist, body: "- [ ] <i>x</i>"), "when");
-
-        Assert.Contains("&lt;i&gt;x&lt;/i&gt;", doc.Html);
-        Assert.DoesNotContain("<i>x</i>", doc.Html);
-    }
-
-    [Fact]
-    public void An_untitled_empty_checklist_section_is_skipped_when_categories_exist()
-    {
-        var doc = NotePdfDocumentBuilder.Build(MakeNote(NoteType.Checklist, body: "## Only\n- [ ] a"), "when");
-
-        Assert.Single(System.Text.RegularExpressions.Regex.Matches(doc.Html, "<ul>"));
-        Assert.DoesNotContain("This checklist has no items.", doc.Html);
-    }
-
-    [Fact]
-    public void An_empty_category_says_No_items()
-    {
-        var doc = NotePdfDocumentBuilder.Build(MakeNote(NoteType.Checklist, body: "## Empty\n\n## Full\n- [ ] a"), "when");
-
-        Assert.Contains("<h2>Empty</h2>\n<p class=\"empty\">No items.</p>", doc.Html);
-    }
-
-    [Fact]
-    public void An_empty_checklist_body_says_the_checklist_has_no_items()
-    {
-        var doc = NotePdfDocumentBuilder.Build(MakeNote(NoteType.Checklist, body: ""), "when");
-
-        Assert.Contains("This checklist has no items.", doc.Html);
-    }
-
-    [Fact]
-    public void Checklist_prose_lines_are_not_included()
-    {
-        var doc = NotePdfDocumentBuilder.Build(MakeNote(NoteType.Checklist, body: "some prose line\n- [ ] a"), "when");
-
-        Assert.DoesNotContain("some prose line", doc.Html);
     }
 
     [Fact]

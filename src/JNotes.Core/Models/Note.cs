@@ -11,8 +11,6 @@ public sealed class Note
 
     public required string Title { get; set; }
 
-    public required NoteType Type { get; set; }
-
     public IReadOnlyList<string> Tags { get; set; } = Array.Empty<string>();
 
     public required DateTimeOffset CreatedAt { get; init; }

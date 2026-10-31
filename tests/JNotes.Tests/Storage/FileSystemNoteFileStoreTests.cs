@@ -31,7 +31,6 @@ public class FileSystemNoteFileStoreTests : IAsyncLifetime
     {
         Id = id ?? Guid.NewGuid(),
         Title = "Test note",
-        Type = NoteType.Text,
         Tags = ["a", "b"],
         CreatedAt = DateTimeOffset.UtcNow,
         UpdatedAt = DateTimeOffset.UtcNow,

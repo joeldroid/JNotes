@@ -37,15 +37,15 @@ see [Authentication](#authentication) below for that flow, adding more users, an
 
 ## Features
 
-- **Text notes** — free-form markdown, edited with a live preview, with `mermaid` code blocks rendered as diagrams (toolbar buttons insert a starter flow chart), and images inserted with the **Image** button or by pasting one (PNG, JPEG, GIF or WebP, up to 10 MB).
-- **Checklist notes** — markdown task lists (`- [ ] item`) rendered as interactive checkboxes. Add items and group them into categories (markdown `##` headings) from the note view or the editor without touching markdown; checking an item moves it below the unchecked ones in its category.
-- **PDF export (optional)** — an **Export PDF** button on a note opens it as a light-themed A4 PDF (images, diagrams and checklists included), rendered by a [Gotenberg](https://gotenberg.dev) container. Off unless `GOTENBERG_URL` is set.
+- **Notes** — free-form markdown, edited with a live preview, with `mermaid` code blocks rendered as diagrams (toolbar buttons insert a starter flow chart), and images inserted with the **Image** button or by pasting one (PNG, JPEG, GIF or WebP, up to 10 MB).
+- **Task lists** — markdown task lists (`- [ ] item` / `- [x] item`) render as read-only checkboxes in previews and in the PDF export; edit the markdown to change them.
+- **PDF export (optional)** — an **Export PDF** button on a note opens it as a light-themed A4 PDF (images and diagrams included), rendered by a [Gotenberg](https://gotenberg.dev) container. Off unless `GOTENBERG_URL` is set.
 - **Auto-tagging (optional)** — when `OLLAMA_URL` points at an [Ollama](https://ollama.com) server, a background task tags notes that have no tags using a local model (Microsoft's `phi4` by default). It never changes tags you've written.
 - **Note sharing (Read/Edit)** — share a single note with any other user, as view-only or editable (body only); shared notes appear in **All Notes**, in search and on a **Shared with Me** page. See [Sharing notes](#sharing-notes).
 - **Multi-user with real accounts** — admin-created users, each with their own notes and settings;
   sign in with a password, OIDC, or both.
 - **Portable storage** — every note is `notes/<user-id>/<id>.md` with a small YAML front matter
-  header (title, tags, type, timestamps) followed by the markdown body.
+  header (title, tags, timestamps) followed by the markdown body.
 - **Recent notes and Trash** — the sidebar lists your ten most recently updated notes, with **Trash** pinned to the bottom; deleting a note moves it to Trash until you delete it permanently.
 - **Responsive UI** — [MudBlazor](https://mudblazor.com) (Material design) with a dark theme, usable on both desktop and mobile.
 - **Self-healing index** — the note index is reconciled against the notes folder at startup and
@@ -61,6 +61,7 @@ src/
   JNotes.Core/     Domain models, markdown/front-matter serialization, file storage, note indexing, EF Core/PostgreSQL
 tests/
   JNotes.Tests/    xUnit tests for JNotes.Core
+  JNotes.UiTests/  Opt-in Playwright browser tests (drive the real app in-process)
 ```
 
 `JNotes.Web` never touches the filesystem or EF Core/PostgreSQL directly — it only consumes
@@ -154,7 +155,8 @@ pick the admin's username and password — see [Authentication](#authentication)
 
 Running without the launch profile (`dotnet run --no-launch-profile`, a published build) requires setting
 these yourself; a missing required one stops startup with a message naming it. Blank values count as
-unset. The one further variable, `JNOTES_TEST_POSTGRES_CONNECTION_STRING`, is read only by the test suite.
+unset. The remaining variables, `JNOTES_TEST_POSTGRES_CONNECTION_STRING` and the `JNOTES_UI_*` switches (see
+[Tests](#tests)), are read only by the test suites, never by the app.
 
 All of these take effect at startup only — changing one requires an app/container restart.
 
@@ -176,13 +178,41 @@ All of these take effect at startup only — changing one requires an app/contai
 ```bash
 dotnet test JNotes.slnx
 # a single test:
-dotnet test tests/JNotes.Tests --filter "FullyQualifiedName~ChecklistMarkdownParserTests"
+dotnet test tests/JNotes.Tests --filter "FullyQualifiedName~NoteGroupingTests"
 ```
 
 The integration and `Users` suites need a **real PostgreSQL** (same `docker run` line as above;
 override with `JNOTES_TEST_POSTGRES_CONNECTION_STRING`). Each test class creates and drops its own
 `jnotes_test_<guid>` database, so the configured user needs `CREATEDB` (the official image's
 `POSTGRES_USER` is a superuser, so the documented `docker run` just works).
+
+#### Browser tests (opt-in)
+
+`tests/JNotes.UiTests` is a Playwright (Chromium) suite that starts the real app in the test process, on a free
+local port with its own throwaway `jnotes_ui_<guid>` database and temp folders, signs in through the real login
+form, and clicks through the UI. It needs the same PostgreSQL as the other tests; one test also needs
+[Gotenberg](#pdf-export-optional) on `http://localhost:3000` and is skipped when it is not there. Plain
+`dotnet test JNotes.slnx` builds the project but reports all of its tests as **Skipped**; to run them:
+
+```bash
+JNOTES_UI_TESTS=1 dotnet test tests/JNotes.UiTests
+JNOTES_UI_TESTS=1 dotnet test tests/JNotes.UiTests --filter "FullyQualifiedName~SharingTests"   # one class
+JNOTES_UI_TESTS=1 JNOTES_UI_HEADED=1 JNOTES_UI_SLOWMO=250 dotnet test tests/JNotes.UiTests      # watch it
+```
+
+The first run downloads Chromium (about 150 MB, into the Playwright cache, e.g. `~/Library/Caches/ms-playwright`
+on macOS); later runs reuse it. Test-only variables:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `JNOTES_UI_TESTS` | unset | `1` turns the suite on; otherwise every UI test is Skipped. |
+| `JNOTES_UI_HEADED` / `JNOTES_UI_SLOWMO` | off / `0` | Show the browser window / pause this many ms between actions. |
+| `JNOTES_UI_GOTENBERG_URL` | `http://localhost:3000` | Gotenberg for the PDF test (Skipped if `/health` doesn't answer). |
+| `JNOTES_UI_ARTIFACTS` | `<test output>/ui-artifacts` | Where a failing test writes its screenshot, Playwright trace and problem list. |
+| `JNOTES_UI_SKIP_BROWSER_INSTALL` | unset | `1` skips the automatic Chromium install (e.g. you installed it yourself). |
+
+The suite deliberately leaves out what a browser script can't judge: clipboard image paste, how the exported PDF
+looks, and dark-theme legibility are still checked by hand.
 
 ### Other commands
 
@@ -295,7 +325,7 @@ Any user can share any of their own notes with any other user on the instance; t
 | | Owner | Can edit | View only |
 | --- | --- | --- | --- |
 | Read the note, search it, export it as PDF | yes | yes | yes |
-| Edit the body (text, or checklist items and checking them) | yes | yes | no |
+| Edit the body | yes | yes | no |
 | Paste or upload images into the body | yes | yes (stored in the owner's folder) | no |
 | Change the title or tags | yes | no | no |
 | Share it, change or remove people | yes | no | no |
@@ -320,26 +350,25 @@ Each note is `notes/<user-id>/<note-id>.md`, one markdown file per note, per use
 ---
 id: 3fa85f64-5717-4562-b3fc-2c963f66afa6
 title: Grocery List
-type: checklist
+type: text
 tags: [personal, shopping]
 created: 2026-09-12T10:15:00Z
 updated: 2026-09-12T11:02:00Z
 ---
+Pick up milk and eggs on the way home.
+
 - [ ] buy milk
 - [ ] buy eggs
 ```
 
-`type` is `text` or `checklist`. Timestamps are UTC. The `id` is duplicated from the filename
+`type` is always `text` (kept for compatibility; older files with `type: checklist` open as ordinary text notes). Timestamps are UTC. The `id` is duplicated from the filename
 inside the front matter so a renamed/copied file can still be recognized correctly on rescan.
 
-A diagram in a text note is just a ` ```mermaid ` fenced code block in the body, so the file stays
+A diagram in a note is just a ` ```mermaid ` fenced code block in the body, so the file stays
 ordinary markdown that GitHub, Obsidian, and similar tools also render.
 
-An image inserted into a text note is saved as `notes/<user-id>/images/<random-id>.<ext>` and linked
+An image inserted into a note is saved as `notes/<user-id>/images/<random-id>.<ext>` and linked
 from the body as `![name](images/<random-id>.<ext>)` — relative to the note, so it resolves in any
 editor pointed at the folder. Deleting a note (or the link) doesn't delete its image file, since the same image can be used by several notes; JNotes removes the ones no note (or trashed note) uses any more, for all users, every 7 days by default. An admin can change the interval in days, or set it to 0 to turn it off, under **Administration → Images**, and can also run it immediately with **Clean up now**. The first automatic pass runs one interval after the feature is first started, not at startup.
-
-JNotes keeps checked items after unchecked ones within each run of adjacent checklist items, but the
-file is still ordinary markdown — you can reorder it by hand.
 
 Sharing a note adds nothing to the front matter (see [Sharing notes](#sharing-notes)).

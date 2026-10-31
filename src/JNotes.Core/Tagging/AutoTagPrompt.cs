@@ -1,12 +1,11 @@
 using System.Text.RegularExpressions;
-using JNotes.Core.Models;
 
 namespace JNotes.Core.Tagging;
 
 /// <summary>The chat messages sent to the model for one note.</summary>
 public sealed record AutoTagPrompt(string SystemMessage, string UserMessage);
 
-/// <summary>Pure prompt construction (no I/O), like <c>ChecklistMarkdownParser</c>: safe to unit-test and to call from anywhere.</summary>
+/// <summary>Pure prompt construction (no I/O), like <c>UserInitials</c>: safe to unit-test and to call from anywhere.</summary>
 public static partial class AutoTagPromptBuilder
 {
     public const int MaxBodyChars = 12_000;
@@ -28,7 +27,6 @@ public static partial class AutoTagPromptBuilder
     private static partial Regex ImageLinkRegex();
 
     public static AutoTagPrompt Build(
-        NoteType type,
         string? title,
         string? body,
         IReadOnlyCollection<string> currentTags,
@@ -40,7 +38,6 @@ public static partial class AutoTagPromptBuilder
         var userMessage =
             $"Existing tags (prefer these when relevant): {vocabularyText}\n" +
             $"Tags already on this note (do not repeat): {currentText}\n" +
-            $"Note type: {(type == NoteType.Checklist ? "checklist" : "text")}\n" +
             $"Title: {Truncate(title ?? "", MaxTitleChars, "")}\n" +
             $"<note>\n{PrepareBody(body)}\n</note>";
 

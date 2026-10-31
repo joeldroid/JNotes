@@ -1,5 +1,5 @@
 /* JNotes's own note-editor styles: the two-pane split, the raw-markdown textarea, the preview
-   pane, the toolbar row, and the checklist rows. The preview's *content* styling is in
+   pane and the toolbar row. The preview's *content* styling is in
    markdown-preview.css. */
 .jn-editor-toolbar-row {
     display: flex;
@@ -107,56 +107,4 @@
     /* Content taller than the fixed height scrolls internally rather than growing the pane out
        of sync with the textarea. */
     overflow: auto;
-
-    /* The checklist preview: a flex column so its list scrolls. */
-    &.note-editor-preview-column {
-        display: flex;
-        flex-direction: column;
-    }
-}
-
-/* ChecklistPanel's root: the list fills its flex-column parent and scrolls. */
-.jn-fill {
-    flex: 1 1 auto;
-    overflow: auto;
-}
-
-.jn-check-heading {
-    display: block;
-    margin: 1rem 0 0.25rem;
-    font-weight: 600;
-}
-
-.jn-check-list {
-    display: flex;
-    flex-direction: column;
-}
-
-.jn-check-row {
-    padding: 0 0.25rem;
-    border-bottom: 1px solid var(--mud-palette-lines-default);
-
-    &:last-child {
-        border-bottom: 0;
-    }
-
-    /* MudCheckBox's root is a label with negative margins meant for standalone use. */
-    & .mud-checkbox {
-        margin: 0;
-    }
-}
-
-.jn-check-done {
-    text-decoration: line-through;
-    color: var(--mud-palette-text-secondary);
-}
-
-.jn-check-empty {
-    padding: 0.5rem 0.25rem;
-}
-
-/* The editor's checklist preview: checkboxes look normal but can't be clicked (not `Disabled`,
-   which would grey them out). MudCheckBox's ReadOnly blocks keyboard toggling; this blocks the pointer. */
-.checklist-readonly {
-    pointer-events: none;
 }

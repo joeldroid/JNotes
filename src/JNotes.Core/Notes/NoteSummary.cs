@@ -7,7 +7,6 @@ namespace JNotes.Core.Notes;
 public sealed record NoteSummary(
     Guid Id,
     string Title,
-    NoteType Type,
     IReadOnlyList<string> Tags,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
