@@ -210,7 +210,7 @@ public sealed class NoteAutoTagger : INoteAutoTagger
 
         // The note owner's own tags only (explicit userId), so one user's spelling never reaches another's prompt.
         var vocabulary = await _indexRepository.SuggestTagsAsync(userId, null, [], AutoTagPromptBuilder.MaxVocabulary, cancellationToken);
-        var prompt = AutoTagPromptBuilder.Build(note.Type, note.Title, note.Body, [], vocabulary);
+        var prompt = AutoTagPromptBuilder.Build(note.Title, note.Body, [], vocabulary);
         var rawTags = await _model.GenerateTagsAsync(prompt, cancellationToken);
 
         var tags = AutoTagNormalizer.Normalize(rawTags, [], vocabulary);
@@ -238,7 +238,6 @@ public sealed class NoteAutoTagger : INoteAutoTagger
                 UserId = userId,
                 Title = note.Title,
                 Body = note.Body,
-                NoteType = note.Type.ToString(),
                 CreatedAt = note.CreatedAt,
                 UpdatedAt = note.UpdatedAt,
                 IndexedFileWriteTimeUtc = IndexTimestamp.ToIndexResolution(writeTime),

@@ -59,14 +59,13 @@ public sealed class NoteService : INoteService
         return new NoteWithAccess(note, access);
     }
 
-    public async Task<Note> CreateAsync(NoteType type, string title, IEnumerable<string> tags, string body, CancellationToken cancellationToken = default)
+    public async Task<Note> CreateAsync(string title, IEnumerable<string> tags, string body, CancellationToken cancellationToken = default)
     {
         var now = DateTimeOffset.UtcNow;
         var note = new Note
         {
             Id = Guid.NewGuid(),
             Title = title,
-            Type = type,
             Tags = tags.ToArray(),
             CreatedAt = now,
             UpdatedAt = now,
@@ -79,55 +78,6 @@ public sealed class NoteService : INoteService
 
     public Task<Note> UpdateAsync(Note note, CancellationToken cancellationToken = default) =>
         AutosaveAsync(note, NoteSaveScope.Metadata, cancellationToken);
-
-    public Task<Note> SetChecklistItemCheckedAsync(Guid noteId, int lineIndex, bool isChecked, CancellationToken cancellationToken = default) =>
-        // A checkbox change is a body edit like any other: ContentOnly, a one-row index update.
-        MutateChecklistBodyAsync(noteId, body => ChecklistMarkdownParser.SetItemChecked(body, lineIndex, isChecked), cancellationToken);
-
-    public Task<Note> AddChecklistItemAsync(Guid noteId, string text, int? categoryHeadingLine = null, CancellationToken cancellationToken = default) =>
-        // Same reasoning as SetChecklistItemCheckedAsync: body only, so ContentOnly.
-        MutateChecklistBodyAsync(noteId, body => ChecklistMarkdownParser.AppendItemsToCategory(body, text, categoryHeadingLine), cancellationToken);
-
-    public Task<Note> AddChecklistCategoryAsync(Guid noteId, string name, CancellationToken cancellationToken = default) =>
-        MutateChecklistBodyAsync(noteId, body => ChecklistMarkdownParser.AddCategory(body, name), cancellationToken);
-
-    /// <summary>
-    /// Applies <paramref name="mutate"/> to a checklist note's body, as its owner (read, mutate, ContentOnly autosave)
-    /// or as an Edit recipient (a body-only compare-and-swap merge on the owner's file).
-    /// </summary>
-    private async Task<Note> MutateChecklistBodyAsync(Guid noteId, Func<string, string> mutate, CancellationToken cancellationToken)
-    {
-        var access = await ResolveAccessAsync(noteId, cancellationToken);
-        RequireBodyEdit(access, noteId);
-
-        if (access.IsOwner)
-        {
-            var note = await _fileStore.ReadAsync(access.OwnerUserId, noteId, cancellationToken);
-            RequireChecklist(note);
-            note.Body = mutate(note.Body);
-            return await AutosaveAsync(note, NoteSaveScope.ContentOnly, cancellationToken);
-        }
-
-        var merged = await ReplaceBodyAsync(
-            access.OwnerUserId,
-            noteId,
-            current =>
-            {
-                RequireChecklist(current);
-                current.Body = mutate(current.Body);
-            },
-            cancellationToken);
-        await IndexSavedAsync(access.OwnerUserId, merged, NoteSaveScope.ContentOnly, cancellationToken);
-        return merged;
-    }
-
-    private static void RequireChecklist(Note note)
-    {
-        if (note.Type != NoteType.Checklist)
-        {
-            throw new InvalidOperationException($"Note '{note.Id}' is not a checklist note.");
-        }
-    }
 
     public async Task<Note> AutosaveAsync(Note note, NoteSaveScope scope, CancellationToken cancellationToken = default)
     {
@@ -142,15 +92,7 @@ public sealed class NoteService : INoteService
             var merged = await ReplaceBodyAsync(
                 ownerId,
                 note.Id,
-                current =>
-                {
-                    if (current.Type != note.Type)
-                    {
-                        throw new NoteAccessDeniedException(note.Id, "Only the owner can change a note's type.");
-                    }
-
-                    current.Body = note.Body;
-                },
+                current => current.Body = note.Body,
                 cancellationToken);
 
             await IndexSavedAsync(ownerId, merged, scope, cancellationToken);
@@ -202,7 +144,7 @@ public sealed class NoteService : INoteService
             {
                 var note = await _fileStore.ReadTrashedAsync(userId, id, cancellationToken);
                 var trashedAt = await _fileStore.GetTrashedAtUtcAsync(userId, id, cancellationToken);
-                summaries.Add(new TrashedNoteSummary(note.Id, note.Title, note.Type, note.Tags, note.UpdatedAt, trashedAt));
+                summaries.Add(new TrashedNoteSummary(note.Id, note.Title, note.Tags, note.UpdatedAt, trashedAt));
             }
             catch (NoteNotFoundException)
             {
@@ -314,7 +256,7 @@ public sealed class NoteService : INoteService
 
     /// <summary>
     /// The write path for an Edit recipient: a compare-and-swap merge on the owner's file. Reads the raw file,
-    /// applies <paramref name="apply"/> to the freshly deserialized note (so Title/Tags/Type/CreatedAt are the
+    /// applies <paramref name="apply"/> to the freshly deserialized note (so Title/Tags/CreatedAt are the
     /// file's own, and the owner's concurrent rename or the auto-tagger's tags survive), stamps UpdatedAt and
     /// swaps it in only if the file is unchanged, retrying a few times. Never creates a file, so a trashed or
     /// purged note stays gone.
@@ -373,7 +315,6 @@ public sealed class NoteService : INoteService
             UserId = ownerId,
             Title = note.Title,
             Body = note.Body,
-            NoteType = note.Type.ToString(),
             CreatedAt = note.CreatedAt,
             UpdatedAt = note.UpdatedAt,
             IndexedFileWriteTimeUtc = writeTimeUtc,

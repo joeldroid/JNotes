@@ -20,6 +20,9 @@ public sealed class MarkdownRenderer : IMarkdownRenderer
     // The PDF pipeline (PdfMarkdownRenderer) starts from this same base so the two can't drift.
     internal static MarkdownPipelineBuilder CreateBaseBuilder() => new MarkdownPipelineBuilder()
         .UsePipeTables()
+        // `- [ ]` / `- [x]` become <input disabled type="checkbox"> list items. Display-only by design: nothing
+        // toggles them (edit the markdown), and checked items never reorder.
+        .UseTaskLists()
         .DisableHtml()
         // ```mermaid fences become <pre class="mermaid"> for the browser-side renderer to pick up;
         // the source is HTML-escaped, so this is not a hole in DisableHtml().

@@ -17,7 +17,6 @@ public class AllUsersIndexReconcilerTests : IAsyncLifetime
     {
         Id = Guid.NewGuid(),
         Title = title,
-        Type = NoteType.Text,
         CreatedAt = DateTimeOffset.UtcNow,
         UpdatedAt = DateTimeOffset.UtcNow,
         Body = "hello",
@@ -99,9 +98,9 @@ public class AllUsersIndexReconcilerTests : IAsyncLifetime
     public async Task ReconcileAllAsync_is_a_noop_with_no_changes()
     {
         _fixture.ActAsUserA();
-        await _fixture.NoteService.CreateAsync(NoteType.Text, "User A's note", [], "body");
+        await _fixture.NoteService.CreateAsync("User A's note", [], "body");
         _fixture.ActAsUserB();
-        await _fixture.NoteService.CreateAsync(NoteType.Text, "User B's note", [], "body");
+        await _fixture.NoteService.CreateAsync("User B's note", [], "body");
 
         var result = await _fixture.AllUsersReconciler.ReconcileAllAsync();
 

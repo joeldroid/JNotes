@@ -5,5 +5,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/JNotes.Tests/JNotes.Tests.csproj" />
+    <Project Path="tests/JNotes.UiTests/JNotes.UiTests.csproj" />
   </Folder>
 </Solution>

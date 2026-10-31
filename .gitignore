@@ -11,6 +11,8 @@
 # Docker bind-mount target used by docker-compose.yml
 src/JNotes.Web/App_Data/
 /data/
+# Failure artifacts of the opt-in browser tests (default location is under bin/, already ignored; this covers JNOTES_UI_ARTIFACTS inside the repo)
+**/ui-artifacts/
 
 # Build results
 [Dd]ebug/

@@ -34,6 +34,28 @@
         padding-left: 2rem;
     }
 
+    /* Task lists (`- [ ]` / `- [x]`): Markdig emits disabled checkboxes; display-only by design. */
+    & .contains-task-list {
+        padding-left: 0;
+        list-style: none;
+
+        & .contains-task-list {
+            margin-bottom: 0;
+            padding-left: 1.5rem;
+        }
+    }
+
+    & .task-list-item {
+        margin: 0.15rem 0;
+    }
+
+    /* Markdig puts no class on the checkbox itself, so it is matched as the item's direct <input>. */
+    & .task-list-item > input[type="checkbox"] {
+        margin: 0 0.5rem 0 0;
+        vertical-align: middle;
+        accent-color: var(--mud-palette-primary);
+    }
+
     & a {
         color: var(--mud-palette-primary);
     }

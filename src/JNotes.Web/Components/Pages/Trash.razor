@@ -25,7 +25,6 @@ else
             <MudPaper Outlined="true" Class="jn-trash-item">
                 <div class="jn-note-main">
                     <div class="jn-note-title">
-                        <MudChip T="string" Size="Size.Small" Variant="Variant.Filled">@(note.Type == NoteType.Checklist ? "Checklist" : "Text")</MudChip>
                         <strong>@(string.IsNullOrWhiteSpace(note.Title) ? "Untitled note" : note.Title)</strong>
                     </div>
                     @if (note.Tags.Count > 0)

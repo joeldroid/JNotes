@@ -217,10 +217,6 @@ namespace JNotes.Core.Data.Migrations
                     b.Property<DateTimeOffset>("IndexedFileWriteTimeUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string>("NoteType")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("text");

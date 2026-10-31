@@ -33,7 +33,9 @@ internal sealed class TestPostgresDatabase : IAsyncDisposable
     /// <summary>The connection string for this test's own database — what JNotesOptions gets.</summary>
     public string ConnectionString { get; }
 
-    public static async Task<TestPostgresDatabase> CreateAsync()
+    /// <param name="namePrefix">Prefix of the generated database name; <c>jnotes_test_</c> for the unit/integration
+    /// suite, <c>jnotes_ui_</c> for the browser suite (so a leftover is attributable at a glance in <c>\l</c>).</param>
+    public static async Task<TestPostgresDatabase> CreateAsync(string namePrefix = "jnotes_test_")
     {
         var baseConnectionString = Environment.GetEnvironmentVariable(ConnectionStringEnvVar) ?? DefaultConnectionString;
         var maintenance = new NpgsqlConnectionStringBuilder(baseConnectionString);
@@ -43,7 +45,7 @@ internal sealed class TestPostgresDatabase : IAsyncDisposable
             maintenance.Database = "postgres";
         }
 
-        var databaseName = "jnotes_test_" + Guid.NewGuid().ToString("N");
+        var databaseName = namePrefix + Guid.NewGuid().ToString("N");
         var target = new NpgsqlConnectionStringBuilder(maintenance.ConnectionString) { Database = databaseName };
 
         // The name is interpolated because PostgreSQL can't parameterize identifiers; it's a

@@ -33,7 +33,7 @@ public class ImageCleanupServiceTests : IAsyncLifetime
     }
 
     private Task<Note> CreateNoteWithAsync(string body) =>
-        _fixture.NoteService.CreateAsync(NoteType.Text, "note", [], body);
+        _fixture.NoteService.CreateAsync("note", [], body);
 
     private Task<ImageCleanupResult> CleanUpUserAAsync(TimeSpan? minAge = null) =>
         Cleanup.CleanUpUserAsync(_fixture.UserAId, minAge ?? TimeSpan.Zero);

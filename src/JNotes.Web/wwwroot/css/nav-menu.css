@@ -1,7 +1,7 @@
 /* App chrome: the app bar brand, page padding, the sidebar's search box, and the account widget
    (AccountMenu.razor: at the bottom of the sidebar below md, at the right of the app bar from md up).
    Everything else in the sidebar is MudNavMenu/MudNavLink and styles itself, except the New Note
-   dropdown button (.jn-nav-new) and the "Recent" notes list (.jn-nav-recent) below. */
+   button (.jn-nav-new) and the "Recent" notes list (.jn-nav-recent) below. */
 .jn-brand {
     display: inline-flex;
     align-items: center;
@@ -42,23 +42,16 @@
     margin-bottom: 0.5rem;
 }
 
-/* "New Note" (NavMenu.razor): a filled MudButton activating a MudMenu, kept outside MudNavMenu.
-   .mud-menu is inline-flex by default, so it is stretched explicitly to span the sidebar like the
-   search box and nav links; its activator is display: contents, which makes the button a direct flex
-   child that fills it. The label inherits the button's justify-content, so flex-start below left-aligns it.
-   The button's box metrics are then overridden to reproduce .mud-nav-link's own (8px 16px padding, 24px
-   icon, 12px icon-to-text gap, regular-weight body text), so the + icon and "New Note" land on the same
-   x positions as the icons and labels of All Notes / Trash instead of MudBlazor's tighter button defaults
-   (uppercase 500-weight text, 20px icon, -4px/8px icon margins, 6px 16px padding). */
+/* "New Note" (NavMenu.razor): a plain full-width filled MudButton, kept outside MudNavMenu. Its label
+   inherits the button's justify-content, so flex-start below left-aligns it. The button's box metrics are
+   overridden to reproduce .mud-nav-link's own (8px 16px padding, 24px icon, 12px icon-to-text gap,
+   regular-weight body text), so the + icon and "New Note" land on the same x positions as the icons and
+   labels of All Notes / Trash instead of MudBlazor's tighter button defaults (uppercase 500-weight text,
+   20px icon, -4px/8px icon margins, 6px 16px padding). */
 .jn-nav-new {
     margin-bottom: 0.5rem;
 
-    & .mud-menu {
-        display: flex;
-        width: 100%;
-    }
-
-    & .mud-menu .mud-button-root {
+    & .mud-button-root {
         width: 100%;
         justify-content: flex-start;
         padding: 8px 16px;
@@ -76,11 +69,6 @@
         & > *:first-child {
             font-size: 1.5rem;
         }
-    }
-
-    /* The dropdown arrow is the one thing the nav links don't have: pin it to the right edge. */
-    & .mud-button-icon-end {
-        margin-inline: auto 0;
     }
 }
 

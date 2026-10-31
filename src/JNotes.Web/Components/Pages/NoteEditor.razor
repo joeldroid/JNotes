@@ -1,5 +1,5 @@
 @page "/notes/{Id:guid}/edit"
-@page "/notes/new/{TypeName}"
+@page "/notes/new"
 @attribute [Authorize]
 @implements IAsyncDisposable
 @inject INoteService NoteService
@@ -34,7 +34,7 @@ else
                               Placeholder="Untitled note" aria-label="Title" Variant="Variant.Outlined" Margin="Margin.Dense"
                               Typo="Typo.h6" Error="@(_titleError is not null)" ErrorText="@_titleError" />
                 <div class="mt-2">
-                    <TagInput Tags="_note.Tags" TagsChanged="OnTagsChanged" SuggestTags="SuggestTagsAsync" />
+                    <TagInput @key="_draftVersion" Tags="_note.Tags" TagsChanged="OnTagsChanged" SuggestTags="SuggestTagsAsync" />
                 </div>
             }
             else
@@ -89,26 +89,18 @@ else
         <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-3">Last updated @TimeZoneProvider.ToAppTimeZone(_note.UpdatedAt).DateTime.ToString("g")</MudText>
     }
 
-    @if (_note.Type == NoteType.Checklist)
-    {
-        <ChecklistNoteEditor @bind-Body="_note.Body" @bind-Body:after="OnContentEdited" />
-    }
-    else
-    {
-        <TextNoteEditor @bind-Body="_note.Body" @bind-Body:after="OnContentEdited"
-                        ImagesNoteId="@(IsOwner ? null : _note.Id)" SaveImage="SharedImageSaver" />
-    }
+    <TextNoteEditor @bind-Body="_note.Body" @bind-Body:after="OnContentEdited"
+                    ImagesNoteId="@(IsOwner ? null : _note.Id)" SaveImage="SharedImageSaver" />
 }
 
 @code {
     private static readonly TimeSpan ContentDebounceDelay = TimeSpan.FromMilliseconds(800);
     private static readonly TimeSpan MetadataDebounceDelay = TimeSpan.FromMilliseconds(500);
 
-    [Parameter] public Guid Id { get; set; }
-
-    // Set only by the /notes/new/{TypeName} route: the note doesn't exist yet, so the page holds an
-    // in-memory draft that is never autosaved — Save creates it.
-    [Parameter] public string? TypeName { get; set; }
+    // null on /notes/new - the note doesn't exist yet, so the page holds an in-memory draft that is never
+    // autosaved (Save creates it). The router sets the unused route parameter to null, so a reused instance
+    // switches modes correctly.
+    [Parameter] public Guid? Id { get; set; }
 
     private Note? _note;
     // How the current user relates to an existing note (null for a draft, which is always the author's own).
@@ -119,6 +111,7 @@ else
     private bool _isSaving;
     private bool _hasUnsavedChanges;
     private bool _draftSaved;
+    private int _draftVersion;
     private string? _saveError;
     private string? _titleError;
 
@@ -129,13 +122,16 @@ else
     private readonly AutosaveDebouncer _metadataDebouncer;
     private readonly SemaphoreSlim _saveGate = new(1, 1);
 
+    // Bumped (under _saveGate) whenever the editor swaps to a different note or a fresh draft; see SwapNoteAsync.
+    private int _noteGeneration;
+
     public NoteEditor()
     {
         _contentDebouncer = new AutosaveDebouncer(ContentDebounceDelay, () => SaveNowAsync(NoteSaveScope.ContentOnly));
         _metadataDebouncer = new AutosaveDebouncer(MetadataDebounceDelay, () => SaveNowAsync(NoteSaveScope.Metadata));
     }
 
-    private bool IsNew => TypeName is not null;
+    private bool IsNew => Id is null;
 
     // Drafts, and notes the user owns. False for an Edit recipient (Read recipients never get this far — see OnParametersSetAsync).
     private bool IsOwner => IsNew || _access is null || _access.IsOwner;
@@ -157,6 +153,11 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
+        // Read before the resets below: a loaded note with edits still sitting in a debounce window, about to be
+        // replaced by a new draft or by another note (the instance is reused between /notes/{id}/edit routes
+        // and /notes/new, so only the parameters change).
+        var unsavedNote = _note is { } current && current.Id != Guid.Empty && !_accessLost && _hasUnsavedChanges ? current : null;
+
         _notFound = false;
         _saveError = null;
         _titleError = null;
@@ -165,25 +166,62 @@ else
         if (IsNew)
         {
             _access = null;
-            // Built here rather than in OnInitializedAsync: /notes/new/text -> /notes/new/checklist
-            // reuses this instance and only the parameters change.
-            if (!Enum.TryParse<NoteType>(TypeName, ignoreCase: true, out var type) || !Enum.IsDefined(type))
-            {
-                _note = null;
-                _notFound = true;
-                return;
-            }
 
-            var now = DateTimeOffset.UtcNow;
-            _note = new Note { Id = Guid.Empty, Title = "", Type = type, Tags = [], CreatedAt = now, UpdatedAt = now, Body = "" };
-            _hasUnsavedChanges = false;
-            _draftSaved = false;
+            // Built here rather than in OnInitializedAsync: /notes/{id}/edit -> /notes/new
+            // reuses this instance and only the parameters change.
+            await SwapNoteAsync(unsavedNote, () =>
+            {
+                ResetDraft();
+                return Task.CompletedTask;
+            });
             return;
         }
 
+        await SwapNoteAsync(unsavedNote, LoadNoteAsync);
+    }
+
+    /// <summary>
+    /// Replaces the note this editor shows (a new draft, or another note on a reused instance). The outgoing note's
+    /// pending debounces would otherwise fire against whatever replaces it (a draft: NoteNotFoundException ->
+    /// _accessLost; another note: a stale save of its unchanged body), and its last edit would be lost. So: cancel
+    /// them, flush that note under the save gate (same best-effort Metadata flush as DisposeAsync), and swap while
+    /// still holding the gate. <c>_noteGeneration</c> makes a save that was already queued behind the gate for the
+    /// outgoing note skip itself instead of running against the replacement.
+    /// </summary>
+    private async Task SwapNoteAsync(Note? unsavedNote, Func<Task> swap)
+    {
+        _contentDebouncer.Cancel();
+        _metadataDebouncer.Cancel();
+        await _saveGate.WaitAsync();
         try
         {
-            var result = await NoteService.GetWithAccessAsync(Id);
+            if (unsavedNote is not null)
+            {
+                try
+                {
+                    await NoteService.AutosaveAsync(unsavedNote, NoteSaveScope.Metadata);
+                }
+                catch
+                {
+                    // Best-effort, as in DisposeAsync: the user is already leaving this note.
+                }
+            }
+
+            _noteGeneration++;
+            _hasUnsavedChanges = false;
+            await swap();
+        }
+        finally
+        {
+            _saveGate.Release();
+        }
+    }
+
+    private async Task LoadNoteAsync()
+    {
+        try
+        {
+            var result = await NoteService.GetWithAccessAsync(Id!.Value);
             if (result.Access.Level == NoteAccessLevel.Read)
             {
                 // A Read recipient can't edit: send them to the read-only view (replace, so Back doesn't bounce them here again).
@@ -260,12 +298,20 @@ else
             return;
         }
 
+        var generation = _noteGeneration;
         _isSaving = true;
         await InvokeAsync(StateHasChanged);
 
         await _saveGate.WaitAsync();
         try
         {
+            // A save queued behind a note swap in OnParametersSetAsync (SwapNoteAsync already flushed the outgoing
+            // note): it must not run against the replacement, and nothing exists to save for a draft.
+            if (generation != _noteGeneration || _note is null || _note.Id == Guid.Empty)
+            {
+                return;
+            }
+
             var saved = await NoteService.AutosaveAsync(_note, scope);
             if (!ReferenceEquals(saved, _note))
             {
@@ -327,7 +373,7 @@ else
         _saveError = null;
         try
         {
-            var created = await NoteService.CreateAsync(_note.Type, title, _note.Tags, _note.Body);
+            var created = await NoteService.CreateAsync(title, _note.Tags, _note.Body);
 
             // Cleared before navigating so the leave-guard doesn't block Save's own navigation.
             _draftSaved = true;
@@ -342,6 +388,19 @@ else
         {
             _isSaving = false;
         }
+    }
+
+    // A fresh, empty in-memory draft. _draftVersion keys TagInput so its autocomplete (which keeps its own typed text)
+    // is rebuilt too; the native textarea and the title field follow the new model on the next render.
+    private void ResetDraft()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _note = new Note { Id = Guid.Empty, Title = "", Tags = [], CreatedAt = now, UpdatedAt = now, Body = "" };
+        _hasUnsavedChanges = false;
+        _draftSaved = false;
+        _saveError = null;
+        _titleError = null;
+        _draftVersion++;
     }
 
     private async Task ConfirmLeaveAsync(LocationChangingContext context)
@@ -360,7 +419,24 @@ else
         if (discard != true)
         {
             context.PreventNavigation();
+            return;
         }
+
+        // New Note while already on /notes/new is a same-URL navigation: the router hands this mounted instance
+        // identical parameters, so OnParametersSetAsync never runs and the old draft would stay on screen after
+        // "Discard". Reset it here. A confirmed navigation anywhere else leaves the page, so nothing to reset.
+        if (IsNew && IsNewNoteRoute(context.TargetLocation))
+        {
+            ResetDraft();
+            StateHasChanged();
+        }
+    }
+
+    private bool IsNewNoteRoute(string targetLocation)
+    {
+        var relative = NavigationManager.ToBaseRelativePath(targetLocation);
+        var end = relative.IndexOfAny(['?', '#']);
+        return (end < 0 ? relative : relative[..end]).TrimEnd('/') == "notes/new";
     }
 
     private async Task TrashAsync()

@@ -26,7 +26,7 @@ public class NoteAutoTaggerTests : IAsyncLifetime
     private RecordingTagModelClient Model => _fixture.TagModel;
 
     private Task<Note> CreateAsync(string title, string body = "some body text", params string[] tags) =>
-        _fixture.NoteService.CreateAsync(NoteType.Text, title, tags, body);
+        _fixture.NoteService.CreateAsync(title, tags, body);
 
     // Notes are only candidates once they're older than minAge; the tests pass minAge = 0 and step the clock past creation.
     private Task<AutoTagPassResult> TagAAsync(int maxNotes = 10, TimeSpan? minAge = null)

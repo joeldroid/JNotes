@@ -5,7 +5,7 @@ namespace JNotes.Core.Users;
 /// <summary>
 /// Username/email format rules shared by every account-creation path (first-run <c>/setup</c>,
 /// the admin "Add user" form) — a plain static class with no DI, the same reasoning
-/// <c>ChecklistMarkdownParser</c>/<c>UserInitials</c> are ones for: pure and deterministic, so
+/// <c>UserInitials</c>/<c>NoteGrouping</c> are ones for: pure and deterministic, so
 /// it's unit-testable without EF Core.
 /// </summary>
 public static partial class UserValidation

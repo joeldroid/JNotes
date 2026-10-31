@@ -16,8 +16,9 @@ reference.
 ```bash
 # Build / test / format (from repo root)
 dotnet build JNotes.slnx
-dotnet test JNotes.slnx                          # integration tests need a real PostgreSQL (see Tests)
-dotnet test tests/JNotes.Tests --filter "FullyQualifiedName~ChecklistMarkdownParserTests"   # single class
+dotnet test JNotes.slnx                          # integration tests need a real PostgreSQL (see Tests); the UI tests report Skipped
+dotnet test tests/JNotes.Tests --filter "FullyQualifiedName~NoteGroupingTests"   # single class
+JNOTES_UI_TESTS=1 dotnet test tests/JNotes.UiTests   # opt-in Playwright browser suite (Chromium auto-installed on first run)
 dotnet format JNotes.slnx
 dotnet format JNotes.slnx --verify-no-changes    # CI-style check
 
@@ -41,13 +42,15 @@ docker compose up --build   # production-shaped: what Docker actually runs, not 
 
 **Three projects**, one-directional dependency: `JNotes.Web` (Blazor Server UI + composition root)
 → `JNotes.Core` (domain, storage, indexing, EF Core) ← `JNotes.Tests` (xUnit, tests Core only).
+A fourth, `JNotes.UiTests` (xUnit + Playwright), is the only project that references Web: it hosts `Program`
+in-process through `WebApplicationFactory<Program>` on a real Kestrel port and drives it with Chromium (see Tests).
 
 **Web never touches the filesystem or EF Core/PostgreSQL directly** — only Core's interfaces
 (`INoteService`, `ISettingsService`, `INoteIndexReconciler`, `IUserRepository`,
 `IUserManagementService`, `IImageService`, `IImageCleanupService`, `INoteExportService`, `INoteAutoTagger`, `INoteSharingService`). Enforced at build time: `Microsoft.CodeAnalysis.BannedApiAnalyzers`
 (`src/JNotes.Web/BannedSymbols.txt`) bans `System.IO.File`/`Directory`, `DbContext`, and Npgsql's
 `NpgsqlConnection`/`NpgsqlDataSource` in Web. Pure static Core
-helpers (`ChecklistMarkdownParser`, `NoteGrouping`, `UserInitials`, `UserValidation`) are fine to
+helpers (`NoteGrouping`, `UserInitials`, `UserValidation`) are fine to
 call from Web.
 
 All Core DI wiring is in `JNotes.Core/ServiceCollectionExtensions.AddJNotesCore`, **except**
@@ -129,8 +132,7 @@ for future per-user preferences. PDF export is light via its own `note-pdf.css`,
   `ActivatorContent`). Check parameter names against `~/.nuget/packages/mudblazor/<ver>/lib/net10.0/MudBlazor.xml`,
   not memory.
 - **MudBlazor inputs keep their own state.** After a server-side refusal, a `MudSwitch`/`MudCheckBox`
-  stays where the user clicked unless it's rebuilt — bump an `@key` (`_securityVersion` in `Settings.razor`,
-  `_listVersion` in `ChecklistPanel`).
+  stays where the user clicked unless it's rebuilt — bump an `@key` (`_securityVersion` in `Settings.razor`).
 
 **Data Protection keys are persisted at `DATA_PROTECTION_KEYS_PATH`** (`Program.cs`), defaulting to
 a `keys` folder beside `NOTES_PATH` (a possibly-remote PostgreSQL gives no local directory to derive
@@ -228,7 +230,7 @@ regenerates them and silently signs everyone out.
   `MudMenuItem`/`OnClick` (it must write `Set-Cookie`); "My Account" is plain navigation, so an `Href`
   item is fine. Profile editing (`/account`) and Administration (`/settings`) are reached only from this
   widget, so there is no top-level nav entry for either.
-- **Order:** Search, New Note (the dropdown button below), All Notes, Shared with Me (a plain `MudNavLink` to
+- **Order:** Search, New Note (the button below), All Notes, Shared with Me (a plain `MudNavLink` to
   `/shared`), then (signed-in only, when there are notes) a **Recent** section, then a divider and Trash in its own
   `MudNavMenu.jn-nav-trash` (`margin-top: auto` bottom-anchors it; below md the account section follows directly
   beneath it) (Search and New Note
@@ -237,23 +239,18 @@ regenerates them and silently signs everyone out.
   dependencies are Roboto and mermaid, under `wwwroot/lib/`; MudBlazor itself comes from NuGet. The
   search field has a leading search icon and clears itself on every `@onclick` (an unmatched attribute
   on `MudTextField`, which lands on its root element). Nav labels are title case throughout.
-- **"New Note" lives here, not in `NoteList.razor`, so it works from any page.** It is one `MudMenu` whose
-  `ActivatorContent` is a `Variant.Filled`/`Color.Primary` full-width `MudButton` ("New Note", with + and
-  dropdown icons), with two `MudMenuItem Href`s, "Text" (`/notes/new/text`) and "Checklist"
-  (`/notes/new/checklist`). It only navigates — **nothing is created until Save** (see `NoteEditor`'s
-  new-note mode under "Notes UI"). New notes of every type start with an **empty title, tags, and body**.
-  It sits **outside** `MudNavMenu`, in its own `div.jn-nav-new` between the search box and the nav list: a
-  `MudMenu` nested *inside* `MudNavMenu` didn't work in practice, whereas as a sibling it behaves like
-  `AccountMenu`'s app-bar menu (its popover renders in `MainLayout`'s `MudPopoverProvider`, so the drawer
-  can't clip it, and `MainLayout`'s close-on-navigation closes the mobile drawer for free). It shares the
-  search box's unqualified `<AuthorizeView Context="auth">` (not a manual `IsAuthenticated` check) because
-  `NavMenu` also renders for `NotFound`/`Error` (`[AllowAnonymous]`, same `MainLayout`), and an anonymous
-  circuit never gets a handler id for markup `AuthorizeView` didn't render; the context is renamed so it
-  can't collide with `ActivatorContent`'s own `context`.
-  **No active-route indication on the New Note button, deliberately:** neither the button nor its menu items
-  reflect an open `/notes/new/{type}` draft (the editor page itself makes that obvious), so `NavMenu` needs no
-  `LocationChanged` subscription (`MainLayout` owns the one that refreshes Recent). `.mud-menu` is `inline-flex`
-  by default, so `nav-menu.css` stretches it (and its button) to the sidebar's full width explicitly.
+- **"New Note" lives here, not in `NoteList.razor`, so it works from any page.** It is one `Variant.Filled`/
+  `Color.Primary` full-width `MudButton Href="/notes/new"` ("New Note", with a + icon). It only navigates —
+  **nothing is created until Save** (see `NoteEditor`'s new-note mode under "Notes UI"). New notes start with an
+  **empty title, tags, and body**. It sits **outside** `MudNavMenu`, in its own `div.jn-nav-new` between the search
+  box and the nav list, so `nav-menu.css` can style it as a primary button whose metrics mimic `.mud-nav-link`
+  (and `MainLayout`'s close-on-navigation closes the mobile drawer for free). It shares the search box's
+  unqualified `<AuthorizeView Context="auth">` (not a manual `IsAuthenticated` check) because `NavMenu` also
+  renders for `NotFound`/`Error` (`[AllowAnonymous]`, same `MainLayout`), and an anonymous circuit never gets a
+  handler id for markup `AuthorizeView` didn't render.
+  **No active-route indication on the New Note button, deliberately:** it doesn't reflect an open `/notes/new`
+  draft (the editor page itself makes that obvious), so `NavMenu` needs no `LocationChanged` subscription
+  (`MainLayout` owns the one that refreshes Recent).
 - **Recent notes** (up to 10, below Shared with Me). `MainLayout` loads
   `INoteService.ListAsync(new NoteSearchQuery(Limit: 10))` — scope All (own + shared with me), index
   `UpdatedAt` order (a body-only `ContentOnly` save bumps the row's `UpdatedAt`, so an edited note rises on the
@@ -263,11 +260,11 @@ regenerates them and silently signs everyone out.
   `MainLayout` → `NavMenu` → `RecentNotes.razor` (`Components/Layout/`, injects nothing, same "layout queries,
   children inject nothing" pattern as `AccountMenu`), rendered inside `<AuthorizeView Context="auth">` before
   `AccountMenu`, which must stay the last child. Entries are `MudNavLink Href="/notes/{id}"` with a
-  type icon and "Untitled" for an empty title; the open note is highlighted by `MudNavLink`'s default
+  note icon and "Untitled" for an empty title; the open note is highlighted by `MudNavLink`'s default
   `Prefix` match, so `/notes/{id}/edit` counts too (no URL parsing). The heading is an `h2` because
   `Routes.razor`'s `FocusOnNavigate` targets `h1`. There is deliberately no timer or push: the list does
   **not** refresh without a navigation (Restore/Purge on `/trash`, another user's edit, Rescan Now).
-- **Search** is a single free-text box (title, body, tags) with no type/tag options. Enter navigates
+- **Search** is a single free-text box (title, body, tags) with no tag options. Enter navigates
   to `/?q=<url-encoded text>` (empty → `/`); `NoteList.razor` reads it via
   `[SupplyParameterFromQuery(Name = "q")]` and refreshes from `OnParametersSetAsync`, not
   `OnInitializedAsync` — the page instance is reused across searches, only the query string
@@ -308,6 +305,9 @@ regenerates them and silently signs everyone out.
   with a `---` block, then YamlDotNet). `NoteMarkdownSerializer` maps it to the `Note` model.
   Timestamps are UTC in storage; `JNotesOptions.TimeZoneId`/`AppTimeZoneProvider` (`TZ` env var)
   affect only *display*.
+  The front matter `type` key is a fixed `text` marker, written in its original position (so existing files stay
+  byte-identical for the auto-tagger's canonical-format guard) and ignored on read; legacy `type: checklist` files
+  are read as text notes, and the index has no type column.
 - **The index lives in the same PostgreSQL database and schema as users/settings** — one connection
   string (assembled from `POSTGRES_HOST`/`POSTGRES_PORT`/`POSTGRES_DB`/`POSTGRES_USER`/
   `POSTGRES_PASSWORD` — split out, rather than one `POSTGRES_CONNECTION_STRING`, so a docker-compose
@@ -341,8 +341,8 @@ regenerates them and silently signs everyone out.
   nothing — `NoteEditor` passes a `SuggestTags` delegate) shows tags as chips plus a
   `MudAutocomplete<string>`; typed text that matches no suggestion is offered last as "Add new tag …",
   so every add goes through `ValueChanged`, and a comma-separated entry adds several tags (`TagList`, pure
-  static). The list page has no Type/Tag filters (removed from the UI); `NoteSearchQuery.Tag`/`Type`
-  still exist in Core, and tags are still searchable through the free-text box.
+  static). The list page has no tag filter (removed from the UI); `NoteSearchQuery.Tag`
+  still exists in Core, and tags are still searchable through the free-text box.
 - **`IndexedFileWriteTimeUtc` is rounded to whole microseconds on both write and compare**
   (`IndexTimestamp.ToIndexResolution`), because PostgreSQL `timestamptz` has microsecond precision
   while `File.GetLastWriteTimeUtc` has 100-nanosecond ticks. Without the rounding,
@@ -353,20 +353,18 @@ regenerates them and silently signs everyone out.
 ## Notes UI
 
 **Opening a note lands on a read-only view; editing is a separate route.** `NoteView.razor`
-(`/notes/{id}`) renders title, tags, and body (`MarkdownPreview` for text notes; the shared
-`ChecklistPanel` for checklists) with Edit, Export PDF when enabled, and Delete (the same soft-delete as the editor, behind the same "Move to Trash" confirmation `MudMessageBox`). The view
-never edits free-form body text, but for checklists it can **toggle items** via
-`INoteService.SetChecklistItemCheckedAsync` (adding items/categories is done in the editor). A single `_isMutating` flag (passed to the panel as `Disabled`, which
-disables every control while a call is in flight) stands in for the editor's save gate. `NoteEditor.razor` is at `/notes/{id}/edit` with a "Close" link back (autosave has already written everything; the button just returns to the view) and a "Delete" button — an outlined-error icon+text button, behind a "Move to Trash" confirmation `MudMessageBox` (shared wording with the view's Delete).
-**The same page also serves `/notes/new/{TypeName}` as an unsaved draft** (`IsNew` = `TypeName is not null`): an in-memory `Note` with `Id = Guid.Empty`, built in `OnParametersSetAsync` (the component is reused when switching text ↔ checklist). **No autosave** — `OnContentEdited`/`OnMetadataEdited` skip the debouncers and `DisposeAsync` skips its flush, since either would create the note. **Save** (`SaveNewAsync`) refuses an empty/whitespace title with an inline error, else calls `INoteService.CreateAsync` and navigates to the view; Delete becomes **Discard** (a link to `/`, nothing on disk to trash). A `NavigationLock` confirms before dropping a draft that has content (`_draftSaved` is set before Save's own navigation so it doesn't block itself). An image pasted into a draft is uploaded immediately, so a discarded draft can leave an orphan for the scheduled cleanup.
+(`/notes/{id}`) renders title, tags, and body (`MarkdownPreview` only) with Edit, Export PDF when enabled, and Delete (the same soft-delete as the editor, behind the same "Move to Trash" confirmation `MudMessageBox`). The view
+never edits the body; there is no checklist toggling and no in-flight mutation flag. `NoteEditor.razor` is at `/notes/{id}/edit` with a "Close" link back (autosave has already written everything; the button just returns to the view) and a "Delete" button — an outlined-error icon+text button, behind a "Move to Trash" confirmation `MudMessageBox` (shared wording with the view's Delete).
+**The same page also serves `/notes/new` as an unsaved draft** (`Id` is `Guid?`, `IsNew => Id is null`; the router sets the unused route parameter to null, so a reused instance switches modes correctly): an in-memory `Note` with `Id = Guid.Empty`, built in `OnParametersSetAsync` (the component is reused between `/notes/{id}/edit` and `/notes/new`; every swap of the shown note — to the draft, or to another note's `/notes/{id}/edit` — goes through `SwapNoteAsync`, which first cancels both debouncers, does the same best-effort `Metadata` flush as `DisposeAsync` for any unsaved edits under the save gate, and swaps while holding it. `_noteGeneration` is bumped inside the swap and captured by `SaveNowAsync` before it queues on the gate, so a save already queued for the outgoing note skips itself instead of running against the draft or against the other note; it also skips a draft). **No autosave** — `OnContentEdited`/`OnMetadataEdited` skip the debouncers and `DisposeAsync` skips its flush, since either would create the note. **Save** (`SaveNewAsync`) refuses an empty/whitespace title with an inline error, else calls `INoteService.CreateAsync` and navigates to the view; Delete becomes **Discard** (a link to `/`, nothing on disk to trash). A `NavigationLock` confirms before dropping a draft that has content (`_draftSaved` is set before Save's own navigation so it doesn't block itself). Confirming "Discard" on a same-URL navigation (New Note while already on `/notes/new`) resets the draft in place (`ResetDraft`, which also bumps `_draftVersion`, keyed on `TagInput`), because the router re-gives the mounted editor identical parameters and `OnParametersSetAsync` would never rebuild it. An image pasted into a draft is uploaded immediately, so a discarded draft can leave an orphan for the scheduled cleanup.
 The view's whole content (header, meta, body) sits in a centered `.note-view` column capped by
 `--note-view-max-width` (56rem, `note-view.css`); the editor's two-pane split deliberately stays full width.
-**Shared notes (see "Note sharing"):** `NoteView` and `NoteEditor` load through `INoteService.GetWithAccessAsync` and gate by `NoteAccess`. Buttons by level: **Owner** — Edit, Share (shows "Shared with N"), Export PDF, Delete; **Edit** recipient — Edit, Export PDF, **Leave**; **Read** recipient — Export PDF, **Leave** (`ChecklistPanel ReadOnly`, no Edit). Recipients also see a "Shared by X · Can edit/View only" chip in `.jn-meta`. Leave confirms in a `MudMessageBox`, calls `INoteSharingService.LeaveAsync`, then goes to `/shared`. The **share dialog** is an inline `MudDialog` (the `Settings.razor` pattern) rendered **only inside `@if (_access.IsOwner)`**, so a recipient's circuit never gets its handler ids; it hosts `NoteSharePanel` (`Components/Notes/`, injects nothing — the page passes a `SearchRecipients` delegate and the current `Shares`, and receives `OnShare`/`OnPermissionChanged`/`OnRemove`). `ShareAsync` is an upsert, so adding and changing permission are one handler. The page bumps `_sharesVersion` after every mutation and the panel puts its `Version` in each row's `@key` — a `MudSelect` keeps its own state after a refused change (same gotcha as `_listVersion`). `NoteEditor` for an **Edit** recipient renders the title as text and the tags as read-only chips (`TagInput` has no `Disabled` parameter, so it isn't rendered and `OnMetadataEdited` can never fire), hides Delete, and passes `ImagesNoteId`/`SaveImage` to `TextNoteEditor`; a **Read** recipient is redirected (`replace: true`) to the view. `SaveNowAsync` catches `NoteNotFoundException`/`NoteAccessDeniedException`, sets **`_accessLost`**, cancels both debouncers and shows "no longer available … NOT saved"; `OnContentEdited`/`OnMetadataEdited` and `DisposeAsync`'s flush then do nothing. A recipient's save returns the owner's merged note, so the editor adopts only its Title/Tags/UpdatedAt and keeps the body being typed. `SharedWithMe.razor` (`/shared`) is a thin routed page like `NoteList` (`NoteListScope.SharedWithMe`, `NoteGroupList`). `NoteListItem` shows a "Shared by X · …" chip (recipient) or "Shared · N" (owner).
+**Shared notes (see "Note sharing"):** `NoteView` and `NoteEditor` load through `INoteService.GetWithAccessAsync` and gate by `NoteAccess`. Buttons by level: **Owner** — Edit, Share (shows "Shared with N"), Export PDF, Delete; **Edit** recipient — Edit, Export PDF, **Leave**; **Read** recipient — Export PDF, **Leave** (no Edit). Recipients also see a "Shared by X · Can edit/View only" chip in `.jn-meta`. Leave confirms in a `MudMessageBox`, calls `INoteSharingService.LeaveAsync`, then goes to `/shared`. The **share dialog** is an inline `MudDialog` (the `Settings.razor` pattern) rendered **only inside `@if (_access.IsOwner)`**, so a recipient's circuit never gets its handler ids; it hosts `NoteSharePanel` (`Components/Notes/`, injects nothing — the page passes a `SearchRecipients` delegate and the current `Shares`, and receives `OnShare`/`OnPermissionChanged`/`OnRemove`). `ShareAsync` is an upsert, so adding and changing permission are one handler. The page bumps `_sharesVersion` after every mutation and the panel puts its `Version` in each row's `@key` — a `MudSelect` keeps its own state after a refused change (same gotcha as `_securityVersion`). `NoteEditor` for an **Edit** recipient renders the title as text and the tags as read-only chips (`TagInput` has no `Disabled` parameter, so it isn't rendered and `OnMetadataEdited` can never fire), hides Delete, and passes `ImagesNoteId`/`SaveImage` to `TextNoteEditor`; a **Read** recipient is redirected (`replace: true`) to the view. `SaveNowAsync` catches `NoteNotFoundException`/`NoteAccessDeniedException`, sets **`_accessLost`**, cancels both debouncers and shows "no longer available … NOT saved"; `OnContentEdited`/`OnMetadataEdited` and `DisposeAsync`'s flush then do nothing. A recipient's save returns the owner's merged note, so the editor adopts only its Title/Tags/UpdatedAt and keeps the body being typed. `SharedWithMe.razor` (`/shared`) is a thin routed page like `NoteList` (`NoteListScope.SharedWithMe`, `NoteGroupList`). `NoteListItem` shows a "Shared by X · …" chip (recipient) or "Shared · N" (owner).
 
 **Autosave (existing notes only) has two scopes, and the cheaper one is deliberately narrow.**
-`NoteService.AutosaveAsync(note, NoteSaveScope)` is what the editor's debounced autosave,
-checklist changes, and `UpdateAsync` funnel through — there's no Save button.
-- `ContentOnly` (body edits, checklist toggles/adds) writes the file, then one narrow index `UPDATE`
+`NoteService.AutosaveAsync(note, NoteSaveScope)` is what the editor's debounced autosave
+and `UpdateAsync` funnel through — there's no Save button. Known limitation: two tabs on one note are
+last-writer-wins (there's no cross-circuit locking).
+- `ContentOnly` (body edits) writes the file, then one narrow index `UPDATE`
   (`INoteIndexRepository.UpdateContentAsync`: `Body` and `UpdatedAt` only, guarded by `UpdatedAt <=` so an
   out-of-order write can't roll back a newer body, plus a recompute of the note's tags' `LastUsedAt`). Search
   and list order see the edit immediately. It deliberately does **not** touch the title, the tag rows or
@@ -417,24 +415,16 @@ skipping empty buckets and never re-sorting. It's pure static with no clock/time
   `@if`: the placeholders live inside it precisely so a search that matches nothing doesn't destroy the
   instance (a component survives its own internal branches, not a parent's) and take the set with it.
 
-**`ChecklistNoteEditor` and `TextNoteEditor` deliberately share one layout.** A hide/show button on
-top, then a `.jn-editor-split` CSS grid (one column, two from 960px when the right pane is shown — a
-grid rather than `MudGrid`, whose negative-margin spacing risks horizontal overflow): the always-visible markdown `<textarea>` on the
-left, and a togglable, **visible-by-default** right pane (`MarkdownPreview` / a read-only
-`ChecklistPanel`) driven by a plain `bool` (`_showPreview`/`_showChecklist`), the left going full-width when
-it's hidden. Both right panes share `.note-editor-preview`'s fixed height (see `note-editor.css`);
-the checklist pane is a flex column so its list scrolls. The one
-difference: `TextNoteEditor` has the `MarkdownToolbar` (bold etc.); `ChecklistNoteEditor`
-deliberately doesn't, and has just an "Item" and a "Category" button instead (its own `_textareaRef`, no
-`MarkdownToolbar`). They call `markdown-toolbar.js`'s `insertLine`, which puts `- [ ] Item` / `## Category`
-on its own line below the cursor's line (a blank line is kept above a category) and selects the placeholder. **The editor's checklist pane is a pure preview** — inert checkboxes, no
-add controls (`ChecklistPanel ReadOnly="true"`): once the user is editing the raw
-markdown, a second way to edit it just duplicates the UI. Checking happens in `NoteView` only; adding
-items and categories happens through the editor's toolbar buttons. The body input stays a **native `<textarea>`** (styled as
+**`TextNoteEditor` layout.** A hide/show button on top, then a `.jn-editor-split` CSS grid (one column, two from
+960px when the right pane is shown — a grid rather than `MudGrid`, whose negative-margin spacing risks horizontal
+overflow): the always-visible markdown `<textarea>` on the left, and a togglable, **visible-by-default** right
+`MarkdownPreview` pane driven by a plain `bool` (`_showPreview`), the left going full-width when it's hidden. The
+pane has `.note-editor-preview`'s fixed height (see `note-editor.css`). It has the `MarkdownToolbar` (bold etc.).
+The body input stays a **native `<textarea>`** (styled as
 `.note-editor-textarea`), not a `MudTextField`: `markdown-toolbar.js` and `image-paste.js` drive the real
 DOM element and rely on a real `input` event.
 
-**Images: text notes only, button + paste, no drag-and-drop.** `TextNoteEditor` owns the upload;
+**Images: button + paste, no drag-and-drop.** `TextNoteEditor` owns the upload;
 `MarkdownToolbar`'s Image button (a `MudButton` inside a `MudFileUpload<IBrowserFile>`'s `CustomContent`
 that opens its picker; `ClearAsync` after each pick so the same file can be chosen twice) just raises `OnImageSelected`, and
 `wwwroot/js/image-paste.js` calls `OnImagePastedAsync` on a paste. Both funnel into one
@@ -503,8 +493,14 @@ that opens its picker; `ClearAsync` after each pick so the same file can be chos
   lands on disk before the debounced autosave writes the note containing its link. An image in a
   *trashed* note survives until that note is purged.
 
+**Task lists render as read-only checkboxes.** `UseTaskLists()` is registered in `MarkdownRenderer.CreateBaseBuilder()`, so
+the app preview and `PdfMarkdownRenderer` both turn `- [ ]` / `- [x]` into `<input type="checkbox" disabled>` list
+items (styled in `markdown-preview.css` and `note-pdf.css` via `.task-list-item > input[type="checkbox"]`: Markdig adds no class to the checkbox, and the renderer tests pin the markup the CSS depends on). Display-only by design: nothing toggles them (users edit
+the markdown), there is no `INoteService` method for it, and checked items do not reorder. Raw `<input>` HTML typed in
+a note is still escaped by `DisableHtml()`; there is no HTML sanitizer, only that.
+
 **Mermaid diagrams render in text-note previews only** (`MarkdownPreview`, so the editor's right
-pane and `NoteView`; never checklists, the list, or the trash). A ```` ```mermaid ```` fence is an
+pane and `NoteView`; never the list or the trash). A ```` ```mermaid ```` fence is an
 ordinary fenced code block in the file, so the `.md` stays portable. Markdig's default would emit
 `<pre><code class="language-mermaid">`; `MermaidCodeBlockRenderer` (installed by
 `MermaidMarkdownExtension`, in the pipeline in `MarkdownRenderer`) instead emits
@@ -547,66 +543,6 @@ implement the interface.
   occurred". Every toolbar button failed this way on a freshly opened editor until the getter.
   Same rule for any child that needs a parent's element ref.
 
-## Checklists
-
-**Line-based regex, not a Markdig AST round-trip**
-(`JNotes.Core/Serialization/ChecklistMarkdownParser.cs`). Markdig is for read-only preview only;
-re-emitting markdown from its tree risks reformatting content outside the edited line. Every
-mutation preserves each line's own bytes (and CRLF/LF style) and changes only the target's bracket
-character and, for checking, line *order*. Don't route checklist edits through Markdig's AST.
-Only `- [ ]`/`- [x]` bullets are recognised.
-
-**API:** `SetItemChecked`, `AppendItemsToCategory`, and `AddCategory` on the parser;
-`SetChecklistItemCheckedAsync`, `AddChecklistItemAsync` (optional category), and
-`AddChecklistCategoryAsync` on `INoteService` (read the file, guard `NoteType.Checklist`, mutate,
-`ContentOnly` save). It's **set, not toggle**: reordering makes
-`LineIndex` volatile, and a replayed "set checked" is idempotent while a replayed flip is not.
-
-**Checked items sink to the bottom of the *file*, not just the screen.** A display-only sort would
-make the app and any other editor (Obsidian, vim, GitHub) disagree about order, and would desync
-`ChecklistNoteEditor`'s markdown pane from its preview pane.
-- A **block** is a maximal run of consecutive task lines with the same indent; prose, headings,
-  blank lines, and other indents end it. Items therefore never cross a heading, and a nested
-  parent never moves away from its children.
-- After setting the mark, the block is stably partitioned unchecked-then-checked, with the toggled
-  line last in its destination group: checking sends it to the very bottom; **unchecking returns
-  it to the end of the unchecked run, not its old slot** (remembering that would need state outside
-  the file). Partitioning the whole block also repairs hand-edited files.
-- Adding items (`AppendItemsToCategory`) puts one unchecked item per non-blank line of the text
-  (trimmed) at the end of the target category's last block's unchecked run, above its checked items;
-  with no task lines in the range it inserts before any trailing blank lines. No escaping is needed:
-  `Text` is greedy to end of line and front matter is only detected at the file's start.
-
-**Categories are markdown headings — no extra storage.** Any ATX heading (`#`–`######`, text after
-a space) starts a category holding the task lines beneath it up to the next heading; items before
-the first heading are the uncategorized section. `ChecklistSection`/`ParseSections` is a read-only
-projection like `ChecklistItem`. This rides on the block rule above: headings already end blocks,
-so a checked item sinks within its own category and never crosses one. On the parser,
-`AddCategory(body, name)` appends `## name` after the last content (blank line before it; the name is
-trimmed and line breaks flattened) and `AppendItemsToCategory(body, text, headingLineIndex)` inserts
-into one section (`null` = uncategorized) using the same end-of-unchecked-run rule, or directly under
-the heading if the category is empty.
-
-**`ChecklistPanel` is the one checklist UI, used by both the view (interactive) and the editor
-(`ReadOnly`, see above)** (`Components/Notes/`). `ReadOnly` renders just the grouped list with
-inert checkboxes — deliberately not `Disabled`, which greys them out; instead `MudCheckBox`'s own `ReadOnly`
-blocks toggling and `.checklist-readonly` sets `pointer-events: none` (`note-editor.css`); without `ReadOnly` (the view) the checkboxes toggle. It groups items by section and has no add-item or
-add-category controls. It owns no persistence: it renders the `Body` it's given and reports a toggle
-through the `OnItemChecked` callback, so the panel stays free of any save logic. Adding, renaming,
-deleting, or reordering categories and items is done in the editor's markdown textarea and toolbar.
-
-**`@key` + `_listVersion` is required on checklist rows** (`ChecklistPanel.razor`): each row's
-`@key` includes `_listVersion`, bumped after every mutation. Without it, the `MudCheckBox` has already
-toggled itself, the item moves, and the row taking its slot renders the same as the old one, so Blazor's
-diff skips it and the box stays ticked while the model disagrees. (The same rebuild snaps a box back if
-the save failed.)
-
-**The editor edits raw markdown only; the view goes through the service.** `ChecklistNoteEditor`
-has one input, the markdown textarea, whose changes raise `BodyChanged` and ride `NoteEditor`'s
-ordinary content debounce and save gate. `NoteView` has no autosave, so its panel callbacks use the
-`INoteService` checklist methods.
-Known limitation: two tabs on one note are last-writer-wins (there's no cross-circuit locking).
-
 ## Note sharing
 
 An owner shares one note with any other user as **Read** or **Edit**. **The file never moves or gets copied**
@@ -630,16 +566,16 @@ still a 404 and the own-folder guarantee holds, and revoking or downgrading take
 action (permissions are not in cookie claims). `NoteSharingService.RequireOwnerAsync` gives a recipient
 `NoteAccessDeniedException` and a stranger `NoteNotFoundException`.
 
-**Permission matrix.** Read: view/search/export PDF, Leave. Edit: the same plus the **body only** (text body,
-checklist add/toggle, images). Owner only: title, tags, type, share management, trash/restore/purge.
+**Permission matrix.** Read: view/search/export PDF, Leave. Edit: the same plus the **body only** (text body
+and images). Owner only: title, tags, share management, trash/restore/purge.
 `INoteService.GetWithAccessAsync` returns the note with its `NoteAccess` (`Level`, `OwnerUserId`,
 `OwnerDisplayName`, `IsOwner`, `CanEditBody`).
 
 **Edit writes are a body-only compare-and-swap merge** (`NoteService.ReplaceBodyAsync`), never `WriteAsync`
 (which creates a missing file): `ReadRawAsync(owner)` → deserialize → take **only `Body`** from the caller (Title,
-Tags, Type, CreatedAt stay the file's, `UpdatedAt` = now) → `ReplaceIfUnchangedAsync`, up to 3 tries, then an
+Tags, CreatedAt stay the file's, `UpdatedAt` = now) → `ReplaceIfUnchangedAsync`, up to 3 tries, then an
 `IOException`. So a trashed/purged/archived note is never recreated, a recipient's metadata is never persisted
-(differing Title/Tags are **ignored**; only a Type change throws `NoteAccessDeniedException`, since throwing on a
+(differing Title/Tags are **ignored**, since throwing on a
 rename would break every recipient autosave after the owner renames), and the owner's concurrent rename or the
 auto-tagger's tags survive a recipient's save. The `Metadata` scope also reindexes the owner's row
 (`IndexAsync(ownerId, …)`); `ContentOnly` makes the same narrow `UpdateContentAsync` call on the **owner's** row
@@ -667,11 +603,11 @@ recreate an empty owner folder (harmless).
 **Listing and search** stay one SQL query over `NoteIndexEntries` (`PostgresNoteIndexRepository.SearchAsync`):
 `e.UserId == me OR EXISTS(NoteShares s WHERE s.NoteId == e.Id AND s.OwnerUserId == e.UserId AND
 s.SharedWithUserId == me)` for `NoteListScope.All`, only the `EXISTS` for `NoteListScope.SharedWithMe`
-(`NoteSearchQuery`'s 4th parameter; its 5th, `Limit`, is an SQL `LIMIT` applied after every filter, ordered
+(`NoteSearchQuery`'s 3rd parameter; its 4th, `Limit`, is an SQL `LIMIT` applied after every filter, ordered
 `UpdatedAt` then `Id` descending so ties are deterministic, and must be >= 1); requiring `s.OwnerUserId == e.UserId` means a stale or foreign share row
 can never expose another folder's entry. `NoteSummary` keeps its positional constructor and gains init
 properties `OwnerUserId`, `SharedWithMe` (`SharedNoteInfo`: owner, display name, permission — null for own
-notes) and `OutgoingShareCount`. Text, tag and type filters cover shared notes. **Tag suggestions and
+notes) and `OutgoingShareCount`. Text and tag filters cover shared notes. **Tag suggestions and
 `GetDistinctTagsAsync` stay own-only**, because recipients can't edit tags. If the `OR EXISTS` ever hurts the
 `(UserId, UpdatedAt)` index for large collections, rewrite it as a `Concat` of the own and shared queries.
 
@@ -691,7 +627,7 @@ ordered by username, limit clamped 1..20. **It never matches on or returns an em
 
 **Nothing user-controlled may make Chromium fetch.** `PdfMarkdownRenderer` shares `MarkdownRenderer.CreateBaseBuilder()` (tables, `DisableHtml`, mermaid) but not `ImageLinkMarkdownExtension`. It rewrites only `images/<stored name>` to the bare file name, and turns every other image (external URL, `data:`, odd path) into a plain link. As a second layer, compose starts Gotenberg with `--chromium-allow-list=^file:///tmp/.*`, because mermaid's sanitizer still allows an `<img>` inside a label.
 
-**Mermaid renders inside Gotenberg's Chromium**, light theme, `securityLevel: 'strict'`, with the same parse-then-render and error fallback as `mermaid-preview.js`. An inline script sets `window.jnotesPdfReady` once fonts and diagrams are done, and Gotenberg's `waitForExpression` waits for it. If the flag never flips, Gotenberg's own 30 s timeout answers 503. Checklists are static HTML mirroring `ChecklistPanel`: items only, grouped by heading, with CSS-drawn boxes.
+**Mermaid renders inside Gotenberg's Chromium**, light theme, `securityLevel: 'strict'`, with the same parse-then-render and error fallback as `mermaid-preview.js`. An inline script sets `window.jnotesPdfReady` once fonts and diagrams are done, and Gotenberg's `waitForExpression` waits for it. If the flag never flips, Gotenberg's own 30 s timeout answers 503.
 
 Compose: the `gotenberg` service sits behind the `pdf` profile, with no published port, and `jnotes` has no `depends_on` on it (that would break a plain `up` with the profile off). The app always gets `GOTENBERG_URL=${GOTENBERG_URL:-}`, which is empty (off) unless `.env` sets it.
 
@@ -724,8 +660,45 @@ own `jnotes_test_<guid>` database (`TestPostgresDatabase`) — a whole database,
 migrations run against a virgin database exactly as in production; the configured user needs
 `CREATEDB`. Two Npgsql pooling gotchas the helper handles: `NpgsqlConnection.ClearAllPools()` before
 `DROP DATABASE` (disposing EF's contexts only returns pooled connections, it doesn't close them), and
-`WITH (FORCE)` as the backstop. No Razor component tests (no bUnit); UI changes are verified manually
-in a browser.
+`WITH (FORCE)` as the backstop. There are no Razor component tests (no bUnit).
+
+**Browser tests: `tests/JNotes.UiTests`, opt-in.** An xUnit + Playwright (Chromium) end-to-end suite against the
+real app. `dotnet test JNotes.slnx` builds it but every test reports Skipped ("UI tests are opt-in…", `[UiFact]`
+sets `Skip` unless `JNOTES_UI_TESTS=1`) and nothing is started; run it with
+`JNOTES_UI_TESTS=1 dotnet test tests/JNotes.UiTests` (add `--filter "FullyQualifiedName~SharingTests"` for one
+class). The first opt-in run downloads Chromium (~150 MB, to `~/Library/Caches/ms-playwright` on macOS) because
+`UiAppFixture` calls Playwright's installer; later runs are no-ops, and `JNOTES_UI_SKIP_BROWSER_INSTALL=1` opts out.
+- **One host per run.** `UiAppFixture` (a collection fixture; tests run serially, parallelization is off in
+  `xunit.runner.json`, which is also what makes `[UiFact]`'s `Timeout` apply) creates a `jnotes_ui_<guid>` database
+  (the shared `TestPostgresDatabase`, linked in as source), temp `NOTES_PATH` and `DATA_PROTECTION_KEYS_PATH`
+  folders, starts `Program.cs` unmodified, creates `admin` and `bob` through `IUserRepository` (which also flips the
+  `/setup` gate, so no restart) and signs each in once through the real `/login` form; every test then gets its own
+  browser context carrying that cookie. Nothing is mocked or bypassed: no test endpoints, no auth shortcut, no
+  `data-testid` (selectors are roles, labels, placeholders, text and the existing semantic classes).
+- **Configuration is process environment variables, set only while the host starts** (under a static lock, restored
+  in `finally`): `CreateBuilder()` snapshots the environment and `Program.cs` reads some keys before `Build()`, so
+  `WebApplicationFactory`'s `ConfigureWebHost` is too late. The fixture also unsets `OLLAMA_URL`/`OIDC_*`/`ASPNETCORE_URLS`
+  (so a developer's shell can't enable auto-tagging or OIDC), sets `AUTO_INDEX_INTERVAL_MINUTES=0`, and sets
+  `ASPNETCORE_APPLICATIONNAME=JNotes.Web`: under `dotnet test` the entry assembly is `testhost`, and without it
+  `MapStaticAssets` looks for `testhost.staticwebassets.endpoints.json`.
+- **Notes are seeded through Core, not the UI,** unless the test is about creating one (`SeedNoteAsync`:
+  `INoteFileStore.WriteAsync` + `INoteIndexReconciler.RescanAsync` with an explicit user id). Titles are unique per
+  test (`Ui.Unique`); never assert on whole-list counts, the database is shared by the run.
+- **Every test also fails on:** a console error, an uncaught page error, a failed request, any HTTP 4xx/5xx, an
+  Error-level server log (a recording `ILoggerProvider` added in `JNotesWebFactory`), or a visible `#blazor-error-ui`,
+  minus a per-test `UiSession.Allow(regex)` list (deliberate 404s). `UiSession.GotoInteractiveAsync` waits for the
+  Blazor circuit before a test clicks an `@onclick` after a full page load.
+- **Failure artifacts** (screenshot, Playwright trace for https://trace.playwright.dev, problem list per user) go to
+  `{test output}/ui-artifacts/<Test>-<time>/`, i.e. under `bin/` (gitignored); `JNOTES_UI_ARTIFACTS` redirects them.
+- **Needs** the standing `jnotes-debug-db` PostgreSQL (the same connection string as the other tests); the PDF test
+  also needs `jnotes-debug-pdf` (`GET /health` is probed at discovery) and otherwise reports Skipped. Other switches:
+  `JNOTES_UI_HEADED=1`, `JNOTES_UI_SLOWMO=<ms>`, `JNOTES_UI_GOTENBERG_URL`. These are test-only; the app never reads them.
+- **Covers** (see the classes): login, the single New Note button, draft guards (Save without a title, the discard
+  prompt), create/view/list/Recent (no type chip, read-only task lists, mermaid, image upload through the Image
+  button), edit + autosave, the New-Note-right-after-an-edit race, search by body and tag, sharing (Edit then View
+  only), trash/restore/purge, a legacy `type: checklist` file, PDF export as an HTTP response, and the drawer on a
+  narrow viewport. **Does not cover** (still checked manually): clipboard image paste, how the PDF looks or what is
+  in it (including mermaid in the PDF), legibility in the dark theme, OIDC, auto-tagging.
 
 **Use the standing debug containers, and never remove them.** `docker-compose.debug.yml` (project
 `jnotes-debug`) defines the instances used for running tests and manual checks on this machine:

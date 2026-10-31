@@ -44,12 +44,6 @@ public sealed class PostgresNoteIndexRepository : INoteIndexRepository
             : entries.Where(e => e.UserId == userId
                 || db.NoteShares.Any(s => s.NoteId == e.Id && s.OwnerUserId == e.UserId && s.SharedWithUserId == userId));
 
-        if (query.Type is { } type)
-        {
-            var typeName = type.ToString();
-            entries = entries.Where(e => e.NoteType == typeName);
-        }
-
         if (!string.IsNullOrWhiteSpace(query.SearchText))
         {
             var pattern = SqlLikePattern.ContainsPattern(query.SearchText);
@@ -72,14 +66,13 @@ public sealed class PostgresNoteIndexRepository : INoteIndexRepository
         var ordered = entries.OrderByDescending(e => e.UpdatedAt).ThenByDescending(e => e.Id);
         IQueryable<NoteIndexEntry> page = query.Limit is { } limit ? ordered.Take(limit) : ordered;
 
-        // Projected to an anonymous type and mapped afterwards: Enum.Parse has no SQL translation.
+        // Projected to an anonymous type and mapped afterwards: the SharedNoteInfo construction has no SQL translation.
         var rows = await page
             .Select(e => new
             {
                 e.Id,
                 e.UserId,
                 e.Title,
-                e.NoteType,
                 e.CreatedAt,
                 e.UpdatedAt,
                 OutgoingShareCount = e.UserId == userId
@@ -105,7 +98,6 @@ public sealed class PostgresNoteIndexRepository : INoteIndexRepository
             .Select(r => new NoteSummary(
                 r.Id,
                 r.Title,
-                Enum.Parse<Models.NoteType>(r.NoteType, ignoreCase: true),
                 r.Tags,
                 r.CreatedAt,
                 r.UpdatedAt)
@@ -170,7 +162,6 @@ public sealed class PostgresNoteIndexRepository : INoteIndexRepository
                 UserId = entry.UserId,
                 Title = entry.Title,
                 Body = entry.Body,
-                NoteType = entry.NoteType,
                 CreatedAt = entry.CreatedAt,
                 UpdatedAt = entry.UpdatedAt,
                 IndexedFileWriteTimeUtc = indexedWriteTime,
@@ -183,7 +174,6 @@ public sealed class PostgresNoteIndexRepository : INoteIndexRepository
             existing.UserId = entry.UserId;
             existing.Title = entry.Title;
             existing.Body = entry.Body;
-            existing.NoteType = entry.NoteType;
             existing.CreatedAt = entry.CreatedAt;
             existing.UpdatedAt = entry.UpdatedAt;
             existing.IndexedFileWriteTimeUtc = indexedWriteTime;

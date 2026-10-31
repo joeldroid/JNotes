@@ -10,25 +10,12 @@
                           Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
                           OnKeyDown="OnSearchKeyDown" @onclick="ClearSearch" />
         </div>
-        @* One "New Note" button (filled, primary) with a Text/Checklist dropdown. Sits OUTSIDE MudNavMenu on
-           purpose: a MudMenu nested inside MudNavMenu didn't work in practice. As a sibling it renders like
-           AccountMenu's MudMenu, with its popover in MainLayout's MudPopoverProvider. Items only navigate:
-           NoteEditor's /notes/new/{type} route holds an in-memory draft until Save. The AuthorizeView's
-           Context is "auth" so it can't collide with ActivatorContent's own `context`. *@
+        @* "New Note": a plain link to the /notes/new draft (nothing is created until Save - NoteEditor holds an
+           in-memory draft). Sits OUTSIDE MudNavMenu so it can be styled as a filled primary button (nav-menu.css).
+           It stays in this shared AuthorizeView because NavMenu also renders for anonymous NotFound/Error. *@
         <div class="jn-nav-new">
-            <MudMenu FullWidth="true" RelativeWidth="DropdownWidth.Adaptive"
-                     AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft"
-                     PopoverClass="jn-nav-new-popover">
-                <ActivatorContent>
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
-                               StartIcon="@Icons.Material.Filled.Add" EndIcon="@Icons.Material.Filled.ArrowDropDown"
-                               aria-haspopup="menu" OnClick="e => context.ToggleAsync(e)">New Note</MudButton>
-                </ActivatorContent>
-                <ChildContent>
-                    <MudMenuItem Href="/notes/new/text" Icon="@Icons.Material.Outlined.NoteAdd">Text</MudMenuItem>
-                    <MudMenuItem Href="/notes/new/checklist" Icon="@Icons.Material.Outlined.Checklist">Checklist</MudMenuItem>
-                </ChildContent>
-            </MudMenu>
+            <MudButton Href="/notes/new" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                       StartIcon="@Icons.Material.Filled.Add">New Note</MudButton>
         </div>
     </AuthorizeView>
 

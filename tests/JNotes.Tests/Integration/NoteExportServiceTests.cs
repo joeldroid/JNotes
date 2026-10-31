@@ -21,7 +21,7 @@ public class NoteExportServiceTests : IAsyncLifetime
     [Fact]
     public async Task Exporting_a_text_note_renders_it_and_returns_the_bytes()
     {
-        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Q3 / Plan", ["work"], "hello **world**");
+        var note = await _fixture.NoteService.CreateAsync("Q3 / Plan", ["work"], "hello **world**");
 
         var pdf = await _fixture.NoteExportService.ExportPdfAsync(note.Id);
 
@@ -45,7 +45,7 @@ public class NoteExportServiceTests : IAsyncLifetime
         var stored = await Images.SaveAsync(new MemoryStream(bytes));
         const string missing = "0123456789abcdef0123456789abcdef.png";
         var note = await _fixture.NoteService.CreateAsync(
-            NoteType.Text, "Pics", [], $"![a](images/{stored})\n\n![b](images/{missing})");
+            "Pics", [], $"![a](images/{stored})\n\n![b](images/{missing})");
 
         await _fixture.NoteExportService.ExportPdfAsync(note.Id);
 
@@ -57,7 +57,7 @@ public class NoteExportServiceTests : IAsyncLifetime
     public async Task A_mermaid_note_attaches_the_mermaid_script()
     {
         var note = await _fixture.NoteService.CreateAsync(
-            NoteType.Text, "Diagram", [], "```mermaid\nflowchart LR\n  A --> B\n```");
+            "Diagram", [], "```mermaid\nflowchart LR\n  A --> B\n```");
 
         await _fixture.NoteExportService.ExportPdfAsync(note.Id);
 
@@ -65,22 +65,10 @@ public class NoteExportServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_checklist_note_renders_its_items()
-    {
-        var note = await _fixture.NoteService.CreateAsync(NoteType.Checklist, "Todo", [], "- [ ] one\n- [x] two");
-
-        await _fixture.NoteExportService.ExportPdfAsync(note.Id);
-
-        var html = _fixture.PdfRenderer.LastRequest!.IndexHtml;
-        Assert.Contains("<span class=\"text\">one</span>", html);
-        Assert.Contains("<li class=\"checked\"><span class=\"box\"></span><span class=\"text\">two</span>", html);
-    }
-
-    [Fact]
     public async Task Another_users_note_is_not_found_and_nothing_is_rendered()
     {
         _fixture.ActAsUserA();
-        var note = await _fixture.NoteService.CreateAsync(NoteType.Text, "Private", [], "secret");
+        var note = await _fixture.NoteService.CreateAsync("Private", [], "secret");
 
         _fixture.ActAsUserB();
 
