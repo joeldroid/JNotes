@@ -235,14 +235,17 @@ and runs the full test suite against a `postgres:18-alpine` service container. N
 and nothing is pushed.
 
 Pushes to `main` and `v*` tags repeat the build and tests and, only if they pass, also publish
-`joeldroid/jnotes` to Docker Hub (`linux/amd64` only) with the tags `latest` and a build version
+`joeldroid/jnotes` to Docker Hub and `ghcr.io/joeldroid/jnotes` to the GitHub Container Registry
+(`linux/amd64` only, the same tags on both) with the tags `latest` and a build version
 `{YY}{day of year}{run of the day}` such as `2630501` (both from `main`; the commit gets the same git tag),
-`X.Y.Z`/`X.Y`/`X` (from a version tag) and `sha-<short>`. Publishing needs the repository variable
+and `X.Y.Z`/`X.Y`/`X` (from a version tag). Publishing needs the repository variable
 `DOCKERHUB_USERNAME` and the secret `DOCKERHUB_TOKEN` (a Docker Hub access token with Read & Write).
 The build version also needs the repository variable `RUN_OF_THE_DAY` (the next run number, starting at `1`;
 it is incremented after each tagged build and the first build of a UTC day always uses `1`) and the secret
 `VARIABLES_TOKEN`, a fine-grained personal access token limited to this repository with *Variables: read and write*
-(the built-in `GITHUB_TOKEN` cannot touch Actions variables).
+(the built-in `GITHUB_TOKEN` cannot touch Actions variables). The GitHub Container Registry push needs no extra
+secret (it uses the built-in `GITHUB_TOKEN`); a new package starts out private, so make it public once under the
+repository's *Packages* → *Package settings* if anyone else should be able to pull it.
 
 ## Running with Docker
 
