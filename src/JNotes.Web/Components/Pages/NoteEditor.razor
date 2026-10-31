@@ -122,6 +122,9 @@ else
     private readonly AutosaveDebouncer _metadataDebouncer;
     private readonly SemaphoreSlim _saveGate = new(1, 1);
 
+    // Bumped (under _saveGate) whenever the editor swaps to a different note or a fresh draft; see SwapNoteAsync.
+    private int _noteGeneration;
+
     public NoteEditor()
     {
         _contentDebouncer = new AutosaveDebouncer(ContentDebounceDelay, () => SaveNowAsync(NoteSaveScope.ContentOnly));
@@ -151,7 +154,8 @@ else
     protected override async Task OnParametersSetAsync()
     {
         // Read before the resets below: a loaded note with edits still sitting in a debounce window, about to be
-        // replaced by a new draft (the instance is reused between /notes/{id}/edit and /notes/new).
+        // replaced by a new draft or by another note (the instance is reused between /notes/{id}/edit routes
+        // and /notes/new, so only the parameters change).
         var unsavedNote = _note is { } current && current.Id != Guid.Empty && !_accessLost && _hasUnsavedChanges ? current : null;
 
         _notFound = false;
@@ -163,39 +167,58 @@ else
         {
             _access = null;
 
-            // Switching from a loaded note: its pending debounces would otherwise fire against the draft below
-            // (NoteNotFoundException -> _accessLost) and its last edit would be lost. Cancel them, flush that note
-            // under the save gate (same best-effort Metadata flush as DisposeAsync), and swap the draft in while
-            // still holding the gate so a save queued behind it sees the draft (SaveNowAsync skips drafts).
-            _contentDebouncer.Cancel();
-            _metadataDebouncer.Cancel();
-            await _saveGate.WaitAsync();
-            try
+            // Built here rather than in OnInitializedAsync: /notes/{id}/edit -> /notes/new
+            // reuses this instance and only the parameters change.
+            await SwapNoteAsync(unsavedNote, () =>
             {
-                if (unsavedNote is not null)
-                {
-                    try
-                    {
-                        await NoteService.AutosaveAsync(unsavedNote, NoteSaveScope.Metadata);
-                    }
-                    catch
-                    {
-                        // Best-effort, as in DisposeAsync: the user is already leaving this note.
-                    }
-                }
-
-                // Built here rather than in OnInitializedAsync: /notes/{id}/edit -> /notes/new
-                // reuses this instance and only the parameters change.
                 ResetDraft();
-            }
-            finally
-            {
-                _saveGate.Release();
-            }
-
+                return Task.CompletedTask;
+            });
             return;
         }
 
+        await SwapNoteAsync(unsavedNote, LoadNoteAsync);
+    }
+
+    /// <summary>
+    /// Replaces the note this editor shows (a new draft, or another note on a reused instance). The outgoing note's
+    /// pending debounces would otherwise fire against whatever replaces it (a draft: NoteNotFoundException ->
+    /// _accessLost; another note: a stale save of its unchanged body), and its last edit would be lost. So: cancel
+    /// them, flush that note under the save gate (same best-effort Metadata flush as DisposeAsync), and swap while
+    /// still holding the gate. <c>_noteGeneration</c> makes a save that was already queued behind the gate for the
+    /// outgoing note skip itself instead of running against the replacement.
+    /// </summary>
+    private async Task SwapNoteAsync(Note? unsavedNote, Func<Task> swap)
+    {
+        _contentDebouncer.Cancel();
+        _metadataDebouncer.Cancel();
+        await _saveGate.WaitAsync();
+        try
+        {
+            if (unsavedNote is not null)
+            {
+                try
+                {
+                    await NoteService.AutosaveAsync(unsavedNote, NoteSaveScope.Metadata);
+                }
+                catch
+                {
+                    // Best-effort, as in DisposeAsync: the user is already leaving this note.
+                }
+            }
+
+            _noteGeneration++;
+            _hasUnsavedChanges = false;
+            await swap();
+        }
+        finally
+        {
+            _saveGate.Release();
+        }
+    }
+
+    private async Task LoadNoteAsync()
+    {
         try
         {
             var result = await NoteService.GetWithAccessAsync(Id!.Value);
@@ -275,14 +298,16 @@ else
             return;
         }
 
+        var generation = _noteGeneration;
         _isSaving = true;
         await InvokeAsync(StateHasChanged);
 
         await _saveGate.WaitAsync();
         try
         {
-            // A save queued behind the draft swap in OnParametersSetAsync: nothing exists to save for a draft.
-            if (_note is null || _note.Id == Guid.Empty)
+            // A save queued behind a note swap in OnParametersSetAsync (SwapNoteAsync already flushed the outgoing
+            // note): it must not run against the replacement, and nothing exists to save for a draft.
+            if (generation != _noteGeneration || _note is null || _note.Id == Guid.Empty)
             {
                 return;
             }
