@@ -90,11 +90,12 @@ once after cloning if `dotnet ef` isn't found.
 
 ## Continuous integration
 
-GitHub Actions (`.github/workflows/`) runs on every pull request to `main`: it builds the solution
-and runs the full test suite against a `postgres:18-alpine` service container. No secrets are needed
-and nothing is pushed.
+GitHub Actions (`.github/workflows/`) runs on pull requests to `main` that change anything under `src/`: it
+builds the solution and runs the full test suite against a `postgres:18-alpine` service container. No secrets
+are needed and nothing is pushed. A pull request that only touches docs, tests or other files outside `src/`
+doesn't start the workflow.
 
-Pushes to `main` and `v*` tags repeat the build and tests and, only if they pass, also publish
+Pushes to `main` that change `src/`, and every `v*` tag (GitHub doesn't apply path filters to tags), repeat the build and tests and, only if they pass, also publish
 `joeldroid/jnotes` to Docker Hub and `ghcr.io/joeldroid/jnotes` to the GitHub Container Registry
 (`linux/amd64` only, the same tags on both) with the tags `latest` and a build version
 `{YY}{day of year}{run of the day}` such as `2630501` (both from `main`; the commit gets the same git tag),
