@@ -34,6 +34,14 @@ the markdown files always are.
 The very first time you run JNotes, you'll land on a setup screen to create the admin account —
 see [Authentication](docs/authentication.md) for that flow, adding more users, and OIDC.
 
+## How this project is built
+
+JNotes is developed with the assistance of AI tools. It is **AI-assisted software engineering, not
+"vibe coding"**: AI is used as a productivity aid for drafting code, tests and documentation, while
+design decisions, architecture and scope remain with the maintainer. Every contribution that lands
+in this repository, whether AI-generated or hand-written, is reviewed, tested and approved by a
+human before it is merged.
+
 ## Screenshots
 
 <p align="center">
