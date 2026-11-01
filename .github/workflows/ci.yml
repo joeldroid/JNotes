@@ -4,6 +4,9 @@ name: CI
 on:
   pull_request:
     branches: [main]
+    # Only runs when something under src/ changed (docs- or README-only PRs skip it).
+    paths:
+      - 'src/**'
 
 permissions:
   contents: read
