@@ -8,8 +8,8 @@ JNotes is a self-hosted, multi-user note-taking app: Blazor Server (.NET 10) UI 
 portable markdown files on disk (each a readable `.md` with YAML front matter, one subfolder per
 user), and a single PostgreSQL database holding user accounts and settings plus a note index over
 the files for fast search — the index tables are a **derived cache**, never the source of truth;
-the markdown files are. See README.md for features, the note file format, and the configuration
-reference.
+the markdown files are. See README.md for features and a quick start, and `docs/` (index: `docs/README.md`) for the note file
+format, the configuration reference, and the rest of the user documentation.
 
 ## Commands
 
@@ -633,7 +633,7 @@ Compose: the `gotenberg` service sits behind the `pdf` profile, with no publishe
 
 ## Auto-tagging (optional)
 
-**Runs whenever `OLLAMA_URL` is a valid absolute http(s) URL — there is no separate flag** (`AutoTagOptions.IsEnabled` = URL via `PdfExportOptions.ParseBaseUri` + a non-blank `OLLAMA_MODEL`, default `phi4`; also `OLLAMA_TIMEOUT_SECONDS` 120 clamped 10..600, `AUTO_TAG_INTERVAL_MINUTES` 10 clamped 1..1440, `AUTO_TAG_BATCH_SIZE` 10 clamped 1..100, all flat keys read in `AddJNotesCore`). `AUTO_TAG_ENABLED` is ignored: `Program.cs` logs one warning if it is still set. The launch profiles set `OLLAMA_URL` empty and tests pass an empty `ConfigurationBuilder`, so dev and tests never auto-enable. There is deliberately no editor/`NoteView` UI and no per-user opt-out (an admin decision; documented in the README's privacy note). `Program.cs` logs the state and never the URL.
+**Runs whenever `OLLAMA_URL` is a valid absolute http(s) URL — there is no separate flag** (`AutoTagOptions.IsEnabled` = URL via `PdfExportOptions.ParseBaseUri` + a non-blank `OLLAMA_MODEL`, default `phi4`; also `OLLAMA_TIMEOUT_SECONDS` 120 clamped 10..600, `AUTO_TAG_INTERVAL_MINUTES` 10 clamped 1..1440, `AUTO_TAG_BATCH_SIZE` 10 clamped 1..100, all flat keys read in `AddJNotesCore`). `AUTO_TAG_ENABLED` is ignored: `Program.cs` logs one warning if it is still set. The launch profiles set `OLLAMA_URL` empty and tests pass an empty `ConfigurationBuilder`, so dev and tests never auto-enable. There is deliberately no editor/`NoteView` UI and no per-user opt-out (an admin decision; documented in the Privacy section of docs/auto-tagging.md). `Program.cs` logs the state and never the URL.
 
 **Layering**, in `JNotes.Core/Tagging/`: pure static helpers (`AutoTagPromptBuilder`, `AutoTagResponseParser`, `AutoTagNormalizer`, `AutoTagSchedule`, `AutoTagCandidates`); `ITagModelClient`/`OllamaTagModelClient` (typed `HttpClient`, `POST /api/chat`, non-streaming, JSON-schema `format`, `num_ctx` 8192) whose failures are `AutoTagException` with an `AutoTagFailureKind` (`Unavailable`: connection, 5xx incl. 503 overloaded, 429, 404 model missing; `Timeout`; `BadResponse`: garbage, 200 with `error`, other 4xx). The client logs at Debug only, never an exception object (its message carries host:port), and its `HttpClient` has `RemoveAllLoggers()` because the default handler logs the request URL on every call — **the Ollama URL, note text, titles and tags are never logged**. `INoteAutoTagger`/`NoteAutoTagger` (scoped, **explicit `userId`** like `IImageCleanupService`, since its caller has no current user) is driven by `Web/Tagging/AutoTagBackgroundService` — the image-cleanup pattern: one scope per pass, initial 1-minute delay then a `PeriodicTimer`, never rethrows. A pass takes up to `BatchSize` notes across all users (users shuffled, per-user candidates interleaved round-robin), one at a time; it deliberately bypasses `NoteService` (implicit user, and its autosave stamps `UpdatedAt`). Web never talks to Ollama.
 
