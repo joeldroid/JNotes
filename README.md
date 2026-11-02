@@ -84,10 +84,13 @@ human before it is merged.
 With Docker, using the [sample `docker-compose.yml`](docker-compose.yml) (starts JNotes and PostgreSQL):
 
 ```bash
+mkdir -p ./data && sudo chown -R 1654:1654 ./data   # Linux hosts: the container runs as UID 1654
 docker compose up --build
 ```
 
 JNotes is then at `http://localhost:8080`.
+
+> The `chown` step is needed on Linux, where Docker otherwise creates `./data` owned by root and the app fails with `Access to the path '/data/keys' is denied`. Docker Desktop on macOS/Windows doesn't need it. See [Running with Docker](docs/docker.md) for details.
 
 The compose file builds the image from source. To use a prebuilt image instead, pull it from either registry (`linux/amd64`, tagged `latest`, a build version, or a release version):
 
