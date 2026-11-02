@@ -33,6 +33,10 @@ services:
       # - OIDC_CLIENT_ID=${OIDC_CLIENT_ID}
       # - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET}
       # - OIDC_DISPLAY_NAME=${OIDC_DISPLAY_NAME:-OIDC}
+      # Behind a TLS-terminating reverse proxy, also uncomment this so the app builds https:// redirect URIs
+      # (without it the IdP rejects the login with a redirect_uri mismatch). The proxy must send
+      # X-Forwarded-Proto and the original Host.
+      # - ASPNETCORE_FORWARDEDHEADERS_ENABLED=true
       # Optional PDF export (an "Export PDF" button on each note). Off unless GOTENBERG_URL is set. To turn
       # it on, add BOTH lines to a .env file:  COMPOSE_PROFILES=pdf  (starts the gotenberg service below)
       # and  GOTENBERG_URL=http://gotenberg:3000  (tells the app where it is). See README.md's "PDF export".

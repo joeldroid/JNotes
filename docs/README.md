@@ -10,7 +10,7 @@ Back to the [project README](../README.md).
 
 **Using JNotes**
 
-- [Authentication](authentication.md) — first-run setup, users, OIDC
+- [Authentication](authentication.md) — first-run setup, users, OIDC (incl. Authentik setup)
 - [Sharing notes](sharing.md) — Read/Edit sharing
 - [Note file format](file-format.md) — the on-disk markdown and front matter
 
