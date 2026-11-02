@@ -13,10 +13,12 @@ Rescan Now while it's running). The **database is a named Docker volume** (`jnot
 file under `./data` — deleting `./data` no longer resets accounts, and `docker compose down -v`
 does.
 
-> **Note on file permissions:** the container runs as its base image's non-root user. If Docker
-> can't write to `./data` on your host (uncommon, but possible with some Docker Engine/Linux
-> setups), fix host-side permissions with `chmod -R a+rwX ./data` or run
-> `sudo chown -R $(id -u):$(id -g) ./data` before starting the container.
+> **Note on file permissions:** the container runs as its base image's non-root user (UID `1654`),
+> and a bind mount replaces the `/data` ownership the image sets up. If `./data` doesn't exist yet,
+> Docker Engine on Linux creates it owned by root, and the app fails with
+> `Access to the path '/data/keys' is denied`. Give UID 1654 ownership before starting the container:
+> `mkdir -p ./data && sudo chown -R 1654:1654 ./data` (or, less strictly, `chmod -R a+rwX ./data`).
+> `chown` to your own user (`$(id -u)`) only helps if that happens to be UID 1654.
 
 ## Optional services
 
